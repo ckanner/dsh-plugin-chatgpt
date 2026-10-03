@@ -85,6 +85,26 @@ export interface NeutralToolResult {
   isError?: boolean
 }
 
+/** One tool call the model made on an earlier turn, being replayed. */
+export interface NeutralToolCall {
+  callId: string
+  name: string
+  /** Raw JSON string the model produced. */
+  arguments: string
+}
+
+/**
+ * One entry of the tool traffic, in the order it happened.
+ *
+ * A call and its result are different things that share a correlation id, and
+ * the wire format wants them as separate top-level items in conversational
+ * order. Keeping them in one ordered stream is what preserves that order — a
+ * replayed call must precede the result that answers it.
+ */
+export type ToolTraffic =
+  | { kind: 'call', call: NeutralToolCall }
+  | { kind: 'result', result: NeutralToolResult }
+
 /** A tool the model may call. */
 export interface NeutralTool {
   name: string
@@ -101,22 +121,33 @@ export interface NeutralRequest {
   /** An out-of-band system prompt, used when the messages carry none. */
   system?: string
   tools?: readonly NeutralTool[]
-  /** Tool results to deliver, correlated by call id. */
-  toolResults?: readonly NeutralToolResult[]
+  /** Replayed calls and their results, in conversational order. */
+  toolTraffic?: readonly ToolTraffic[]
   /** Provider-accepted reasoning effort spelling. */
   reasoningEffort?: string
   /** Cap on emitted tokens. Always omitted for now; see {@link REFUSED_FIELDS}. */
   maxTokens?: number
 }
 
-/** An input item destined for the Responses `input` array. */
+/**
+ * An input item destined for the Responses `input` array.
+ *
+ * One shape covers the three item kinds this adapter sends, because the wire
+ * format discriminates them by `type` and each kind reads a different subset.
+ */
 export interface InputItem {
   type: 'message' | 'function_call' | 'function_call_output'
+  /** Present on a message item. */
   role?: 'user' | 'assistant'
+  /** Present on a message item. */
   content?: readonly Record<string, unknown>[]
+  /** Present on a replayed call and on the result that answers it. */
   call_id?: string
+  /** Present on a replayed call. */
   name?: string
+  /** Present on a replayed call: the raw JSON string the model produced. */
   arguments?: string
+  /** Present on a result item. */
   output?: string
 }
 
@@ -190,12 +221,22 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     input.push({ type: 'message', role: message.role, content })
   }
 
-  // Tool results are top-level items correlated by call id, not message bodies.
-  for (const result of request.toolResults ?? []) {
+  // Tool traffic is top-level, correlated by call id, and in the order it
+  // happened: a replayed call must precede the result that answers it.
+  for (const entry of request.toolTraffic ?? []) {
+    if (entry.kind === 'call') {
+      input.push({
+        type: 'function_call',
+        call_id: entry.call.callId,
+        name: entry.call.name,
+        arguments: entry.call.arguments,
+      })
+      continue
+    }
     input.push({
       type: 'function_call_output',
-      call_id: result.callId,
-      output: result.isError === true ? `Error: ${result.output}` : result.output,
+      call_id: entry.result.callId,
+      output: entry.result.isError === true ? `Error: ${entry.result.output}` : entry.result.output,
     })
   }
 

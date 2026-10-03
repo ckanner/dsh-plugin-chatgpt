@@ -1,0 +1,345 @@
+import { afterEach, describe, it } from 'node:test'
+import assert from 'node:assert/strict'
+import { createServer, type Server } from 'node:http'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { ChatGptAdapter, toNeutralRequest } from '../src/adapter.ts'
+import { ChatGptAuth } from '../src/auth/manager.ts'
+import { writeDocument, emptyDocument } from '../src/auth/store.ts'
+import type { ChatGptCredential } from '../src/auth/credential.ts'
+
+const servers: Server[] = []
+const dirs: string[] = []
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => {
+    server.close(() => resolve())
+    server.closeAllConnections()
+  })))
+  await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+})
+
+/** A fresh state directory with a live (unexpired) grant already stored. */
+async function signedIn(overrides: Partial<ChatGptCredential> = {}): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'chatgpt-adapter-'))
+  dirs.push(dir)
+  writeDocument(join(dir, 'chatgpt-auth.json'), {
+    ...emptyDocument('urn:uuid:x'),
+    accounts: {
+      'subject-1': {
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Date.now() + 3600_000,
+        clientId: 'oaiapp_issued',
+        scopes: ['chatgpt.tokens.use.direct'],
+        subject: 'subject-1',
+        email: 'me@example.com',
+        savedAt: Date.now(),
+        ...overrides,
+      },
+    },
+    active: 'subject-1',
+  })
+  return dir
+}
+
+/** An endpoint serving the listing and one streamed turn. */
+async function endpoint(options: {
+  listing?: unknown
+  listingStatus?: number
+  frames?: string[]
+} = {}): Promise<{ url: string, paths: string[] }> {
+  const paths: string[] = []
+  const server = createServer((request, response) => {
+    paths.push(request.url ?? '/')
+    if ((request.url ?? '').startsWith('/models')) {
+      response.writeHead(options.listingStatus ?? 200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(options.listing ?? { models: [] }))
+      return
+    }
+    response.writeHead(200, { 'content-type': 'text/event-stream' })
+    for (const frame of options.frames ?? []) response.write(frame)
+    response.end()
+  })
+  servers.push(server)
+  await new Promise<void>(resolve => { server.listen(0, '127.0.0.1', resolve) })
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('endpoint bound no port')
+  return { url: `http://127.0.0.1:${address.port}`, paths }
+}
+
+/** Frame one SSE event. */
+function frame(event: unknown): string {
+  return `data: ${JSON.stringify(event)}\n\n`
+}
+
+/** An adapter over a fresh auth instance for one state directory. */
+function adapterFor(stateDir: string, url: string, now?: () => number): ChatGptAdapter {
+  return new ChatGptAdapter({
+    auth: new ChatGptAuth({ stateDir, agentNameHint: 'DeepSeek Harness' }),
+    baseUrl: url,
+    ...now === undefined ? {} : { now },
+  })
+}
+
+describe('ChatGptAdapter', () => {
+  it('names its provider row', async () => {
+    const adapter = adapterFor(await signedIn(), 'http://127.0.0.1:9')
+
+    assert.deepEqual(adapter.providerInfo('chatgpt'), { id: 'chatgpt', name: 'ChatGPT' })
+  })
+
+  it('offers nothing before a sign-in, without failing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'chatgpt-adapter-'))
+    dirs.push(dir)
+    // Not being signed in is a route waiting for one, not a broken route: a
+    // failure here would make the selector unusable before the first sign-in.
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: 'http://127.0.0.1:9',
+    })
+
+    assert.deepEqual(await adapter.listModels(), [])
+  })
+
+  it('describes the account\'s models with capacities and reasoning levels', async () => {
+    const endpointUrl = await endpoint({
+      listing: {
+        models: [
+          { slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list' },
+          { slug: 'hidden-model', display_name: 'Hidden', visibility: 'hide' },
+        ],
+      },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const models = await adapter.listModels()
+
+    assert.deepEqual(models.map(model => model.id), ['gpt-6.1-sol'])
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
+    assert.equal(resolved.provider, 'chatgpt')
+    assert.equal(resolved.name, 'GPT-6.1 Sol')
+    assert.ok(resolved.context.contextWindow >= 200000)
+    assert.ok((resolved.defaultMaxTokens ?? 0) > 0)
+    assert.deepEqual(resolved.inputModalities, ['text', 'image'])
+    assert.deepEqual(resolved.reasoning?.efforts.map(effort => effort.id), [
+      'low', 'medium', 'high', 'xhigh', 'max',
+    ])
+    assert.equal(resolved.reasoning?.defaultEffort, 'medium')
+  })
+
+  it('serves the listing from cache inside the window, then re-asks', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [{ slug: 'm', visibility: 'list' }] } })
+    let clock = 1000
+    const adapter = adapterFor(await signedIn(), endpointUrl.url, () => clock)
+
+    await adapter.listModels()
+    await adapter.listModels()
+    assert.equal(endpointUrl.paths.filter(path => path.startsWith('/models')).length, 1)
+
+    // Past the window, entitlement may have changed under the cache.
+    clock += 61_000
+    await adapter.listModels()
+    assert.equal(endpointUrl.paths.filter(path => path.startsWith('/models')).length, 2)
+  })
+
+  it('describes a model the listing never mentioned', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [] } })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    // A direct call must not depend on a listing having happened.
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
+
+    assert.equal(resolved.id, 'gpt-6.1-sol')
+    assert.ok(resolved.context.contextWindow > 0)
+  })
+
+  it('refuses a call when no account is signed in, naming the reason', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'chatgpt-adapter-'))
+    dirs.push(dir)
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: 'http://127.0.0.1:9',
+    })
+
+    const chunks = []
+    await assert.rejects(
+      (async () => {
+        for await (const chunk of adapter.stream('chatgpt', {
+          provider: 'chatgpt',
+          model: 'm',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        })) chunks.push(chunk)
+      })(),
+      /no usable ChatGPT credential/,
+    )
+  })
+
+  it('streams a turn into numbered blocks that close before finishing', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6.1-sol', visibility: 'list' }] },
+      frames: [
+        frame({ type: 'response.created' }),
+        frame({ type: 'response.reasoning_summary_text.delta', delta: 'thinking' }),
+        frame({ type: 'response.output_text.delta', delta: 'Hel' }),
+        frame({ type: 'response.output_text.delta', delta: 'lo' }),
+        frame({ type: 'response.completed', response: { id: 'resp_1' } }),
+      ],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const chunks = []
+    for await (const chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'gpt-6.1-sol',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      reasoningEffort: 'high',
+    })) chunks.push(chunk)
+
+    assert.deepEqual(chunks, [
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'thinking' },
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text: 'Hel' },
+      { type: 'text-delta', index: 1, text: 'lo' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thinking' } },
+      { type: 'block-end', index: 1, block: { type: 'text', text: 'Hello' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ])
+  })
+
+  it('closes the blocks it opened, and reports the failure, when a turn fails mid-answer', async () => {
+    const endpointUrl = await endpoint({
+      frames: [
+        frame({ type: 'response.output_text.delta', delta: 'half' }),
+        frame({
+          type: 'response.failed',
+          response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'out of allowance' } },
+        }),
+      ],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const chunks: { type: string, index?: number }[] = []
+
+    for await (const chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'm',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    })) chunks.push(chunk)
+
+    // A failed response is a protocol-level terminal, not a transport fault: the
+    // partial answer is preserved, no block is left dangling, and the reason
+    // travels as the turn's finish rather than as a thrown error.
+    assert.deepEqual(chunks, [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: 'half' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: 'half' } },
+      {
+        type: 'finish',
+        reason: {
+          kind: 'error',
+          failure: { message: 'out of allowance', code: 'subscription_sharing_usage_limit_exceeded' },
+        },
+      },
+    ])
+  })
+
+  it('closes its blocks and rethrows when the stream dies without a terminal event', async () => {
+    const endpointUrl = await endpoint({
+      frames: [frame({ type: 'response.output_text.delta', delta: 'half' })],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const chunks: { type: string, index?: number }[] = []
+
+    await assert.rejects(
+      (async () => {
+        for await (const chunk of adapter.stream('chatgpt', {
+          provider: 'chatgpt',
+          model: 'm',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        })) chunks.push(chunk)
+      })(),
+      /without a terminal event/,
+    )
+
+    // A transport fault still leaves no block open behind it.
+    assert.deepEqual(chunks.map(chunk => chunk.type), ['block-start', 'text-delta', 'block-end'])
+  })
+
+  it('drops the cached listing when the grant is refused', async () => {
+    const endpointUrl = await endpoint({ listingStatus: 401, listing: { error: { code: 'invalid_api_key' } } })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    await assert.rejects(adapter.listModels())
+  })
+})
+
+describe('toNeutralRequest', () => {
+  it('lifts the system prompt and keeps user text', () => {
+    const neutral = toNeutralRequest({
+      provider: 'chatgpt',
+      model: 'm',
+      system: 'be terse',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    })
+
+    assert.equal(neutral.system, 'be terse')
+    assert.deepEqual(neutral.messages, [{ role: 'user', content: 'hi' }])
+  })
+
+  it('replays an assistant tool call ahead of the result that answers it', () => {
+    const neutral = toNeutralRequest({
+      provider: 'chatgpt',
+      model: 'm',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'read a' }] },
+        { role: 'assistant', content: [{ type: 'tool-call', id: 'call_1', name: 'read_file', arguments: '{"path":"a"}' }] },
+        { role: 'tool', toolCallId: 'call_1', content: [{ type: 'text', text: 'contents' }] },
+      ],
+    })
+
+    assert.deepEqual(neutral.toolTraffic, [
+      { kind: 'call', call: { callId: 'call_1', name: 'read_file', arguments: '{"path":"a"}' } },
+      { kind: 'result', result: { callId: 'call_1', output: 'contents' } },
+    ])
+    // The call is not also sent as assistant prose.
+    assert.deepEqual(neutral.messages, [{ role: 'user', content: 'read a' }])
+  })
+
+  it('marks a failed tool result', () => {
+    const neutral = toNeutralRequest({
+      provider: 'chatgpt',
+      model: 'm',
+      messages: [
+        { role: 'tool', toolCallId: 'call_1', isError: true, content: [{ type: 'text', text: 'not found' }] },
+      ],
+    })
+
+    assert.deepEqual(neutral.toolTraffic, [
+      { kind: 'result', result: { callId: 'call_1', output: 'not found', isError: true } },
+    ])
+  })
+
+  it('drops a tool message that names no call, since it cannot be correlated', () => {
+    const neutral = toNeutralRequest({
+      provider: 'chatgpt',
+      model: 'm',
+      messages: [{ role: 'tool', content: [{ type: 'text', text: 'orphan' }] }],
+    })
+
+    assert.equal(neutral.toolTraffic, undefined)
+  })
+
+  it('carries tools and the chosen reasoning effort', () => {
+    const neutral = toNeutralRequest({
+      provider: 'chatgpt',
+      model: 'm',
+      reasoningEffort: 'high',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      tools: [{ name: 't', description: 'd', parameters: { type: 'object' } }],
+    })
+
+    assert.equal(neutral.reasoningEffort, 'high')
+    assert.deepEqual(neutral.tools, [{ name: 't', description: 'd', parameters: { type: 'object' } }])
+  })
+})

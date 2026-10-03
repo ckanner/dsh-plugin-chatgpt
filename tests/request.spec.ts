@@ -92,7 +92,7 @@ describe('toResponsesBody', () => {
     const body = toResponsesBody({
       model: 'm',
       messages: [{ role: 'user', content: 'go' }],
-      toolResults: [{ callId: 'call_1', output: 'file contents' }],
+      toolTraffic: [{ kind: 'result', result: { callId: 'call_1', output: 'file contents' } }],
     })
 
     // Not a message role: the wire format correlates by call_id, not position.
@@ -103,11 +103,27 @@ describe('toResponsesBody', () => {
     })
   })
 
+  it('replays a call as a function_call item, before the result answering it', () => {
+    const body = toResponsesBody({
+      model: 'm',
+      messages: [{ role: 'user', content: 'go' }],
+      toolTraffic: [
+        { kind: 'call', call: { callId: 'call_1', name: 'read_file', arguments: '{"path":"a"}' } },
+        { kind: 'result', result: { callId: 'call_1', output: 'hello' } },
+      ],
+    })
+
+    assert.deepEqual(body.input.slice(1), [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{"path":"a"}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'hello' },
+    ])
+  })
+
   it('marks a failed tool result rather than throwing', () => {
     const body = toResponsesBody({
       model: 'm',
       messages: [{ role: 'user', content: 'go' }],
-      toolResults: [{ callId: 'call_1', output: 'not found', isError: true }],
+      toolTraffic: [{ kind: 'result', result: { callId: 'call_1', output: 'not found', isError: true } }],
     })
 
     assert.equal(body.input[1]?.output, 'Error: not found')
