@@ -63,7 +63,7 @@ describe('the client Remote table', () => {
     assert.match(controller, new RegExp(`namespace: '${REMOTE_NAMESPACE}'`))
   })
 
-  it('builds one strict-coded descriptor per method, addressed by wire name', () => {
+  it('builds one descriptor per method, addressed by wire name', () => {
     const contribution = remoteContribution()
 
     assert.equal(contribution.descriptors.length, REMOTE_METHODS.length)
@@ -71,13 +71,54 @@ describe('the client Remote table', () => {
       assert.equal(descriptor.namespace, REMOTE_NAMESPACE)
       assert.equal(descriptor.service, REMOTE_SERVICE_KEY)
       assert.equal(descriptor.invocation.kind, 'direct')
-      // The client refuses a descriptor whose parameter has no strict codec.
-      for (const parameter of descriptor.parameters) assert.equal(parameter.codec.mode, 'strict')
-      assert.equal(descriptor.result.mode, 'strict')
       assert.deepEqual(
         descriptor.parameters.map(parameter => parameter.wire),
         REMOTE_METHODS.find(entry => entry.method === descriptor.method)?.parameters,
       )
+    }
+  })
+
+  it('satisfies the Gateway, which demands a strict codec on every parameter', () => {
+    // Reproduced from the client Gateway's own admission check. A parameter whose
+    // codec is not strict is refused, and the whole contribution with it — which is
+    // exactly how the card came to report an unreachable service.
+    for (const descriptor of remoteContribution().descriptors) {
+      for (const parameter of descriptor.parameters) {
+        assert.equal(
+          parameter.codec.mode,
+          'strict',
+          `${descriptor.method}(${parameter.name}) must declare a strict codec`,
+        )
+      }
+    }
+  })
+
+  it('satisfies the Typert registry, which demands more of a strict codec', () => {
+    // Also reproduced from the registry. It accepts `src-json` as-is, and otherwise
+    // requires a type symbol and a create() factory — the second half of the
+    // contract the Gateway says nothing about.
+    const describe = (codec: { mode?: string, typeSymbol?: string, create?: unknown }): string | undefined => {
+      if (codec.mode === 'src-json') return undefined
+      if (typeof codec.typeSymbol !== 'string' || codec.typeSymbol.length === 0) return 'no type symbol'
+      if (typeof codec.create !== 'function') return 'no create() factory'
+      return undefined
+    }
+
+    for (const descriptor of remoteContribution().descriptors) {
+      assert.equal(describe(descriptor.result), undefined, `${descriptor.method} result codec`)
+      for (const parameter of descriptor.parameters) {
+        assert.equal(describe(parameter.codec), undefined, `${descriptor.method}(${parameter.name}) codec`)
+      }
+    }
+  })
+
+  it('names a nonempty service key and an id without a hash', () => {
+    // The registry rejects an empty segment, and a service key containing the id
+    // separator, before it looks at anything else.
+    for (const descriptor of remoteContribution().descriptors) {
+      assert.ok(descriptor.service.length > 0)
+      assert.ok(!descriptor.service.includes('#'))
+      assert.match(descriptor.id, /^dsh-plugin-chatgpt#chatgpt\/[A-Za-z]+$/)
     }
   })
 

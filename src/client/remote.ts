@@ -7,12 +7,14 @@
  * generates one for an out-of-tree plugin, so the card would find no
  * `ctx.remote.chatgpt` however long it waited. This mounts the missing piece.
  *
- * The descriptors are small because the client reads very little of them: it
- * checks that every parameter declares a strict codec, then builds the call from
- * the declared wire names and sends it as JSON. It never invokes the codec, and it
- * decodes a result only through an optional `decode` this omits. So the fields
- * that would otherwise be generated schemas only have to be present and honest
- * about their shape — the names in them are what the Host actually matches on.
+ * Two validators read these descriptors and they ask for different things, which
+ * is the whole difficulty of hand-writing them: the Gateway requires a `strict`
+ * codec on every parameter and never calls it, while the Typert registry requires
+ * that a `strict` codec also name a type symbol and provide a `create()` factory,
+ * accepting `src-json` as an alternative that needs neither. Parameters satisfy
+ * the first with the second's demands attached; the result is `src-json`, which
+ * both accept. The codec bodies never run on this side — the declared names are
+ * what the Host matches on.
  *
  * @module dsh-plugin-chatgpt/client/remote
  */
@@ -26,18 +28,46 @@ import {
 /** The package name the mount is attributed to, as the Gateway records it. */
 const PACKAGE = 'dsh-plugin-chatgpt'
 
-/** The strict codec marker the client insists on and never calls. */
-const STRICT_CODEC = { mode: 'strict' as const }
+/** How the Host receives a result this side does not need to decode. */
+const RESULT_CODEC = { mode: 'src-json' as const }
 
-/** A descriptor as far as the client's validation and call path read it. */
+/**
+ * A codec both validators accept, for one argument.
+ *
+ * `create` is never invoked on this side — the Gateway builds calls from the
+ * declared wire names and sends JSON — so it returns a permissive parser rather
+ * than a false claim about a schema this plugin has no way to express.
+ *
+ * @param typeSymbol - the name the registry records for this argument's type.
+ * @returns the codec.
+ */
+function parameterCodec(typeSymbol: string): { mode: 'strict', typeSymbol: string, create: () => unknown } {
+  return {
+    mode: 'strict',
+    typeSymbol,
+    create: () => ({ parse: (value: unknown) => value }),
+  }
+}
+
+/** A descriptor as far as both validators and the client's call path read it. */
 interface RemoteDescriptor {
   id: string
   service: string
   namespace: string
   method: string
   invocation: { kind: 'direct' }
-  parameters: { name: string, wire: string, source: 'json', codec: { mode: 'strict' } }[]
-  result: { mode: 'strict' }
+  parameters: {
+    name: string
+    wire: string
+    source: 'json'
+    codec: { mode: 'strict', typeSymbol: string, create: () => unknown }
+  }[]
+  /**
+   * `src-json` rather than `strict`: the registry exempts it from the type symbol
+   * and factory a strict codec must carry, and the Gateway does not inspect the
+   * result codec at all. The caller receives the Host's value unchanged.
+   */
+  result: { mode: 'src-json' }
   sourceLocation: { file: string, line: number, column: number }
 }
 
@@ -60,8 +90,13 @@ export function remoteContribution(): RemoteContribution {
       namespace: REMOTE_NAMESPACE,
       method,
       invocation: { kind: 'direct' as const },
-      parameters: parameters.map(wire => ({ name: wire, wire, source: 'json' as const, codec: STRICT_CODEC })),
-      result: STRICT_CODEC,
+      parameters: parameters.map(wire => ({
+        name: wire,
+        wire,
+        source: 'json' as const,
+        codec: parameterCodec(`${PACKAGE}#${REMOTE_NAMESPACE}/${method}:${wire}`),
+      })),
+      result: RESULT_CODEC,
       // Pointed at the declaration the descriptor mirrors, so a diagnostic from the
       // Gateway leads to the method it is really about.
       sourceLocation: { file: 'src/controller.ts', line: 1, column: 1 },

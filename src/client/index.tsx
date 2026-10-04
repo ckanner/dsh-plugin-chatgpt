@@ -116,14 +116,18 @@ export function apply(ctx: ClientContext): void {
   // Nothing in the generated aggregate carries this plugin's namespace, so it is
   // mounted here. The card waits for it to appear, which also covers the mount
   // settling after the card's first render.
-  const mounting = ctx.remote.$mount(remoteContribution())
-  mounting.catch((error: unknown) => {
-    console.error('[chatgpt] mounting the sign-in Remote namespace failed:', error)
-  })
+  //
+  // A refused mount is the one failure the card cannot describe by itself, so it
+  // is handed to the card instead of only logged: the reason is a validator's
+  // complaint about these descriptors, and a console nobody opens would hide it.
+  const mounting: Promise<string | undefined> = ctx.remote.$mount(remoteContribution()).then(
+    () => undefined,
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
 
   ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register(
     { name: 'settings.models.provider-card', key: SETTINGS_NS },
-    () => <ChatGptCard ctx={ctx} />,
+    () => <ChatGptCard ctx={ctx} mounting={mounting} />,
   ))
 }
 
@@ -140,8 +144,9 @@ function Fact({ label, children }: { label: string, children: React.ReactNode })
 /**
  * The card itself.
  * @param props.ctx - the browser plugin context carrying the Remote namespace.
+ * @param props.mounting - why mounting the Remote namespace failed, when it did.
  */
-export function ChatGptCard({ ctx }: { ctx: ClientContext }) {
+export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: Promise<string | undefined> }) {
   const [status, setStatus] = useState<StatusView | undefined>(undefined)
   const [pasted, setPasted] = useState('')
   const [busy, setBusy] = useState(false)
@@ -151,6 +156,10 @@ export function ChatGptCard({ ctx }: { ctx: ClientContext }) {
 
   const refresh = useCallback(async () => {
     try {
+      // The mount's own refusal explains far more than a wait that timed out
+      // behind it, so it is preferred whenever there is one.
+      const refused = await mounting
+      if (refused !== undefined) throw new Error(`the sign-in service could not be mounted: ${refused}`)
       const remote = await waitForRemote(ctx)
       setStatus(await remote.status())
     } catch (error) {
@@ -161,7 +170,7 @@ export function ChatGptCard({ ctx }: { ctx: ClientContext }) {
         error: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [ctx])
+  }, [ctx, mounting])
 
   useEffect(() => { void refresh() }, [refresh])
 
