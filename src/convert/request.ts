@@ -159,20 +159,52 @@ export interface ResponsesBody {
   store: typeof STORE
   instructions?: string
   tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown> }[]
-  reasoning?: { effort: string }
+  reasoning?: {
+    effort: string
+    /**
+     * Ask for a readable summary of the model's thinking.
+     *
+     * Without it this route streams nothing at all until the answer begins, so a
+     * hard question looks like a hang for as long as the model thinks — measured at
+     * over sixteen seconds for one short prompt, with the answer itself arriving in
+     * two. Every served model accepts the field, and one that never reasons simply
+     * produces no summary, so it is always asked for.
+     */
+    summary: 'auto'
+  }
 }
 
-/** Text parts of one message as Responses content items. */
-function contentItems(content: string | readonly InputPart[]): Record<string, unknown>[] {
+/**
+ * Text parts of one message as Responses content items.
+ *
+ * The content part a message carries depends on who sent it, and getting it wrong
+ * is not a warning: an assistant turn replayed as `input_text` is refused with
+ * `invalid_value`, which fails every request after the first, because only the
+ * first has no history to replay. The endpoint accepts `output_text` and `refusal`
+ * from an assistant and `input_text` and `input_image` from a user.
+ *
+ * @param role - who sent the message.
+ * @param content - the message's text, or its parts.
+ * @returns the content items to send.
+ */
+function contentItems(
+  role: 'user' | 'assistant',
+  content: string | readonly InputPart[],
+): Record<string, unknown>[] {
+  const textType = role === 'assistant' ? 'output_text' : 'input_text'
   if (typeof content === 'string') {
-    return content.length === 0 ? [] : [{ type: 'input_text', text: content }]
+    return content.length === 0 ? [] : [{ type: textType, text: content }]
   }
   const items: Record<string, unknown>[] = []
   for (const part of content) {
     if (part.type === 'text') {
-      if (part.text.length > 0) items.push({ type: 'input_text', text: part.text })
+      if (part.text.length > 0) items.push({ type: textType, text: part.text })
       continue
     }
+    // An assistant cannot attach an image, and the endpoint refuses one from it,
+    // so a stray part is left out rather than failing the whole request. Nothing
+    // produces one today; this keeps a future one from breaking every turn.
+    if (role === 'assistant') continue
     items.push({ type: 'input_image', image_url: part.url })
   }
   return items
@@ -216,7 +248,7 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
   for (const message of request.messages) {
     // Lifted into `instructions`; forwarding it would be refused.
     if (message.role === 'system') continue
-    const content = contentItems(message.content)
+    const content = contentItems(message.role, message.content)
     if (content.length === 0) continue
     input.push({ type: 'message', role: message.role, content })
   }
@@ -254,7 +286,9 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
         parameters: tool.parameters,
       })),
     },
-    ...request.reasoningEffort === undefined ? {} : { reasoning: { effort: request.reasoningEffort } },
+    ...request.reasoningEffort === undefined
+      ? {}
+      : { reasoning: { effort: request.reasoningEffort, summary: 'auto' as const } },
   }
 }
 

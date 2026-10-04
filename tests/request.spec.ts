@@ -154,7 +154,42 @@ describe('toResponsesBody', () => {
       reasoningEffort: 'high',
     })
 
-    assert.deepEqual(body.reasoning, { effort: 'high' })
+    // The summary is always asked for: without it this route streams nothing at
+    // all until the answer begins, so a thinking model looks like a hang.
+    assert.deepEqual(body.reasoning, { effort: 'high', summary: 'auto' })
+  })
+
+  it('labels an assistant turn as output, which is the only thing the endpoint accepts', () => {
+    // A replayed assistant turn sent as `input_text` is refused with invalid_value,
+    // which fails every request after the first — only the first has no history.
+    const body = toResponsesBody({
+      model: 'm',
+      messages: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'second' },
+        { role: 'user', content: 'third' },
+      ],
+    })
+
+    const roles = body.input.map(item => {
+      const content = item['content']
+      return Array.isArray(content) && content.length > 0
+        ? (content[0] as { type: string }).type
+        : undefined
+    })
+    assert.deepEqual(roles, ['input_text', 'output_text', 'input_text'])
+  })
+
+  it('keeps an image out of an assistant turn, which cannot carry one', () => {
+    const body = toResponsesBody({
+      model: 'm',
+      messages: [{
+        role: 'assistant',
+        content: [{ type: 'text', text: 'seen' }, { type: 'image', url: 'https://example.test/a.png' }],
+      }],
+    })
+
+    assert.deepEqual(body.input[0]?.['content'], [{ type: 'output_text', text: 'seen' }])
   })
 
   it('omits reasoning when no effort was chosen', () => {
