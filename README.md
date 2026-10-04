@@ -156,6 +156,8 @@ Independent. Each turn is a separate request carrying its own context, and the p
 
 - **Signing in announces the new roster to the browser** — a model selector caches the Host catalog and reloads it only when the Host says something changed, so a plugin that fills an empty roster at sign-in time has to publish `llm/adapters-updated`. Without it the models are served and never appear in the selector, which looks exactly like a broken provider. The account card reports how many models the account offers, or why the listing could not be read.
 
+- **The cache-hit readout is zero on this route, and that is the honest value** — the composer's percentage is `cacheReadTokens / billed input`, and the numerator comes only from what the endpoint reports in `input_tokens_details.cached_tokens`. This flow mandates `store: false` and refuses `prompt_cache_retention`, and the endpoint reports zero cached tokens even for a 10,814-token prompt sent three times unchanged in immediate succession — which is the best case a cache key could improve on. The rest of that readout (rate, totals, context share) is real.
+
 ## Dev Note
 
 ```text

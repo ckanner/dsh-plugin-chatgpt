@@ -156,6 +156,8 @@ auth.adopt(credential)
 
 - **登录后会向浏览器通告新的模型清单** — 模型选择器会缓存宿主 catalog，只在宿主声明有变化时重载，因此在登录时把空清单填满的插件必须发布 `llm/adapters-updated`。否则模型确实在服务，却永远不会出现在选择器里——看起来就像 provider 坏了。账号卡片会报告该账号提供多少个模型，或说明清单为何读不到。
 
+- **这条路由上缓存命中率就是 0，而这正是如实的值** — composer 的百分比是 `cacheReadTokens / 计费输入`，分子只来自端点返回的 `input_tokens_details.cached_tokens`。该流程强制 `store: false` 且拒收 `prompt_cache_retention`；而端点对一个 10,814 token 的提示词**连发三次且完全不变**，返回的缓存 token 仍是 0——这已经是缓存键能改善的最好情况了。该栏其余数字（速率、总量、上下文占比）都是真实的。
+
 ## Dev Note
 
 ```text
