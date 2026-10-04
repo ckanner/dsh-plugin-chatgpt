@@ -57,6 +57,37 @@ export function isPlanUsageCode(code: string): boolean {
   return USAGE_CODES.has(code)
 }
 
+/** Where a user reviews and limits each app's use of their ChatGPT plan. */
+export const USAGE_SETTINGS_URL = 'https://chatgpt.com/settings/usage'
+
+/**
+ * The action a plan-usage failure calls for, in the words the documentation
+ * prescribes.
+ *
+ * The distinction matters because the two codes look alike and are not: an
+ * exhausted allowance is a stop that the human resolves in their own ChatGPT
+ * settings, while an unavailable one is worth retrying. Saying "try again" to a
+ * spent allowance, or "check your usage" to a blip, sends the user the wrong way.
+ *
+ * @param code - the endpoint's error code.
+ * @returns guidance to append to the failure message, or `undefined`.
+ */
+function recoveryHint(code: string): string | undefined {
+  if (code === 'subscription_sharing_usage_limit_exceeded') {
+    return 'This account has no ChatGPT plan usage left for this app right now;'
+      + ` review or raise the app's limit at ${USAGE_SETTINGS_URL}.`
+      + ' The plan itself may still have usage, since an app-specific limit applies too.'
+  }
+  if (code === 'subscription_sharing_usage_unavailable') {
+    return 'The plan usage could not be checked; retrying shortly is reasonable.'
+  }
+  if (code === 'subscription_sharing_user_not_eligible') {
+    return 'This user, workspace, or policy cannot spend a ChatGPT plan on inference;'
+      + ' check the ChatGPT account and workspace policy.'
+  }
+  return undefined
+}
+
 /** Read a nested object without assuming the wire shape. */
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
@@ -184,8 +215,14 @@ export function decodeEvent(payload: string): ResponsesEvent | undefined {
       const source = type === 'error' ? event : record(event['response'])
       const error = record(source?.['error']) ?? record(event['error']) ?? {}
       const code = str(error['code']) ?? str(error['type']) ?? 'unknown_error'
-      const message = str(error['message']) ?? 'the response failed without a message'
-      return { kind: 'failed', code, message, terminal: isPlanUsageCode(code) || code !== 'server_error' }
+      const reported = str(error['message']) ?? 'the response failed without a message'
+      const hint = recoveryHint(code)
+      return {
+        kind: 'failed',
+        code,
+        message: hint === undefined ? reported : `${reported} ${hint}`,
+        terminal: isPlanUsageCode(code) || code !== 'server_error',
+      }
     }
     default:
       return { kind: 'unknown', type }

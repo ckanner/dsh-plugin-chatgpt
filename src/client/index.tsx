@@ -42,13 +42,20 @@ interface StatusView {
   error?: string
 }
 
+/** What a sign-out reports beyond the resulting state. */
+interface SignOutOutcome {
+  status: StatusView
+  revocationConfirmed: boolean
+  revocationError?: string
+}
+
 /** The remote surface this card calls. */
 interface ChatGptRemote {
   status(): Promise<StatusView>
   begin(): Promise<StatusView>
   submit(value: string): Promise<StatusView>
   cancel(): Promise<StatusView>
-  signOut(subject?: string): Promise<StatusView>
+  signOut(subject?: string): Promise<SignOutOutcome>
 }
 
 /** Services this plugin consumes from the page. */
@@ -89,6 +96,8 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
   const [status, setStatus] = useState<StatusView | undefined>(undefined)
   const [pasted, setPasted] = useState('')
   const [busy, setBusy] = useState(false)
+  /** Set when signing out worked locally but the server did not confirm it. */
+  const [revocationNote, setRevocationNote] = useState<string | undefined>(undefined)
   const urlRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -154,6 +163,10 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
         <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-danger, #c33)' }}>{status.error}</div>
       )}
 
+      {revocationNote === undefined ? null : (
+        <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-secondary, #888)' }}>{revocationNote}</div>
+      )}
+
       {status.signedIn || status.planUsageDenied ? (
         <>
           <Fact label="Account">{status.email ?? status.accounts.find(entry => entry.active)?.subject ?? 'unknown'}</Fact>
@@ -172,7 +185,19 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => { void act(() => remote.signOut()) }}
+              onClick={() => {
+                void act(async () => {
+                  const outcome = await remote.signOut()
+                  // Signing out here is not the same as ending the grant at the
+                  // server, and only one of those happened if this is set.
+                  setRevocationNote(outcome.revocationConfirmed
+                    ? undefined
+                    : `Signed out on this machine, but the server did not confirm the revocation`
+                      + `${outcome.revocationError === undefined ? '' : ` (${outcome.revocationError})`}.`
+                      + ' Disconnect the app in ChatGPT settings to be sure.')
+                  return outcome.status
+                })
+              }}
             >
               Sign out
             </Button>

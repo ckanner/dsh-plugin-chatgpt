@@ -17,10 +17,9 @@
  */
 
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { ChatGptStatusView } from './session.ts'
-import type { ChatGptSession } from './session.ts'
+import type { ChatGptSession, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
 
-export type { ChatGptPendingView, ChatGptStatusView } from './session.ts'
+export type { ChatGptPendingView, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
 
 /** Remote owner of the ChatGPT sign-in and account surface. */
 export class ChatGptController extends TypertRemoteService {
@@ -73,12 +72,12 @@ export class ChatGptController extends TypertRemoteService {
   }
 
   /**
-   * Forget one account, or every account when none is named.
-   * @param subject - the account to forget.
-   * @returns the state after signing out.
+   * End one account's session, revoking it at the server before clearing it here.
+   * @param subject - the account to end; defaults to the active one.
+   * @returns the state, and whether the server confirmed the revocation.
    */
   @Remote
-  signOut(subject?: string): ChatGptStatusView {
-    return this.session.signOut(subject)
+  async signOut(subject?: string): Promise<ChatGptSignOutOutcome> {
+    return await this.session.signOut(subject)
   }
 }

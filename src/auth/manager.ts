@@ -21,6 +21,7 @@ import {
   emptyDocument, readDocument, removeDocument, writeDocument, type ChatGptStoreDocument,
 } from './store.ts'
 import { canSpendPlan, isFresh, type ChatGptCredential } from './credential.ts'
+import { revokeGrant, type RevocationResult, type RevokeOptions } from './revoke.ts'
 
 /** What the UI may know about this installation's ChatGPT access. */
 export interface ChatGptStatus {
@@ -49,6 +50,10 @@ export interface ChatGptAuthOptions {
     authorizeUrl?: string
     tokenUrl?: string
     preferredPort?: number
+    /** Override the revocation endpoint. */
+    revocationEndpoint?: string
+    /** Override the discovery document that names the revocation endpoint. */
+    discoveryUrl?: string
   }
 }
 
@@ -221,6 +226,41 @@ export class ChatGptAuth {
       throw new Error(`no stored ChatGPT account is filed under ${subject}`)
     }
     this.save({ ...document, active: subject })
+  }
+
+  /**
+   * End one account's session at the server, then forget it locally.
+   *
+   * Local removal alone would leave the grant redeemable at OpenAI, and nothing
+   * would tell the account that this installation let go. The revocation is
+   * attempted first; local state is cleared either way, because a user who asked
+   * to sign out must end up signed out here even when the server cannot be
+   * reached — but the outcome says which of the two happened.
+   *
+   * @param subject - the account to end; defaults to the active one.
+   * @param options - endpoint overrides and cancellation.
+   * @returns whether the server confirmed the revocation.
+   */
+  async revoke(subject?: string, options: RevokeOptions = {}): Promise<RevocationResult> {
+    const document = this.load()
+    const target = subject ?? document.active
+    const credential = target === undefined ? undefined : document.accounts[target]
+    if (target === undefined) return { confirmed: true }
+    if (credential === undefined) {
+      this.signOut(target)
+      return { confirmed: false, reason: `no stored ChatGPT account is filed under ${target}` }
+    }
+    const result = await revokeGrant(credential, {
+      ...this.options.endpoints?.revocationEndpoint === undefined
+        ? {}
+        : { revocationEndpoint: this.options.endpoints.revocationEndpoint },
+      ...this.options.endpoints?.discoveryUrl === undefined
+        ? {}
+        : { discoveryUrl: this.options.endpoints.discoveryUrl },
+      ...options,
+    })
+    this.signOut(target)
+    return result
   }
 
   /** Forget one account, or every account when no subject is named. */

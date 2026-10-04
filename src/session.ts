@@ -23,6 +23,20 @@ export interface ChatGptPendingView {
 }
 
 /** Everything the sign-in card may show. */
+/** What a sign-out achieved, when it did not achieve everything. */
+export interface ChatGptSignOutOutcome {
+  /** The state after signing out locally. */
+  status: ChatGptStatusView
+  /**
+   * Whether the server confirmed the grant is no longer usable. `false` means
+   * the credential is gone from this machine but may still be live elsewhere,
+   * which the human is told rather than left to assume.
+   */
+  revocationConfirmed: boolean
+  /** Why the server did not confirm, when it did not. */
+  revocationError?: string
+}
+
 export interface ChatGptStatusView {
   /** Whether an account is authorized and may spend its plan. */
   signedIn: boolean
@@ -145,15 +159,19 @@ export class ChatGptSession {
   }
 
   /**
-   * Forget one account, or every account when none is named.
-   * @param subject - the account to forget.
-   * @returns the state after signing out.
+   * End one account's session, at the server first and locally second.
+   * @param subject - the account to end; defaults to the active one.
+   * @returns the state, and whether the server confirmed the revocation.
    */
-  signOut(subject?: string): ChatGptStatusView {
+  async signOut(subject?: string): Promise<ChatGptSignOutOutcome> {
     this.cancelPending()
-    this.auth.signOut(subject)
+    const result = await this.auth.revoke(subject)
     this.adapter.forgetListing()
-    return this.status()
+    return {
+      status: this.status(),
+      revocationConfirmed: result.confirmed,
+      ...result.reason === undefined ? {} : { revocationError: result.reason },
+    }
   }
 
   /** Wait for an in-flight exchange to settle, within one answer's patience. */

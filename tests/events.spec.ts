@@ -93,12 +93,52 @@ describe('decodeEvent', () => {
       },
     }))
 
-    assert.deepEqual(failed, {
-      kind: 'failed',
-      code: 'subscription_sharing_usage_limit_exceeded',
-      message: 'usage limit reached',
-      terminal: true,
-    })
+    assert.equal(failed?.kind, 'failed')
+    assert.equal(failed?.kind === 'failed' ? failed.code : undefined, 'subscription_sharing_usage_limit_exceeded')
+    assert.equal(failed?.kind === 'failed' ? failed.terminal : undefined, true)
+    // The endpoint's own words are kept, and the documented recovery is added.
+    assert.match(failed?.kind === 'failed' ? failed.message : '', /^usage limit reached/)
+    assert.match(failed?.kind === 'failed' ? failed.message : '', /chatgpt\.com\/settings\/usage/)
+  })
+
+  it('tells the human where to act, not to retry, when the allowance is spent', () => {
+    // Retrying a spent allowance cannot help, and the documentation names the
+    // page that can: an app-specific limit may apply even when the plan has usage.
+    const spent = decodeEvent(JSON.stringify({
+      type: 'response.failed',
+      response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'spent' } },
+    }))
+    const hint = spent?.kind === 'failed' ? spent.message : ''
+
+    assert.match(hint, /no ChatGPT plan usage left/)
+    assert.match(hint, /app-specific limit/)
+  })
+
+  it('calls a temporary unavailability retryable, unlike a spent allowance', () => {
+    const unavailable = decodeEvent(JSON.stringify({
+      type: 'response.failed',
+      response: { error: { code: 'subscription_sharing_usage_unavailable', message: 'unknown' } },
+    }))
+
+    assert.match(unavailable?.kind === 'failed' ? unavailable.message : '', /retrying shortly/)
+  })
+
+  it('names the policy when the account is not eligible at all', () => {
+    const ineligible = decodeEvent(JSON.stringify({
+      type: 'response.failed',
+      response: { error: { code: 'subscription_sharing_user_not_eligible', message: 'nope' } },
+    }))
+
+    assert.match(ineligible?.kind === 'failed' ? ineligible.message : '', /workspace or policy|cannot spend/)
+  })
+
+  it('leaves an unrelated failure message alone', () => {
+    const failed = decodeEvent(JSON.stringify({
+      type: 'response.failed',
+      response: { error: { code: 'server_error', message: 'try later' } },
+    }))
+
+    assert.equal(failed?.kind === 'failed' ? failed.message : undefined, 'try later')
   })
 
   it('distinguishes a spent allowance from a temporary unavailability', () => {

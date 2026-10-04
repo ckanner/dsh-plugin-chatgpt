@@ -335,7 +335,12 @@ describe('ChatGptAdapter', () => {
         type: 'finish',
         reason: {
           kind: 'error',
-          failure: { message: 'out of allowance', code: 'subscription_sharing_usage_limit_exceeded' },
+          failure: {
+            message: 'out of allowance This account has no ChatGPT plan usage left for this app right now;'
+              + " review or raise the app's limit at https://chatgpt.com/settings/usage."
+              + ' The plan itself may still have usage, since an app-specific limit applies too.',
+            code: 'subscription_sharing_usage_limit_exceeded',
+          },
         },
       },
     ])
