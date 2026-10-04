@@ -129,6 +129,31 @@ describe('ChatGptAdapter', () => {
     assert.equal(resolved.reasoning?.defaultEffort, 'medium')
   })
 
+  it('reports the extended capacity the endpoint advertises, not the smaller default', async () => {
+    // The endpoint reports both a default and a maximum; the harness models one
+    // number, and reporting the default would make it compact earlier than the
+    // model requires.
+    const endpointUrl = await endpoint({
+      listing: {
+        models: [{ slug: 'wide', visibility: 'list', context_window: 272000, max_context_window: 872000 }],
+      },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const resolved = await adapter.resolveModel('chatgpt', 'wide')
+
+    assert.equal(resolved.context.contextWindow, 872000)
+  })
+
+  it('falls back to the default capacity when no maximum is advertised', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'narrow', visibility: 'list', context_window: 200000 }] },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    assert.equal((await adapter.resolveModel('chatgpt', 'narrow')).context.contextWindow, 200000)
+  })
+
   it('serves the listing from cache inside the window, then re-asks', async () => {
     const endpointUrl = await endpoint({ listing: { models: [{ slug: 'm', visibility: 'list' }] } })
     let clock = 1000

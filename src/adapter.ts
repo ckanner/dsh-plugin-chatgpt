@@ -211,7 +211,12 @@ function toHarnessResolved(provider: string, model: DescribedModel): HarnessReso
     id: model.id,
     name: model.name,
     inputModalities: model.input,
-    context: { contextWindow: model.contextWindow },
+    // The harness models one capacity per model, so it gets the largest the
+    // endpoint advertises rather than the smaller default. Measured: a request
+    // well past the advertised default context was accepted, so reporting the
+    // default would understate what the model can hold and make the harness
+    // compact sooner than it needs to.
+    context: { contextWindow: model.maxContextWindow ?? model.contextWindow },
     ...model.maxTokens === undefined ? {} : { defaultMaxTokens: model.maxTokens },
     ...model.reasoningEfforts === undefined ? {} : {
       reasoning: {
