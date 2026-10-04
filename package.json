@@ -11,6 +11,19 @@
     "oauth",
     "subscription"
   ],
+  "license": "MIT",
+  "author": {
+    "name": "Kanner",
+    "email": "kanner.chen@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ckanner/dsh-plugin-chatgpt.git"
+  },
+  "homepage": "https://github.com/ckanner/dsh-plugin-chatgpt#readme",
+  "bugs": {
+    "url": "https://github.com/ckanner/dsh-plugin-chatgpt/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -31,6 +44,9 @@
     "cordis.patch.yml",
     "locale"
   ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -48,15 +64,11 @@
     "build:client": "node scripts/build-client.mjs",
     "verify:client": "node scripts/verify-client-bundle.mjs"
   },
-  "license": "MIT",
-  "engines": {
-    "node": "^22.19.0 || >=24.0.0"
-  },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-typert-protocol": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/cordis": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
+    "@deepseek-ai/schemastery": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
