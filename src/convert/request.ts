@@ -164,13 +164,17 @@ export interface ResponsesBody {
     /**
      * Ask for a readable summary of the model's thinking.
      *
-     * Without it this route streams nothing at all until the answer begins, so a
-     * hard question looks like a hang for as long as the model thinks — measured at
-     * over sixteen seconds for one short prompt, with the answer itself arriving in
-     * two. Every served model accepts the field, and one that never reasons simply
-     * produces no summary, so it is always asked for.
+     * Without a summary this route streams nothing at all until the answer begins,
+     * so a thinking model looks like a hang: measured at 16.7 seconds of silence
+     * before the first byte of a short answer.
+     *
+     * `concise` rather than `auto`, because `auto` lets the model decide and it
+     * sometimes decides not to summarize: on a realistic request — a large
+     * instruction block and a simple question at maximum effort — `auto` produced no
+     * summary at all while `concise` produced one. Asking for a summary is the
+     * entire point, so the length is fixed rather than left to chance.
      */
-    summary: 'auto'
+    summary: 'concise'
   }
 }
 
@@ -288,7 +292,7 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     },
     ...request.reasoningEffort === undefined
       ? {}
-      : { reasoning: { effort: request.reasoningEffort, summary: 'auto' as const } },
+      : { reasoning: { effort: request.reasoningEffort, summary: 'concise' as const } },
   }
 }
 

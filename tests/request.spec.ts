@@ -154,9 +154,10 @@ describe('toResponsesBody', () => {
       reasoningEffort: 'high',
     })
 
-    // The summary is always asked for: without it this route streams nothing at
-    // all until the answer begins, so a thinking model looks like a hang.
-    assert.deepEqual(body.reasoning, { effort: 'high', summary: 'auto' })
+    // The summary is always asked for, and at a fixed length: without it this route
+    // streams nothing until the answer begins, and `auto` lets the model skip
+    // summarizing entirely, which is how a thinking model comes to look like a hang.
+    assert.deepEqual(body.reasoning, { effort: 'high', summary: 'concise' })
   })
 
   it('labels an assistant turn as output, which is the only thing the endpoint accepts', () => {

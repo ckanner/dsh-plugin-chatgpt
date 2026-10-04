@@ -45,6 +45,7 @@ export interface ResponsesUsage {
   outputTokens?: number
   totalTokens?: number
   cacheReadTokens?: number
+  cacheWriteTokens?: number
   reasoningTokens?: number
 }
 
@@ -123,19 +124,24 @@ function usageOf(response: Record<string, unknown> | undefined): ResponsesUsage 
   if (input === undefined && output === undefined && total === undefined) return undefined
   // OpenRouter-style detail objects, which the Responses API nests rather than
   // flattening into the totals.
-  const cached = num(record(usage['input_tokens_details'])?.['cached_tokens'])
+  const details = record(usage['input_tokens_details'])
+  const cached = num(details?.['cached_tokens'])
+  const written = num(details?.['cache_write_tokens'])
   const reasoning = num(record(usage['output_tokens_details'])?.['reasoning_tokens'])
-  // Cached input is reported on its own, so it comes out of the input count: the
-  // harness bills input + cache reads, and leaving it in would count it twice.
+  // Both cache counts are folded into the input total, so they come out of it:
+  // the harness bills input + cache reads + cache writes, and leaving them in
+  // would count the same tokens twice.
   const cacheRead = cached === undefined || cached <= 0 ? undefined : cached
+  const cacheWrite = written === undefined || written <= 0 ? undefined : written
   const uncachedInput = input === undefined
     ? undefined
-    : cacheRead === undefined ? input : Math.max(0, input - cacheRead)
+    : Math.max(0, input - (cacheRead ?? 0) - (cacheWrite ?? 0))
   return {
     ...uncachedInput === undefined ? {} : { inputTokens: uncachedInput },
     ...output === undefined ? {} : { outputTokens: output },
     ...total === undefined ? {} : { totalTokens: total },
     ...cacheRead === undefined ? {} : { cacheReadTokens: cacheRead },
+    ...cacheWrite === undefined ? {} : { cacheWriteTokens: cacheWrite },
     // Reasoning output is a subset of the output count, and the meter refuses it
     // when it exceeds that, so it is reported only while it still fits.
     ...reasoning === undefined || output === undefined || reasoning > output ? {} : { reasoningTokens: reasoning },
