@@ -7,6 +7,10 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
+![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)
+
+![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)
+
 ## Summary
 
 为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。

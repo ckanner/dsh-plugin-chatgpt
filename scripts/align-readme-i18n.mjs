@@ -167,6 +167,10 @@ const LINE_TRANSLATIONS = {
     "`dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。",
   "Regenerate the model catalog when the upstream catalog moves:":
     "当上游目录更新时，重新生成模型目录：",
+  "![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)":
+    "![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)",
+  "![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)":
+    "![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)",
 }
 
 /** Lines carried through unchanged: they hold no prose in either language. */

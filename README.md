@@ -7,6 +7,10 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
+![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)
+
+![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)
+
 ## Summary
 
 Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.
