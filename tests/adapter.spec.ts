@@ -172,6 +172,60 @@ describe('ChatGptAdapter', () => {
     assert.equal((await adapter.resolveModel('chatgpt', 'narrow')).context.contextWindow, 200000)
   })
 
+  it('offers the levels the model accepts, not the ones the listing advertises', async () => {
+    // Measured on a live account: the listing advertised `ultra` for
+    // gpt-6-astra and the API answered a request carrying it with
+    // `400 invalid_value`. A listing entry is advisory; a rejected level fails
+    // the whole turn.
+    const endpointUrl = await endpoint({
+      listing: {
+        models: [{
+          slug: 'gpt-6-astra',
+          visibility: 'list',
+          reasoningLevels: [
+            { effort: 'low' }, { effort: 'medium' }, { effort: 'high' },
+            { effort: 'xhigh' }, { effort: 'max' }, { effort: 'ultra' },
+          ],
+          defaultReasoningLevel: 'ultra',
+        }],
+      },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const model = (await adapter.listModels()).find(entry => entry.id === 'gpt-6-astra')
+
+    assert.deepEqual(model?.reasoningEfforts?.map(effort => effort.id), [
+      'low', 'medium', 'high', 'xhigh', 'max',
+    ])
+    assert.equal(model?.defaultReasoningEffort, 'medium')
+  })
+
+  it('offers the level the catalog omits but the model accepts', async () => {
+    // The bundled catalog maps `none` to unsupported for the gpt-5.6 models and
+    // the API accepts it, so neither source alone produces the right set.
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-5.6-sol', visibility: 'list' }] },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const model = (await adapter.listModels()).find(entry => entry.id === 'gpt-5.6-sol')
+
+    assert.ok(model?.reasoningEfforts?.some(effort => effort.id === 'none'))
+  })
+
+  it('reports the measured route capacity for a model the listing omits', async () => {
+    // The listing describes five models; the other three come from measurement,
+    // and their capacity has to come from what the route accepts rather than from
+    // the published specification, which is larger.
+    const endpointUrl = await endpoint({ listing: { models: [] } })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6-sol')
+
+    assert.equal(resolved.context.contextWindow, 872000)
+    assert.equal(resolved.defaultMaxTokens, 128000)
+  })
+
   it('serves the listing from cache inside the window, then re-asks', async () => {
     const endpointUrl = await endpoint({ listing: { models: [{ slug: 'm', visibility: 'list' }] } })
     let clock = 1000

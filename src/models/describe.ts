@@ -65,8 +65,11 @@ export interface DescribedModel {
   reasoningEfforts?: readonly { id: string, name: string }[]
   /** The effort a request omits an explicit choice for. */
   defaultReasoningEffort?: string
-  /** Where this description came from: the endpoint itself, the bundled catalog, or a conservative default. */
-  metadataSource: 'endpoint' | 'catalog' | 'fallback'
+  /**
+   * Where this description came from: the endpoint itself, a measurement of what
+   * this route serves, the bundled catalog, or a conservative default.
+   */
+  metadataSource: 'endpoint' | 'measured' | 'catalog' | 'fallback'
 }
 
 /** One catalog entry. */
@@ -113,8 +116,12 @@ const EFFORT_LABELS: Record<string, string> = {
 /** The escalation order efforts are offered in when nothing else orders them. */
 const EFFORT_ORDER = ['off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
 
-/** Label one effort, falling back to its own wire spelling. */
-function labelOf(effort: string): string {
+/**
+ * Label one reasoning effort, falling back to its own wire spelling.
+ * @param effort - the `reasoning.effort` value.
+ * @returns the text a selector shows.
+ */
+export function effortLabel(effort: string): string {
   return EFFORT_LABELS[effort] ?? effort
 }
 
@@ -130,29 +137,56 @@ function ordered(efforts: readonly { id: string, name: string, description?: str
 /**
  * The reasoning efforts a model accepts.
  *
- * The endpoint's own answer wins: it describes the models it lists, so its level
- * list is authoritative and its per-level text is better than a label this
- * plugin could invent. The bundled catalog answers only for a model the endpoint
- * did not list, which is the case the catalog exists for.
+ * The bundled catalog's per-model map is treated as the authority, and the
+ * account's listing is intersected with it. That ordering is not a preference: on
+ * a live account the listing advertised `ultra` for `gpt-6-astra`, and the API
+ * answered a request carrying it with `400 invalid_value` — while its error text
+ * enumerated exactly the set the catalog already had. A listing entry is
+ * advisory; a level the model rejects fails the whole request.
+ *
+ * When the listing names levels the catalog does not describe at all, the
+ * intersection would hide a level that may well be real. That is the safer
+ * mistake: a missing choice costs a selection, an invalid one costs the turn.
+ *
+ * @param listed - what the account's listing reported.
+ * @param entry - the bundled catalog's entry, when it has one.
+ * @returns the efforts to offer, in escalation order.
  */
 function effortsOf(listed: ListedModel, entry: CatalogEntry | undefined) {
-  if (listed.reasoningLevels !== undefined && listed.reasoningLevels.length > 0) {
-    return ordered(listed.reasoningLevels.map(level => ({
+  const fromCatalog = acceptedByCatalog(entry)
+  const fromListing = (listed.reasoningLevels ?? [])
+    .filter(level => level.effort.length > 0)
+    .map(level => ({
       id: level.effort,
-      name: labelOf(level.effort),
+      name: effortLabel(level.effort),
       ...level.description === undefined ? {} : { description: level.description },
-    })))
-  }
-  if (entry === undefined || !entry.reasoning) return []
+    }))
+
+  if (fromCatalog === undefined) return ordered(fromListing)
+  if (fromListing.length === 0) return ordered(fromCatalog)
+  const accepted = new Set(fromCatalog.map(effort => effort.id))
+  const checked = fromListing.filter(effort => accepted.has(effort.id))
+  // An empty intersection means the two sources disagree completely; the
+  // catalog's set is the one that does not produce a rejected request.
+  return ordered(checked.length > 0 ? checked : fromCatalog)
+}
+
+/**
+ * The efforts the bundled catalog says a model accepts, or `undefined` when the
+ * catalog does not describe the model.
+ */
+function acceptedByCatalog(entry: CatalogEntry | undefined): { id: string, name: string }[] | undefined {
+  if (entry === undefined) return undefined
+  if (!entry.reasoning) return []
   const map = entry.thinkingLevelMap
-  if (map === undefined) return []
+  if (map === undefined) return undefined
   const efforts: { id: string, name: string }[] = []
   for (const level of EFFORT_ORDER) {
     // A level mapped to `null` is one the model does not accept; a level mapped
     // to a string is carried on the wire under that spelling.
     const wire = map[level]
     if (wire === null || wire === undefined) continue
-    efforts.push({ id: wire, name: labelOf(level) })
+    efforts.push({ id: wire, name: effortLabel(level) })
   }
   return efforts
 }

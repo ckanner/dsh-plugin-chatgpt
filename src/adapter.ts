@@ -28,8 +28,8 @@ import { ApiError, listModels, streamTurn } from './client.ts'
 import { BlockTranslator, type AdapterChunk } from './convert/blocks.ts'
 import type { NeutralMessage, NeutralRequest, NeutralTool, ToolTraffic } from './convert/request.ts'
 import type { ResponsesEvent } from './api/events.ts'
-import { describableModels, describeModel, type DescribedModel, type ListedModel } from './models/describe.ts'
-import { SERVED_MODELS } from './models/served.ts'
+import { describableModels, describeModel, effortLabel, type DescribedModel, type ListedModel } from './models/describe.ts'
+import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord } from './models/served.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 
 /**
@@ -358,14 +358,49 @@ export class ChatGptAdapter {
    * @returns the models to offer, listing order first.
    */
   private rosterOf(listed: readonly ListedModel[]): DescribedModel[] {
-    const advertised = describableModels(listed)
+    const advertised = describableModels(listed).map(model => this.withMeasurement(model))
     const present = new Set(advertised.map(model => model.id))
     const extras = this.includeUnlisted
       ? SERVED_MODELS
           .filter(entry => !entry.advertised && !present.has(entry.id))
-          .map(entry => describeModel({ slug: entry.id }))
+          .map(entry => {
+            const described = describeModel({ slug: entry.id })
+            // The listing says nothing about these, so both their capacity and
+            // their accepted levels come from what the route measurably serves.
+            return {
+              ...described,
+              contextWindow: ROUTE_MAX_CONTEXT_WINDOW,
+              maxContextWindow: ROUTE_MAX_CONTEXT_WINDOW,
+              maxTokens: described.maxTokens ?? ROUTE_MAX_OUTPUT_TOKENS,
+              metadataSource: 'measured' as const,
+            }
+          })
       : []
     return [...advertised, ...extras]
+  }
+
+  /**
+   * Overlay the measured facts about one model.
+   *
+   * The listing describes capacity and the endpoint accepts requests, but its
+   * reasoning-level list is not reliable — it advertised a level the API refuses.
+   * Where a measurement exists it wins, because the cost of offering a rejected
+   * level is a failed turn.
+   */
+  private withMeasurement(model: DescribedModel): DescribedModel {
+    const record = servedRecord(model.id)
+    if (record === undefined) return model
+    const efforts = record.reasoningEfforts.map(effort => ({ id: effort, name: effortLabel(effort) }))
+    // `medium` is the published default wherever the model accepts it, matching
+    // what the endpoint reports for the models it describes.
+    const preferred = record.reasoningEfforts.includes('medium') ? 'medium' : undefined
+    return {
+      ...model,
+      reasoningEfforts: efforts,
+      ...preferred === undefined
+        ? model.defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort: model.defaultReasoningEffort }
+        : { defaultReasoningEffort: preferred },
+    }
   }
 
   /** Drop the cached listing, so the next question re-asks the account. */
