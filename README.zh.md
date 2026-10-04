@@ -141,7 +141,7 @@ auth.adopt(credential)
 - **尚无 Web UI 登录** — 模型设置页上的账号卡片尚未实现，因此授权凭据必须通过上面的 Node 流程创建。在它出现之前，provider 路由虽已注册，但无法从浏览器使用。
 - **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。
 - **套餐额度路由仍处于 preview** — computer use、Code Interpreter、file search、hosted MCP、图像生成与 `tool_search` 无论本插件发送什么都会被上游拒绝；而 `multi_agent`、`temperature` 和 `max_output_tokens` 属于必须省略的十五个字段之列。
-- **模型元数据是内置快照** — 容量与推理级别来自 `src/models/catalog.json`，由 MIT 许可的 pi-ai 目录生成。比该快照更新的模型仍会被列出且可调用，但会标记为 `metadataSource: 'fallback'`，并以保守默认值描述。
+- **模型元数据是内置快照** — 容量与推理级别来自 `src/models/catalog.json`，由 MIT 许可的 pi-ai 目录生成。该目录是超集：它可能描述了你账号无权调用的模型。真正决定可选范围的是你自己账号的列表，不在列表里的模型会被拒绝而不是被尝试。目录无法描述的模型仍会被列出且可调用，标为 `metadataSource: 'fallback'` 并以保守默认值描述。
 - **一个安装对应一个 host id** — host id 以状态目录为作用域。两个 profile 共用一个目录，对 OpenAI 而言就是一个安装；两个目录就是两个，各自需要单独授权。
 - **`agent_name_hint` 是常量** — 默认 `DeepSeek Harness`，可按 profile 覆盖；但它是人类在授权页上读到的名字，也是 OpenAI 记录的此应用身份，因此改动它会改变既有授权凭据的归属。
 
