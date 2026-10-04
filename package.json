@@ -34,9 +34,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "node --test \"tests/*.spec.ts\"",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "check:i18n": "node scripts/align-readme-i18n.mjs --check"
   },
   "license": "MIT",
   "engines": {
@@ -48,11 +49,18 @@
     "@deepseek-ai/dsh-typert-protocol": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-llm": { "optional": true },
-    "@deepseek-ai/dsh-typert-protocol": { "optional": true }
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "typescript": "^5.9.0"
   }
 }
