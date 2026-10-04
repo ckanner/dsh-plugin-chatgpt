@@ -11,6 +11,18 @@
  */
 
 declare module '@deepseek-ai/schemastery' {
+  /**
+   * A live accessor a `volatile()` field resolves to.
+   *
+   * The harness keeps these values in the settings document rather than in the
+   * deployment patch, so they are read through `get()` at the moment they are
+   * used instead of being captured as a plain value.
+   */
+  export interface Volatile<T> {
+    /** The current value, absent when nothing supplies one. */
+    get(): T | undefined
+  }
+
   /** A validated field or object schema. */
   export interface Schema<T = unknown> {
     /** Mark the field as required. */
@@ -18,10 +30,12 @@ declare module '@deepseek-ai/schemastery' {
     /** Supply a default for an omitted field. */
     default(value: T): Schema<T>
     /**
-     * Exclude the field from persisted settings writes, so a deployment-supplied
-     * value is not copied into the user's document.
+     * Read the field through a live accessor and keep it in the settings
+     * document rather than the deployment patch. The harness builds its settings
+     * form from exactly these fields, so a plugin with none has no settings
+     * namespace — and a provider row that cannot be rendered.
      */
-    volatile(): Schema<T>
+    volatile(): Schema<Volatile<T>>
     /** JSON Schema projection, read by the settings surface. */
     toJSON(): unknown
   }

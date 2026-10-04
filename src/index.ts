@@ -14,7 +14,7 @@
  * @module dsh-plugin-chatgpt
  */
 
-import z from '@deepseek-ai/schemastery'
+import z, { type Volatile } from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
@@ -37,28 +37,21 @@ import type { AdapterChunk } from './convert/blocks.ts'
  */
 export const Config = z.object({
   /** Provider route this plugin serves. */
-  provider: z.string().default('chatgpt'),
+  provider: z.string().required().volatile(),
   /** Display name for the provider row and the account card. */
-  displayName: z.string().default('ChatGPT'),
-  /**
-   * Directory this installation's ChatGPT state lives in.
-   *
-   * Deliberately not `volatile()`: that modifier turns a field into a live
-   * accessor rather than a value, and this one is read as a plain string when the
-   * plugin mounts. It stays visible and editable in the settings surface, which
-   * is where a deployment can point it somewhere else.
-   */
-  stateDir: z.string().required(),
+  displayName: z.string().volatile(),
+  /** Directory this installation's ChatGPT state lives in. */
+  stateDir: z.string().required().volatile(),
   /** API base URL override; defaults to the documented resource. */
-  baseUrl: z.string().default(''),
+  baseUrl: z.string().volatile(),
 })
 
-/** The configuration one installation supplies. */
+/** The configuration one installation supplies, as the harness resolves it. */
 export type Config = {
-  provider: string
-  displayName: string
-  stateDir: string
-  baseUrl: string
+  provider: Volatile<string>
+  displayName: Volatile<string>
+  stateDir: Volatile<string>
+  baseUrl: Volatile<string>
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -73,6 +66,15 @@ export const name = 'chatgpt'
  * route it describes is what makes that agreement visible.
  */
 export const SETTINGS_NS = 'chatgpt'
+
+/**
+ * The name a human reads on the consent screen, and this app's identity at OpenAI.
+ *
+ * Separate from the display name on purpose: renaming the row in the UI must not
+ * change what an already-granted client id was registered as, because the issued
+ * client id is bound to the identity the human consented to.
+ */
+export const AGENT_NAME_HINT = 'DeepSeek Harness'
 
 /**
  * The services this plugin needs before it can register anything.
@@ -217,17 +219,24 @@ export function apply(ctx: Context, config: Config): void {
     child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
   })
 
-  const route = config.provider
+  const route = config.provider.get() ?? SETTINGS_NS
+  const stateDir = config.stateDir.get()
+  if (stateDir === undefined || stateDir.length === 0) {
+    throw new Error('chatgpt: a state directory is required, so credentials have somewhere to live')
+  }
+  const displayName = config.displayName.get() ?? 'ChatGPT'
+  const baseUrl = config.baseUrl.get() ?? ''
   const auth = new ChatGptAuth({
-    stateDir: config.stateDir,
-    // The name a human reads on the consent screen, and the identity OpenAI
-    // records for this app. It must be stable across installations.
-    agentNameHint: config.displayName ?? 'DeepSeek Harness',
+    stateDir,
+    // Deliberately not the display name: this is the name a human reads on the
+    // consent screen and the identity OpenAI records for the app, so renaming
+    // the UI label must not change what a granted client id was registered as.
+    agentNameHint: AGENT_NAME_HINT,
   })
   const inner = new ChatGptAdapter({
     auth,
-    displayName: config.displayName,
-    ...config.baseUrl.length === 0 ? {} : { baseUrl: config.baseUrl },
+    displayName,
+    ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 
   const adapter = new HarnessAdapter(inner, route)
@@ -239,7 +248,7 @@ export function apply(ctx: Context, config: Config): void {
   // this is registered even though the roster comes from the account.
   const directory: DirectoryRegistrationHandle = ctx.llm.registerConfigurableProviders([{
     provider: route,
-    displayName: config.displayName,
+    displayName,
     settingsNs: SETTINGS_NS,
     settingsPath: [],
   }])
