@@ -19,6 +19,7 @@ import { Button, Input, Pill, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientContextServices, Context as CordisContext } from '@deepseek-ai/cordis'
 import type * as React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import { remoteContribution } from './remote.ts'
 
 /** The browser context this plugin runs against. */
@@ -26,9 +27,6 @@ type ClientContext = CordisContext & ClientContextServices
 
 /** The namespace this plugin's provider row is registered under. */
 const SETTINGS_NS = 'chatgpt'
-
-/** The Remote namespace the Host exposes the sign-in surface on. */
-const REMOTE_NS = 'chatgpt'
 
 /**
  * How long the card waits for the Remote namespace before calling it unreachable.
@@ -70,20 +68,29 @@ interface ChatGptRemote {
   signOut(subject?: string): Promise<SignOutOutcome>
 }
 
+/** The Cordis service key the Gateway installs this plugin's namespace under. */
+const REMOTE_SERVICE_KEY = `remote.${REMOTE_NAMESPACE}`
+
 /**
- * The Remote namespace for this plugin, or `undefined` before the page knows it.
+ * The Remote namespace for this plugin, or `undefined` before it is installed.
  *
- * Read on every call rather than captured when the bundle loads: the namespace is
- * supplied by the connection, so a card that resolved it once would keep the empty
- * answer it got at load for as long as the window lives.
+ * Read two ways that both matter:
+ *
+ * - Through `ctx.get`, not `ctx.remote.<namespace>`. The accessor form demands a
+ *   declared dependency on the namespace, and this plugin is the thing that
+ *   installs it: injecting it would mean waiting for a service this plugin creates
+ *   itself, which never settles.
+ * - On every call, not once when the bundle loads. The namespace arrives with the
+ *   mount and the connection, so a card that resolved it once would keep the empty
+ *   answer it got at load for as long as the window lives.
  *
  * @param ctx - the browser plugin context.
  * @returns the namespace, once it is usable.
  */
 function remoteNow(ctx: ClientContext): ChatGptRemote | undefined {
-  const namespace = (ctx.remote as Record<string, ChatGptRemote | undefined>)[REMOTE_NS]
-  // An unknown key may still resolve to an object, so the shape is checked rather
-  // than the key's presence.
+  const namespace = ctx.get(REMOTE_SERVICE_KEY) as ChatGptRemote | undefined
+  // A service that is present but half-installed would answer with no methods, so
+  // the shape is checked rather than the lookup's success.
   return typeof namespace?.status === 'function' ? namespace : undefined
 }
 

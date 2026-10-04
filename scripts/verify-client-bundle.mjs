@@ -107,18 +107,33 @@ assert.deepEqual(exports.inject, ['slots', 'remote'], 'the bundle must declare i
 /** Contributions the bundle mounted, for assertion. */
 const mounted = []
 
-/** A context recording what the card registers and mounts. */
+/** The namespace service the mount is expected to produce, published like Cordis would. */
+let installed
+
+/**
+ * A context recording what the card registers and mounts.
+ *
+ * The namespace is published by `$mount` and read back through `ctx.get`, which is
+ * the arrangement the bundle relies on: it may not use the `ctx.remote.<namespace>`
+ * accessor, because that form demands a declared dependency on a service the bundle
+ * itself installs.
+ */
 const ctx = {
   remote: {
-    // Present so the bundle's wait for the namespace can succeed once mounted.
-    chatgpt: undefined,
     // Nothing in the generated aggregate carries this plugin's namespace, so the
     // bundle mounts its own. A bundle that stopped doing that would leave the card
     // waiting for a namespace that never arrives.
     $mount(contribution) {
       mounted.push(contribution)
+      installed = {
+        status: () => Promise.resolve({ signedIn: false, planUsageDenied: false, accounts: [] }),
+        begin() {}, submit() {}, cancel() {}, signOut() {},
+      }
       return Promise.resolve(() => Promise.resolve())
     },
+  },
+  get(name) {
+    return name === 'remote.chatgpt' ? installed : undefined
   },
   slots: {
     inject(name, register) { registered.push({ name, entries: [] }); register() },
@@ -142,6 +157,15 @@ assert.deepEqual(
   mounted[0].descriptors.map(descriptor => `${descriptor.namespace}/${descriptor.method}`),
   ['chatgpt/status', 'chatgpt/begin', 'chatgpt/submit', 'chatgpt/cancel', 'chatgpt/signOut'],
   'every method the card calls must be mounted, or the call fails at the click',
+)
+
+// The card reads the namespace through `ctx.get`, and resolves on every call. A
+// bundle that went back to the `ctx.remote.<namespace>` accessor would be refused by
+// Cordis for depending on a service it installs itself.
+assert.equal(typeof installed?.status, 'function', 'the mount must publish the namespace the card reads')
+assert.ok(
+  !/\.remote\s*\[?\s*(?:REMOTE_NS|'chatgpt'|"chatgpt")/.test(body),
+  'the bundle must not read the namespace through the ctx.remote accessor',
 )
 console.log(
   `client bundle verified: ${registration.id} registers ${registered[0].name}:${registered[0].entries[0].key}`
