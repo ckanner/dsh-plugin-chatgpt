@@ -1,0 +1,22 @@
+# The dsh-plugin-chatgpt bundle patch.
+#
+# One row: the plugin that registers the ChatGPT provider route. It is a single
+# insert because the plugin owns exactly one route and needs no companion rows —
+# its sign-in surface rides the provider card the Models page already renders.
+#
+# The route is deliberately not named `openai`. The built-in pi-ai plugin serves
+# a route of that name, and the LLM registry refuses a second registration of one
+# name, so a reserved name would make this bundle uninstallable beside the
+# built-in provider. Change `provider` if a different name suits the profile.
+#
+# `stateDir` is where this installation's grant and host id live. It is a
+# directory rather than a file so the two stay together; the plugin creates it
+# owner-only on first sign-in.
+
+- insert:
+    - id: chatgpt
+      name: 'dsh-plugin-chatgpt'
+      config:
+        provider: chatgpt
+        displayName: ChatGPT
+        stateDir: !!js `${process.env.DSH_HOME ?? `${process.env.HOME}/.dsh`}/chatgpt-subscription`
