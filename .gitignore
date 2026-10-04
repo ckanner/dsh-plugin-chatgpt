@@ -3,3 +3,6 @@ lib/
 *.tsbuildinfo
 .probe/
 .DS_Store
+
+# Packed artifacts
+*.tgz

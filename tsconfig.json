@@ -16,6 +16,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "lib",
+    "declarationDir": "lib/types",
     "rootDir": "src",
     "skipLibCheck": true,
     "types": ["node"]
