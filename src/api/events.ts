@@ -31,11 +31,21 @@ export type ResponsesEvent =
   | { kind: 'failed', code: string, message: string, terminal: boolean }
   | { kind: 'unknown', type: string }
 
-/** Token accounting one completed response may report. */
+/**
+ * Token accounting one completed response may report.
+ *
+ * The fields are the harness's, not the wire's, because the two disagree in a way
+ * that silently corrupts a total: OpenAI folds cached input into `input_tokens`,
+ * while the harness counts disjoint buckets and sums them. Reporting the wire
+ * value unchanged would bill the cached tokens twice.
+ */
 export interface ResponsesUsage {
+  /** Input tokens the account was not billed a cache read for. */
   inputTokens?: number
   outputTokens?: number
   totalTokens?: number
+  cacheReadTokens?: number
+  reasoningTokens?: number
 }
 
 /**
@@ -111,10 +121,24 @@ function usageOf(response: Record<string, unknown> | undefined): ResponsesUsage 
   const output = num(usage['output_tokens'])
   const total = num(usage['total_tokens'])
   if (input === undefined && output === undefined && total === undefined) return undefined
+  // OpenRouter-style detail objects, which the Responses API nests rather than
+  // flattening into the totals.
+  const cached = num(record(usage['input_tokens_details'])?.['cached_tokens'])
+  const reasoning = num(record(usage['output_tokens_details'])?.['reasoning_tokens'])
+  // Cached input is reported on its own, so it comes out of the input count: the
+  // harness bills input + cache reads, and leaving it in would count it twice.
+  const cacheRead = cached === undefined || cached <= 0 ? undefined : cached
+  const uncachedInput = input === undefined
+    ? undefined
+    : cacheRead === undefined ? input : Math.max(0, input - cacheRead)
   return {
-    ...input === undefined ? {} : { inputTokens: input },
+    ...uncachedInput === undefined ? {} : { inputTokens: uncachedInput },
     ...output === undefined ? {} : { outputTokens: output },
     ...total === undefined ? {} : { totalTokens: total },
+    ...cacheRead === undefined ? {} : { cacheReadTokens: cacheRead },
+    // Reasoning output is a subset of the output count, and the meter refuses it
+    // when it exceeds that, so it is reported only while it still fits.
+    ...reasoning === undefined || output === undefined || reasoning > output ? {} : { reasoningTokens: reasoning },
   }
 }
 

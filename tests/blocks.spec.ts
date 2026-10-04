@@ -29,6 +29,35 @@ function assertBlocksAreWellFormed(chunks: readonly { type: string, index?: numb
   assert.deepEqual([...started].sort((a, b) => a - b), [...ended].sort((a, b) => a - b))
 }
 
+describe('BlockTranslator usage', () => {
+  it('reports what the call cost, before the finish that ends it', () => {
+    const translator = new BlockTranslator()
+    translator.push({ kind: 'text', delta: 'hi' })
+
+    const chunks = translator.push({
+      kind: 'completed',
+      usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12, cacheReadTokens: 8 },
+    })
+
+    // The meter accounts for the call when the stream ends, so a total delivered
+    // after the finish is never counted — which is how these readouts go blank.
+    const types = chunks.map(chunk => chunk.type)
+    assert.deepEqual(types, ['block-end', 'usage', 'finish'])
+    assert.deepEqual(chunks[1], {
+      type: 'usage',
+      usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12, cacheReadTokens: 8 },
+    })
+  })
+
+  it('still finishes a call the provider reported no usage for', () => {
+    const translator = new BlockTranslator()
+
+    const types = translator.push({ kind: 'completed' }).map(chunk => chunk.type)
+
+    assert.deepEqual(types, ['finish'])
+  })
+})
+
 describe('BlockTranslator', () => {
   it('opens one text block, streams its deltas, and closes it with the whole text', () => {
     const { chunks } = run([
@@ -200,7 +229,14 @@ describe('BlockTranslator', () => {
 
     const finishAt = chunks.findIndex(chunk => chunk.type === 'finish')
     const lastEndAt = chunks.map(chunk => chunk.type).lastIndexOf('block-end')
+    const usageAt = chunks.findIndex(chunk => chunk.type === 'usage')
     assert.ok(finishAt > lastEndAt)
+    // This test was named for the usage it never checked, which is how a stream
+    // that dropped every total kept a passing test while the rate, cache ratio,
+    // and context share readouts stayed empty.
+    assert.ok(usageAt > lastEndAt, 'usage must follow the blocks')
+    assert.ok(usageAt < finishAt, 'usage must arrive before the call ends')
+    assert.deepEqual(chunks[usageAt], { type: 'usage', usage: { totalTokens: 5 } })
     assertBlocksAreWellFormed(chunks)
   })
 })

@@ -101,6 +101,58 @@ describe('decodeEvent', () => {
     assert.match(failed?.kind === 'failed' ? failed.message : '', /chatgpt\.com\/settings\/usage/)
   })
 
+  it('takes cached input out of the input count, because the harness sums them', () => {
+    // OpenAI folds cached input into `input_tokens`; the harness counts disjoint
+    // buckets and adds them, so passing the wire value through bills it twice.
+    const completed = decodeEvent(JSON.stringify({
+      type: 'response.completed',
+      response: {
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 50,
+          total_tokens: 1050,
+          input_tokens_details: { cached_tokens: 900 },
+          output_tokens_details: { reasoning_tokens: 30 },
+        },
+      },
+    }))
+
+    assert.equal(completed?.kind, 'completed')
+    assert.deepEqual(completed?.kind === 'completed' ? completed.usage : undefined, {
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 1050,
+      cacheReadTokens: 900,
+      reasoningTokens: 30,
+    })
+  })
+
+  it('reports a plain usage object unchanged', () => {
+    const completed = decodeEvent(JSON.stringify({
+      type: 'response.completed',
+      response: { usage: { input_tokens: 12, output_tokens: 3, total_tokens: 15 } },
+    }))
+
+    assert.deepEqual(completed?.kind === 'completed' ? completed.usage : undefined, {
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+    })
+  })
+
+  it('omits reasoning output that does not fit inside the output count', () => {
+    // The meter refuses a reasoning count above the output count, so a provider
+    // quirk must not turn a paid call into a rejected one.
+    const completed = decodeEvent(JSON.stringify({
+      type: 'response.completed',
+      response: {
+        usage: { input_tokens: 10, output_tokens: 5, output_tokens_details: { reasoning_tokens: 9 } },
+      },
+    }))
+
+    assert.equal(completed?.kind === 'completed' ? completed.usage?.reasoningTokens : 'x', undefined)
+  })
+
   it('tells the human where to act, not to retry, when the allowance is spent', () => {
     // Retrying a spent allowance cannot help, and the documentation names the
     // page that can: an app-specific limit may apply even when the plan has usage.

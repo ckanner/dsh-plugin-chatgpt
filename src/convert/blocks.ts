@@ -26,7 +26,7 @@
  * @module dsh-plugin-chatgpt/convert/blocks
  */
 
-import type { ResponsesEvent } from '../api/events.ts'
+import type { ResponsesEvent, ResponsesUsage } from '../api/events.ts'
 
 /** A closed tool-call block, as the harness reads it. */
 export interface ToolCallBlock {
@@ -55,6 +55,14 @@ export type AdapterChunk =
   | { type: 'reasoning-delta', index: number, text: string }
   | { type: 'tool-call-delta', index: number, id: string, name?: string, argumentsDelta: string }
   | { type: 'block-end', index: number, block: TextBlock | ReasoningBlock | ToolCallBlock }
+  /**
+   * What the call cost, when the provider reports it.
+   *
+   * Every consumer that shows a rate, a cache-hit ratio, or a share of the context
+   * window reads this. A stream that never carries it leaves those readouts empty,
+   * which reads as a broken provider rather than a silent one.
+   */
+  | { type: 'usage', usage: ResponsesUsage }
   | {
     type: 'finish'
     reason: { kind: 'stop' } | { kind: 'tool-calls' } | { kind: 'max-tokens' }
@@ -142,6 +150,9 @@ export class BlockTranslator {
       case 'completed':
         return [
           ...this.endAll(),
+          // Before the finish: the meter accounts for the call when the stream
+          // ends, and a total that arrives after that is never counted.
+          ...event.usage === undefined ? [] : [{ type: 'usage' as const, usage: event.usage }],
           { type: 'finish', reason: this.sawToolCall ? { kind: 'tool-calls' } : { kind: 'stop' } },
         ]
       case 'incomplete':
