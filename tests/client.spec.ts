@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, type Server } from 'node:http'
-import { ApiError, listModels, streamTurn } from '../src/client.ts'
+import { ApiError, listModels, streamTurn } from '../src/api/client.ts'
 import type { ResponsesEvent } from '../src/api/events.ts'
 
 /** A server that answers one fixed reply, recording what it received. */

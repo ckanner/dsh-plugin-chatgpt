@@ -16,9 +16,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
-import type { AdapterRegistrationHandle, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type {
+  AdapterRegistrationHandle, DirectoryRegistrationHandle, GenerateOptions, StreamChunk,
+} from '@deepseek-ai/dsh-llm'
 import { ChatGptAdapter, isCodedError, type HarnessMessage, type HarnessRequest } from './adapter.ts'
 import { ChatGptAuth } from './auth/manager.ts'
+import { ChatGptController } from './controller.ts'
+import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 
 /** Route and endpoint policy for one installation. */
@@ -35,6 +39,16 @@ export interface Config {
 
 /** What this plugin calls itself in diagnostics. */
 export const name = 'chatgpt'
+
+/**
+ * The settings namespace this plugin's provider row belongs to, and the key its
+ * browser card registers under.
+ *
+ * The Models page dispatches a card's extension area by the row's settings
+ * namespace, so the two halves have to agree on one string. Keeping it beside the
+ * route it describes is what makes that agreement visible.
+ */
+export const SETTINGS_NS = 'chatgpt'
 
 /**
  * The services this plugin needs before it can register anything.
@@ -186,6 +200,23 @@ export function apply(ctx: Context, config: Config): void {
     ...config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl },
   })
 
-  const handle: AdapterRegistrationHandle = ctx.llm.registerAdapter([route], new HarnessAdapter(inner, route))
+  const adapter = new HarnessAdapter(inner, route)
+  const handle: AdapterRegistrationHandle = ctx.llm.registerAdapter([route], adapter)
   ctx.effect(() => () => { handle() })
+
+  // The row the Models page renders. A route with no directory entry exists for
+  // the agent loop but is invisible to every configuration surface, which is why
+  // this is registered even though the roster comes from the account.
+  const directory: DirectoryRegistrationHandle = ctx.llm.registerConfigurableProviders([{
+    provider: route,
+    displayName: config.displayName ?? 'ChatGPT',
+    settingsNs: SETTINGS_NS,
+    settingsPath: [],
+  }])
+  ctx.effect(() => () => { directory() })
+
+  // The browser half reaches the sign-in through this service, under the
+  // `chatgpt` namespace. Disposal is the parent's: the service lives and dies
+  // with the plugin row that registered the route.
+  new ChatGptController(ctx, new ChatGptSession(auth, inner))
 }

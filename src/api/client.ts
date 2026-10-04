@@ -14,10 +14,10 @@
  * @module dsh-plugin-chatgpt/client
  */
 
-import { RESOURCE } from './auth/protocol.ts'
-import { createSseDecoder, decodeEvent, isPlanUsageCode, type ResponsesEvent } from './api/events.ts'
-import { toResponsesBody, type NeutralRequest, type ResponsesBody } from './convert/request.ts'
-import type { ListedModel } from './models/describe.ts'
+import { RESOURCE } from '../auth/protocol.ts'
+import { createSseDecoder, decodeEvent, isPlanUsageCode, type ResponsesEvent } from './events.ts'
+import { toResponsesBody, type NeutralRequest, type ResponsesBody } from '../convert/request.ts'
+import type { ListedModel } from '../models/describe.ts'
 
 /** Endpoints this client talks to. */
 export interface ClientEndpoints {

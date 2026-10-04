@@ -24,7 +24,7 @@
  * @module dsh-plugin-chatgpt/adapter
  */
 
-import { ApiError, listModels, streamTurn } from './client.ts'
+import { ApiError, listModels, streamTurn } from './api/client.ts'
 import { BlockTranslator, type AdapterChunk } from './convert/blocks.ts'
 import type { NeutralMessage, NeutralRequest, NeutralTool, ToolTraffic } from './convert/request.ts'
 import type { ResponsesEvent } from './api/events.ts'

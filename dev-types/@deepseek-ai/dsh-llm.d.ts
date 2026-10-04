@@ -155,6 +155,28 @@ declare module '@deepseek-ai/dsh-llm' {
     abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>
   }
 
+  /** One provider row the harness's Models page can render and edit. */
+  export interface LlmConfigurableProvider {
+    /** Provider route key this entry activates when configured. */
+    provider: string
+    /** Human-readable provider name for configuration surfaces. */
+    displayName: string
+    /** User-settings namespace whose section configures this provider. */
+    settingsNs: string
+    /** Path from that namespace's section root to this provider's profile object. */
+    settingsPath: readonly string[]
+    /** Whether the owning adapter knows this route only because configuration declared it. */
+    declared?: boolean
+    /** Configuration diagnostic for repair. */
+    error?: string
+  }
+
+  /** What publishing provider rows returns. */
+  export interface DirectoryRegistrationHandle {
+    (): void
+    replace(entries: readonly LlmConfigurableProvider[]): void
+  }
+
   /** What registering an adapter returns. */
   export interface AdapterRegistrationHandle {
     (): void
