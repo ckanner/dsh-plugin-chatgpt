@@ -21,6 +21,7 @@ import type * as React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import { remoteContribution } from './remote.ts'
+import { unwrap, type RemoteResult } from './result.ts'
 
 /** The browser context this plugin runs against. */
 type ClientContext = CordisContext & ClientContextServices
@@ -59,14 +60,16 @@ interface SignOutOutcome {
   revocationError?: string
 }
 
-/** The Remote surface this card calls. */
+/** The Remote surface this card calls, as the Gateway actually resolves it. */
 interface ChatGptRemote {
-  status(): Promise<StatusView>
-  begin(): Promise<StatusView>
-  submit(value: string): Promise<StatusView>
-  cancel(): Promise<StatusView>
-  signOut(subject?: string): Promise<SignOutOutcome>
+  status(): Promise<RemoteResult<StatusView>>
+  begin(): Promise<RemoteResult<StatusView>>
+  submit(value: string): Promise<RemoteResult<StatusView>>
+  cancel(): Promise<RemoteResult<StatusView>>
+  signOut(subject?: string): Promise<RemoteResult<SignOutOutcome>>
 }
+
+
 
 /** The Cordis service key the Gateway installs this plugin's namespace under. */
 const REMOTE_SERVICE_KEY = `remote.${REMOTE_NAMESPACE}`
@@ -168,7 +171,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
       const refused = await mounting
       if (refused !== undefined) throw new Error(`the sign-in service could not be mounted: ${refused}`)
       const remote = await waitForRemote(ctx)
-      setStatus(await remote.status())
+      setStatus(unwrap(await remote.status()))
     } catch (error) {
       setStatus({
         signedIn: false,
@@ -190,11 +193,11 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
     return () => { clearInterval(timer) }
   }, [status?.pending, refresh])
 
-  const act = useCallback(async (operation: (remote: ChatGptRemote) => Promise<StatusView>) => {
+  const act = useCallback(async (operation: (remote: ChatGptRemote) => Promise<RemoteResult<StatusView>>) => {
     setBusy(true)
     try {
       const remote = await waitForRemote(ctx)
-      setStatus(await operation(remote))
+      setStatus(unwrap(await operation(remote)))
     } catch (error) {
       setStatus(previous => ({
         signedIn: false,
@@ -258,7 +261,9 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
               disabled={busy}
               onClick={() => {
                 void act(async (remote) => {
-                  const outcome = await remote.signOut()
+                  const result = await remote.signOut()
+                  if (!result.ok) return result
+                  const outcome = result.value
                   // Signing out here is not the same as ending the grant at the
                   // server, and only one of those happened if this is set.
                   setRevocationNote(outcome.revocationConfirmed
@@ -266,7 +271,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
                     : 'Signed out on this machine, but the server did not confirm the revocation'
                       + `${outcome.revocationError === undefined ? '' : ` (${outcome.revocationError})`}.`
                       + ' Disconnect the app in ChatGPT settings to be sure.')
-                  return outcome.status
+                  return { ok: true as const, value: outcome.status }
                 })
               }}
             >
