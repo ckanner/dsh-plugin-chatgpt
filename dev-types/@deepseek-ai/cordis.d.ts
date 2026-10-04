@@ -51,6 +51,15 @@ declare module '@deepseek-ai/cordis' {
      * @param callback - runs with the injected context.
      */
     inject(deps: readonly string[], callback: (child: Context) => void): void
+    /**
+     * Publish one event to the whole application.
+     *
+     * `llm/adapters-updated` is forwarded to connected browsers, and a model
+     * selector rebuilds its catalog on it — the only way a plugin can tell a page
+     * that the models it can serve have changed.
+     * @param event - the event name.
+     */
+    emit(event: 'llm/adapters-updated'): void
   }
 }
 

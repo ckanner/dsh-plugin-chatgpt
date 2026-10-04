@@ -39,8 +39,8 @@ export class ChatGptController extends TypertRemoteService {
    * @returns what the card should render.
    */
   @Remote
-  status(): ChatGptStatusView {
-    return this.session.status()
+  async status(): Promise<ChatGptStatusView> {
+    return await this.session.status()
   }
 
   /**
@@ -67,8 +67,8 @@ export class ChatGptController extends TypertRemoteService {
    * @returns the state with no pending attempt.
    */
   @Remote
-  cancel(): ChatGptStatusView {
-    return this.session.cancel()
+  async cancel(): Promise<ChatGptStatusView> {
+    return await this.session.cancel()
   }
 
   /**

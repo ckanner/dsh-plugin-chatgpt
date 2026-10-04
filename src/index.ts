@@ -257,5 +257,10 @@ export function apply(ctx: Context, config: Config): void {
   // The browser half reaches the sign-in through this service, under the
   // `chatgpt` namespace. Disposal is the parent's: the service lives and dies
   // with the plugin row that registered the route.
-  new ChatGptController(ctx, new ChatGptSession(auth, inner))
+  const session = new ChatGptSession(auth, inner, {
+    // What the browser model selector listens for. The account's roster arrives
+    // after a sign-in that the selector slept through, so it has to be told.
+    onRosterChanged: () => { ctx.emit('llm/adapters-updated') },
+  })
+  new ChatGptController(ctx, session)
 }

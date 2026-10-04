@@ -52,12 +52,33 @@ export interface ChatGptStatusView {
   accounts: { subject: string, email?: string, active: boolean }[]
   /** The attempt awaiting the browser, when one is open. */
   pending?: ChatGptPendingView
+  /**
+   * What the account can serve right now.
+   *
+   * The card reports this rather than promising a list of its own: the models a
+   * selector shows come from the Host catalog, so a count here is the honest
+   * statement, and a listing that fails says so instead of looking empty.
+   */
+  roster?: { count: number, error?: string }
   /** Why the last attempt failed, until another one starts. */
   error?: string
 }
 
 /** How long `submit` waits for the token exchange before answering. */
 const SUBMIT_TIMEOUT_MS = 30_000
+
+/** What a session tells its owner when the models it can serve change. */
+export interface ChatGptSessionOptions {
+  /**
+   * Called after the roster changes.
+   *
+   * A model selector caches the Host catalog and reloads it only when the Host says
+   * something changed. Signing in turns an empty roster into a full one, so without
+   * this the selector keeps a list built before the account existed — the models
+   * are being served and simply never appear.
+   */
+  onRosterChanged?: () => void
+}
 
 /**
  * Owns the one open sign-in attempt and projects the account state for a page.
@@ -69,6 +90,7 @@ const SUBMIT_TIMEOUT_MS = 30_000
 export class ChatGptSession {
   private readonly auth: ChatGptAuth
   private readonly adapter: ChatGptAdapter
+  private readonly onRosterChanged: () => void
   private pending: SignInAttempt | undefined
   private lastError: string | undefined
   private completing: Promise<void> | undefined
@@ -76,22 +98,43 @@ export class ChatGptSession {
   /**
    * @param auth - the credential owner this session drives.
    * @param adapter - the provider adapter, told to re-ask the account after a change.
+   * @param options - what to announce when the roster changes.
    */
-  constructor(auth: ChatGptAuth, adapter: ChatGptAdapter) {
+  constructor(auth: ChatGptAuth, adapter: ChatGptAdapter, options: ChatGptSessionOptions = {}) {
     this.auth = auth
     this.adapter = adapter
+    this.onRosterChanged = options.onRosterChanged ?? (() => {})
   }
 
-  /** What the card should render now. */
-  status(): ChatGptStatusView {
+  /** What the card should render now, including what the account can serve. */
+  async status(): Promise<ChatGptStatusView> {
     const status = this.auth.status()
     const pending = this.pending
     return {
       ...status,
+      roster: await this.roster(),
       ...pending === undefined ? {} : {
         pending: { url: pending.authorizationUrl, redirectUri: pending.redirectUri },
       },
       ...this.lastError === undefined ? {} : { error: this.lastError },
+    }
+  }
+
+  /**
+   * The roster, or why it could not be read.
+   *
+   * A listing failure is reported as a fact about the account rather than thrown:
+   * the card is about the account, and a count it cannot read is still something
+   * the human needs to see. The listing is cached by the adapter, so asking often
+   * costs nothing.
+   *
+   * @returns the count, or the failure in place of it.
+   */
+  private async roster(): Promise<{ count: number, error?: string }> {
+    try {
+      return { count: (await this.adapter.listModels()).length }
+    } catch (error) {
+      return { count: 0, error: error instanceof Error ? error.message : String(error) }
     }
   }
 
@@ -112,6 +155,9 @@ export class ChatGptSession {
           // account must not outlive the sign-in that replaces it.
           this.adapter.forgetListing()
           this.pending = undefined
+          // The account can serve models now, and a selector that is holding the
+          // empty catalog from before this sign-in has no other way to learn it.
+          this.onRosterChanged()
         },
         (error: unknown) => {
           this.lastError = error instanceof Error ? error.message : String(error)
@@ -121,7 +167,7 @@ export class ChatGptSession {
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
     }
-    return this.status()
+    return await this.status()
   }
 
   /**
@@ -137,25 +183,25 @@ export class ChatGptSession {
     const attempt = this.pending
     if (attempt === undefined) {
       this.lastError = 'no sign-in attempt is open; start one first'
-      return this.status()
+      return await this.status()
     }
     try {
       await attempt.submit(value)
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error)
-      return this.status()
+      return await this.status()
     }
     await this.settle()
-    return this.status()
+    return await this.status()
   }
 
   /**
    * Abandon the open attempt.
    * @returns the state with no pending attempt.
    */
-  cancel(): ChatGptStatusView {
+  async cancel(): Promise<ChatGptStatusView> {
     this.cancelPending()
-    return this.status()
+    return await this.status()
   }
 
   /**
@@ -167,8 +213,9 @@ export class ChatGptSession {
     this.cancelPending()
     const result = await this.auth.revoke(subject)
     this.adapter.forgetListing()
+    this.onRosterChanged()
     return {
-      status: this.status(),
+      status: await this.status(),
       revocationConfirmed: result.confirmed,
       ...result.reason === undefined ? {} : { revocationError: result.reason },
     }

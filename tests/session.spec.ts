@@ -21,11 +21,16 @@ afterEach(async () => {
 async function sessionWith(token: TokenServer, revocationEndpoint?: string): Promise<{
   session: ChatGptSession
   forgotten: () => number
+  announced: () => number
 }> {
   const dir = await mkdtemp(join(tmpdir(), 'chatgpt-session-'))
   dirs.push(dir)
   let forgotten = 0
-  const adapter = { forgetListing: () => { forgotten += 1 } } as unknown as ChatGptAdapter
+  let announcements = 0
+  const adapter = {
+    forgetListing: () => { forgotten += 1 },
+    listModels: () => Promise.resolve([{ id: 'gpt-6-sol', name: 'GPT-6 Sol' }]),
+  } as unknown as ChatGptAdapter
   const auth = new ChatGptAuth({
     stateDir: dir,
     agentNameHint: 'DeepSeek Harness',
@@ -35,7 +40,11 @@ async function sessionWith(token: TokenServer, revocationEndpoint?: string): Pro
       ...revocationEndpoint === undefined ? {} : { revocationEndpoint },
     },
   })
-  return { session: new ChatGptSession(auth, adapter), forgotten: () => forgotten }
+  return {
+    session: new ChatGptSession(auth, adapter, { onRosterChanged: () => { announcements += 1 } }),
+    forgotten: () => forgotten,
+    announced: () => announcements,
+  }
 }
 
 /** A token endpoint answering a valid plan-scoped grant for the attempt's nonce. */
@@ -61,7 +70,7 @@ describe('ChatGptSession', () => {
     tokenServers.push(token.close)
     const { session } = await sessionWith(token)
 
-    const status = session.status()
+    const status = await session.status()
 
     assert.equal(status.signedIn, false)
     assert.equal(status.pending, undefined)
@@ -78,7 +87,7 @@ describe('ChatGptSession', () => {
     assert.ok(status.pending !== undefined)
     assert.match(status.pending.url, /^https:\/\/auth\.openai\.com\/api\/accounts\/authorize\?/)
     assert.match(status.pending.redirectUri, /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/)
-    session.cancel()
+    await session.cancel()
   })
 
   it('cancels the previous attempt when a second one starts', async () => {
@@ -87,13 +96,13 @@ describe('ChatGptSession', () => {
     const { session } = await sessionWith(token)
 
     await session.begin()
-    const first = session.status().pending
+    const first = (await session.status()).pending
     const second = await session.begin()
 
     // Two live listeners would race for one callback, and the loser would report
     // a state mismatch the human could not act on.
     assert.notEqual(second.pending?.url, first?.url)
-    session.cancel()
+    await session.cancel()
   })
 
   it('keeps the attempt open when a pasted value does not parse', async () => {
@@ -107,7 +116,64 @@ describe('ChatGptSession', () => {
     assert.match(status.error ?? '', /must start with/)
     // Still open, so a corrected paste can finish it.
     assert.ok(status.pending !== undefined)
-    session.cancel()
+    await session.cancel()
+  })
+
+  it('announces the new roster once a sign-in completes', async () => {
+    // A model selector caches the Host catalog and reloads it only on this
+    // announcement. Without it the models are served and never shown.
+    const nonce = { value: '' }
+    const token = await grantedTokenServer(nonce)
+    const { session, announced } = await sessionWith(token)
+
+    const opened = await session.begin()
+    const url = new URL(opened.pending?.url ?? '')
+    nonce.value = url.searchParams.get('nonce') ?? ''
+    const state = url.searchParams.get('state') ?? ''
+    await fetch(`${opened.pending?.redirectUri ?? ''}?code=auth-code&state=${state}&client_id=oaiapp_x`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    assert.equal((await session.status()).signedIn, true)
+    assert.equal(announced(), 1)
+  })
+
+  it('announces the emptied roster when an account signs out', async () => {
+    const token = await startTokenServer({ body: {} })
+    tokenServers.push(token.close)
+    const { session, announced } = await sessionWith(token, 'http://127.0.0.1:9/revoke')
+
+    await session.signOut()
+
+    assert.equal(announced(), 1)
+  })
+
+  it('reports how many models the account can serve', async () => {
+    const token = await startTokenServer({ body: {} })
+    tokenServers.push(token.close)
+    const { session } = await sessionWith(token)
+
+    assert.deepEqual((await session.status()).roster, { count: 1 })
+  })
+
+  it('reports a listing failure as a fact, not as an empty account', async () => {
+    // A count the Host cannot read is still something the human needs to see; the
+    // card is about the account, so this must not throw the whole state away.
+    const token = await startTokenServer({ body: {} })
+    tokenServers.push(token.close)
+    const dir = await mkdtemp(join(tmpdir(), 'chatgpt-session-'))
+    dirs.push(dir)
+    const adapter = {
+      forgetListing: () => {},
+      listModels: () => Promise.reject(new Error('the listing was refused')),
+    } as unknown as ChatGptAdapter
+    const auth = new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' })
+    const session = new ChatGptSession(auth, adapter)
+
+    const status = await session.status()
+
+    assert.equal(status.roster?.count, 0)
+    assert.match(status.roster?.error ?? '', /the listing was refused/)
+    assert.equal(status.error, undefined, 'the account state still renders')
   })
 
   it('refuses to submit when no attempt is open', async () => {
@@ -137,7 +203,7 @@ describe('ChatGptSession', () => {
 
     // Give the completing promise a turn to adopt.
     await new Promise(resolve => setTimeout(resolve, 50))
-    const status = session.status()
+    const status = await session.status()
 
     assert.equal(status.signedIn, true)
     assert.equal(status.email, 'me@example.com')
@@ -175,7 +241,7 @@ describe('ChatGptSession', () => {
     await fetch(`${opened.pending?.redirectUri ?? ''}?error=access_denied&state=${state}`)
     await new Promise(resolve => setTimeout(resolve, 50))
 
-    const status = session.status()
+    const status = await session.status()
 
     assert.equal(status.signedIn, false)
     assert.match(status.error ?? '', /access_denied/)
@@ -205,7 +271,10 @@ describe('ChatGptSession', () => {
       },
       active: 'subject-1',
     })
-    const adapter = { forgetListing: () => {} } as unknown as ChatGptAdapter
+    const adapter = {
+      forgetListing: () => {},
+      listModels: () => Promise.resolve([]),
+    } as unknown as ChatGptAdapter
     const auth = new ChatGptAuth({
       stateDir: dir,
       agentNameHint: 'DeepSeek Harness',
@@ -213,7 +282,7 @@ describe('ChatGptSession', () => {
     })
     const session = new ChatGptSession(auth, adapter)
 
-    assert.equal(session.status().signedIn, true)
+    assert.equal((await session.status()).signedIn, true)
     const outcome = await session.signOut()
 
     assert.equal(outcome.revocationConfirmed, false)
@@ -239,7 +308,7 @@ describe('ChatGptSession', () => {
     const { session } = await sessionWith(token)
     await session.begin()
 
-    const status = session.cancel()
+    const status = await session.cancel()
 
     assert.equal(status.pending, undefined)
   })

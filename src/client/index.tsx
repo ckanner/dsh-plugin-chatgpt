@@ -50,6 +50,7 @@ interface StatusView {
   expiresAt?: number
   accounts: { subject: string, email?: string, active: boolean }[]
   pending?: { url: string, redirectUri: string }
+  roster?: { count: number, error?: string }
   error?: string
 }
 
@@ -139,6 +140,23 @@ export function apply(ctx: ClientContext): void {
     { name: 'settings.models.provider-card', key: SETTINGS_NS },
     () => <ChatGptCard ctx={ctx} mounting={mounting} />,
   ))
+}
+
+/**
+ * What to say about the models this account can serve.
+ *
+ * The card cannot list them: a selector shows the Host's own catalog. So it reports
+ * how many the account offers, and says when the listing failed instead of showing
+ * nothing and letting a broken call look like an empty account.
+ *
+ * @param roster - the count the Host reported, when it could read one.
+ * @returns the line to display.
+ */
+function rosterLine(roster: { count: number, error?: string } | undefined): string {
+  if (roster === undefined) return 'Checking what this account can serve…'
+  if (roster.error !== undefined) return `Could not read the model list: ${roster.error}`
+  if (roster.count === 0) return 'This account reports no models yet'
+  return `${String(roster.count)} models available in the model selector`
 }
 
 /** One line of account facts. */
@@ -247,7 +265,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
           <Fact label="Models">
             {status.planUsageDenied
               ? 'Authorize plan usage to use this account'
-              : 'Listed below, with the capacities your account reports'}
+              : rosterLine(status.roster)}
           </Fact>
           {status.expiresAt === undefined ? null : (
             <Fact label="Token">
