@@ -14,6 +14,7 @@
  * @module dsh-plugin-chatgpt
  */
 
+import z from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
@@ -25,16 +26,39 @@ import { ChatGptController } from './controller.ts'
 import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 
-/** Route and endpoint policy for one installation. */
-export interface Config {
+/**
+ * Route and endpoint policy for one installation.
+ *
+ * This is a schema rather than a bare interface for two reasons. It validates
+ * what the profile supplies, and a declared schema is what gives this plugin a
+ * settings namespace: the Models page derives its namespace map from plugins that
+ * declare one, and renders a provider row only for a row whose namespace exists.
+ * A plugin with config but no schema therefore has a route the page cannot show.
+ */
+export const Config = z.object({
   /** Provider route this plugin serves. */
-  provider?: string
+  provider: z.string().default('chatgpt'),
   /** Display name for the provider row and the account card. */
-  displayName?: string
-  /** Directory this installation's ChatGPT state lives in. */
-  stateDir: string
+  displayName: z.string().default('ChatGPT'),
+  /**
+   * Directory this installation's ChatGPT state lives in.
+   *
+   * Deliberately not `volatile()`: that modifier turns a field into a live
+   * accessor rather than a value, and this one is read as a plain string when the
+   * plugin mounts. It stays visible and editable in the settings surface, which
+   * is where a deployment can point it somewhere else.
+   */
+  stateDir: z.string().required(),
   /** API base URL override; defaults to the documented resource. */
-  baseUrl?: string
+  baseUrl: z.string().default(''),
+})
+
+/** The configuration one installation supplies. */
+export type Config = {
+  provider: string
+  displayName: string
+  stateDir: string
+  baseUrl: string
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -187,7 +211,13 @@ export class HarnessAdapter extends LlmAdapter {
  * @param config - the installation's route and state location.
  */
 export function apply(ctx: Context, config: Config): void {
-  const route = config.provider ?? 'chatgpt'
+  // This plugin owns a provider row and a card on it, not a settings page of its
+  // own; without this the harness would generate one for the schema above.
+  ctx.inject(['settings'], (child) => {
+    child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
+  })
+
+  const route = config.provider
   const auth = new ChatGptAuth({
     stateDir: config.stateDir,
     // The name a human reads on the consent screen, and the identity OpenAI
@@ -196,8 +226,8 @@ export function apply(ctx: Context, config: Config): void {
   })
   const inner = new ChatGptAdapter({
     auth,
-    displayName: config.displayName ?? 'ChatGPT',
-    ...config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl },
+    displayName: config.displayName,
+    ...config.baseUrl.length === 0 ? {} : { baseUrl: config.baseUrl },
   })
 
   const adapter = new HarnessAdapter(inner, route)
@@ -209,7 +239,7 @@ export function apply(ctx: Context, config: Config): void {
   // this is registered even though the roster comes from the account.
   const directory: DirectoryRegistrationHandle = ctx.llm.registerConfigurableProviders([{
     provider: route,
-    displayName: config.displayName ?? 'ChatGPT',
+    displayName: config.displayName,
     settingsNs: SETTINGS_NS,
     settingsPath: [],
   }])
