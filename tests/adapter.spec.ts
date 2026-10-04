@@ -266,6 +266,62 @@ describe('ChatGptAdapter', () => {
     assert.deepEqual(chunks.map(chunk => chunk.type), ['block-start', 'text-delta', 'block-end'])
   })
 
+  it('refuses a model the account does not offer, instead of being silently downgraded', async () => {
+    // The endpoint accepted a model this account could not list and answered
+    // anyway, so a request can be served by a different model than the one asked
+    // for. Recording that as the asked-for model would be a quiet lie.
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    await assert.rejects(
+      (async () => {
+        for await (const _chunk of adapter.stream('chatgpt', {
+          provider: 'chatgpt',
+          model: 'gpt-6.1-sol',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        })) { /* drain */ }
+      })(),
+      /does not offer "gpt-6.1-sol".*gpt-6-astra/s,
+    )
+  })
+
+  it('serves a model the account does offer', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
+      frames: [frame({ type: 'response.output_text.delta', delta: 'ok' }), frame({ type: 'response.completed' })],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const kinds: string[] = []
+    for await (const chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'gpt-6-astra',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    })) kinds.push(chunk.type)
+
+    assert.deepEqual(kinds, ['block-start', 'text-delta', 'block-end', 'finish'])
+  })
+
+  it('does not fail every call when the listing itself is unavailable', async () => {
+    // A transport failure must not turn into a refusal of models that may well
+    // be serviceable; only a positive "not in the list" refuses.
+    const endpointUrl = await endpoint({ listingStatus: 500, listing: { error: { code: 'server_error' } } })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    await assert.rejects(
+      (async () => {
+        for await (const _chunk of adapter.stream('chatgpt', {
+          provider: 'chatgpt',
+          model: 'whatever',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        })) { /* drain */ }
+      })(),
+      // It still fails, but on the request rather than on a fabricated refusal.
+      /listing|terminal event|ChatGPT/,
+    )
+  })
+
   it('drops the cached listing when the grant is refused', async () => {
     const endpointUrl = await endpoint({ listingStatus: 401, listing: { error: { code: 'invalid_api_key' } } })
     const adapter = adapterFor(await signedIn(), endpointUrl.url)

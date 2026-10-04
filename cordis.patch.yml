@@ -20,3 +20,8 @@
         provider: chatgpt
         displayName: ChatGPT
         stateDir: !!js (process.env.DSH_HOME ?? process.env.HOME + '/.dsh') + '/chatgpt-subscription'
+
+# No default model is set here. A model id is account-specific — the entitlement
+# differs per plan and account — so a hard-coded default would silently be wrong
+# for most installs. Pick one from the account's own list after signing in, using
+# the Models page or `GET /v1/models`.
