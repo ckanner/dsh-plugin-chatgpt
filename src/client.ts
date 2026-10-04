@@ -31,7 +31,7 @@ export class ApiError extends Error {
   readonly code: string
 
   /** HTTP status, when the failure was a response rather than a transport fault. */
-  readonly status?: number
+  status?: number
 
   /** Whether the account's plan is the thing refusing, so the human is told to check usage. */
   readonly planUsage: boolean

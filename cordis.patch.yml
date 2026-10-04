@@ -2,7 +2,7 @@
 #
 # One row: the plugin that registers the ChatGPT provider route. It is a single
 # insert because the plugin owns exactly one route and needs no companion rows —
-# its sign-in surface rides the provider card the Models page already renders.
+# its sign-in surface will ride the provider card the Models page already renders.
 #
 # The route is deliberately not named `openai`. The built-in pi-ai plugin serves
 # a route of that name, and the LLM registry refuses a second registration of one
@@ -19,4 +19,4 @@
       config:
         provider: chatgpt
         displayName: ChatGPT
-        stateDir: !!js `${process.env.DSH_HOME ?? `${process.env.HOME}/.dsh`}/chatgpt-subscription`
+        stateDir: !!js (process.env.DSH_HOME ?? process.env.HOME + '/.dsh') + '/chatgpt-subscription'

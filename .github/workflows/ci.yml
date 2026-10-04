@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The plugin needs a Node with native TypeScript support, since the tests
+        # run the sources directly with no build step.
+        node: ['22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm install --ignore-scripts
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Type check
+        run: npm run typecheck
+      - name: README pair is aligned
+        run: npm run check:i18n

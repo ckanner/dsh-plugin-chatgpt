@@ -15,9 +15,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { ChatGptAdapter, type HarnessMessage, type HarnessRequest } from './adapter.ts'
+import { ChatGptAdapter, isCodedError, type HarnessMessage, type HarnessRequest } from './adapter.ts'
 import { ChatGptAuth } from './auth/manager.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 
@@ -35,6 +35,15 @@ export interface Config {
 
 /** What this plugin calls itself in diagnostics. */
 export const name = 'chatgpt'
+
+/**
+ * The services this plugin needs before it can register anything.
+ *
+ * Cordis resolves injected services before `apply` runs, and reading `ctx.llm`
+ * without declaring it throws rather than answering undefined. The registry is
+ * the whole dependency: with no registry there is no route to own.
+ */
+export const inject = ['llm']
 
 /** Translate one harness request into what the adapter reads. */
 function requestOf(options: GenerateOptions): HarnessRequest {
@@ -82,6 +91,26 @@ function requestOf(options: GenerateOptions): HarnessRequest {
 }
 
 /**
+ * Give one thrown value the harness's error taxonomy.
+ *
+ * The harness classifies a provider failure by reading `code` and any status off
+ * the thrown error, and reports anything else as a bare `UNKNOWN` — so a coded
+ * error from this plugin's own layers is translated here, at the one boundary
+ * that already depends on the host.
+ *
+ * @param error - whatever a lower layer threw.
+ * @param fallbackCode - the code to use when the error carries none.
+ * @returns the error to throw onward.
+ */
+function asHostError(error: unknown, fallbackCode: string): Error {
+  if (error instanceof LlmError) return error
+  if (isCodedError(error)) {
+    return new LlmError(error.message, error.code, error.status === undefined ? {} : { status: error.status })
+  }
+  return new LlmError(error instanceof Error ? error.message : String(error), fallbackCode)
+}
+
+/**
  * The harness's adapter contract over the plan adapter.
  *
  * The wrapping is mechanical: it renames the vocabulary and adapts the two
@@ -108,8 +137,12 @@ export class HarnessAdapter extends LlmAdapter {
 
   override async listModels(provider: string): Promise<readonly { provider: string, id: string, name: string }[]> {
     void provider
-    const models = await this.inner.listModels()
-    return models.map(model => ({ provider: this.route, id: model.id, name: model.name }))
+    try {
+      const models = await this.inner.listModels()
+      return models.map(model => ({ provider: this.route, id: model.id, name: model.name }))
+    } catch (error) {
+      throw asHostError(error, 'chatgpt_listing_failed')
+    }
   }
 
   override async resolveModel(provider: string, model: string): Promise<ReturnType<LlmAdapter['resolveModel']> extends Promise<infer T> ? T : never> {
@@ -121,7 +154,11 @@ export class HarnessAdapter extends LlmAdapter {
       options.provider,
       requestOf(options),
     )
-    for await (const chunk of chunks) yield chunk as unknown as StreamChunk
+    try {
+      for await (const chunk of chunks) yield chunk as unknown as StreamChunk
+    } catch (error) {
+      throw asHostError(error, 'chatgpt_request_failed')
+    }
   }
 }
 

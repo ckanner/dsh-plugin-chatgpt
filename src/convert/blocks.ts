@@ -61,11 +61,24 @@ export type AdapterChunk =
       | { kind: 'error', failure: { message: string, code?: string } }
   }
 
-/** An open block, whatever kind it is. */
-type OpenBlock =
-  | { kind: 'text', index: number, text: string }
-  | { kind: 'reasoning', index: number, text: string }
-  | { kind: 'tool-call', index: number, id: string, name: string, arguments: string }
+/** A block whose content accumulates as text, either visible or reasoning. */
+interface TextualBlock {
+  index: number
+  text: string
+}
+
+/** A tool call being assembled from argument deltas. */
+interface ToolCallState {
+  index: number
+  id: string
+  name: string
+  arguments: string
+}
+
+/** A chunk's block index, or -1 for the one chunk kind that has none. */
+function indexOf(chunk: AdapterChunk): number {
+  return 'index' in chunk ? chunk.index : -1
+}
 
 /**
  * Stateful translation of one response's event sequence.
@@ -76,9 +89,9 @@ type OpenBlock =
  */
 export class BlockTranslator {
   private nextIndex = 0
-  private text: OpenBlock | undefined
-  private reasoning: OpenBlock | undefined
-  private readonly toolCalls = new Map<number, OpenBlock>()
+  private text: TextualBlock | undefined
+  private reasoning: TextualBlock | undefined
+  private readonly toolCalls = new Map<number, ToolCallState>()
   /** Wire item index to the block allocated for it. */
   private readonly wireToBlock = new Map<number, number>()
   private sawToolCall = false
@@ -99,7 +112,7 @@ export class BlockTranslator {
         // model produced it: whatever it said before the call precedes it.
         const chunks = this.endText()
         const index = this.nextIndex++
-        this.toolCalls.set(index, { kind: 'tool-call', index, id: event.callId, name: event.name, arguments: '' })
+        this.toolCalls.set(index, { index, id: event.callId, name: event.name, arguments: '' })
         this.wireToBlock.set(event.index, index)
         this.sawToolCall = true
         chunks.push({ type: 'block-start', index, blockType: 'tool-call' })
@@ -160,7 +173,8 @@ export class BlockTranslator {
     // A tool call still open at the end of a stream was cut off mid-call; end it
     // so the caller sees the partial arguments rather than nothing.
     for (const open of this.activeTools()) chunks.push(...this.endTool(open))
-    return chunks.sort((left, right) => left.index - right.index)
+    // A `finish` chunk carries no block index; every chunk here is a block end.
+    return chunks.sort((left, right) => indexOf(left) - indexOf(right))
   }
 
   /** Open or continue the text block. */
@@ -168,7 +182,7 @@ export class BlockTranslator {
     const chunks: AdapterChunk[] = []
     if (this.text === undefined) {
       const index = this.nextIndex++
-      this.text = { kind: 'text', index, text: '' }
+      this.text = { index, text: '' }
       chunks.push({ type: 'block-start', index, blockType: 'text' })
     }
     this.text.text += delta
@@ -181,7 +195,7 @@ export class BlockTranslator {
     const chunks: AdapterChunk[] = []
     if (this.reasoning === undefined) {
       const index = this.nextIndex++
-      this.reasoning = { kind: 'reasoning', index, text: '' }
+      this.reasoning = { index, text: '' }
       chunks.push({ type: 'block-start', index, blockType: 'reasoning' })
     }
     this.reasoning.text += delta
@@ -206,18 +220,18 @@ export class BlockTranslator {
   }
 
   /** The still-open tool calls, in allocation order. */
-  private activeTools(): OpenBlock[] {
+  private activeTools(): ToolCallState[] {
     return [...this.toolCalls.values()].sort((left, right) => left.index - right.index)
   }
 
   /** The tool call allocated for one wire item index, when it is still open. */
-  private toolFor(wireIndex: number): OpenBlock | undefined {
+  private toolFor(wireIndex: number): ToolCallState | undefined {
     const allocated = this.wireToBlock.get(wireIndex)
     return allocated === undefined ? undefined : this.toolCalls.get(allocated)
   }
 
   /** Close one tool call, removing it so it cannot close twice. */
-  private endTool(open: OpenBlock): AdapterChunk[] {
+  private endTool(open: ToolCallState): AdapterChunk[] {
     if (!this.toolCalls.delete(open.index)) return []
     for (const [wire, block] of this.wireToBlock) {
       if (block === open.index) this.wireToBlock.delete(wire)

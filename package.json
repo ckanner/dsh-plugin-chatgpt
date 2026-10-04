@@ -33,7 +33,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "node --test \"tests/*.spec.ts\"",
     "prepare": "npm run build",

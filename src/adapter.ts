@@ -30,6 +30,42 @@ import type { NeutralMessage, NeutralRequest, NeutralTool, ToolTraffic } from '.
 import { describableModels, type DescribedModel, type ListedModel } from './models/describe.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 
+/**
+ * A failure that already carries a machine-readable code.
+ *
+ * This shape is what the plugin's own layers raise: the client sets a `code` off
+ * the endpoint's answer, and the adapter sets one for its own refusals. The host
+ * boundary translates it into the harness's error class, because that class
+ * belongs to the host — naming it here would make this module unusable outside a
+ * mounted harness, including in its own tests.
+ */
+export interface CodedError extends Error {
+  /** Stable machine code, from the endpoint or from this plugin. */
+  code: string
+  /** HTTP status, when the failure was a response rather than a transport fault. */
+  status?: number
+  /** Whether the account's plan is what refused. */
+  planUsage?: boolean
+}
+
+/**
+ * Whether a thrown value already carries a usable code.
+ *
+ * A property check rather than `instanceof`: the harness may resolve a second
+ * copy of this package, and an error thrown by one copy is not an instance of
+ * the other's class.
+ */
+export function isCodedError(error: unknown): error is CodedError {
+  return error instanceof Error && typeof (error as { code?: unknown }).code === 'string'
+}
+
+/** Build one coded error for a refusal this adapter makes itself. */
+function coded(message: string, code: string): CodedError {
+  const error = new Error(message) as CodedError
+  error.code = code
+  return error
+}
+
 /** How long a model listing is reused before the account is asked again. */
 const LISTING_TTL_MS = 60_000
 
@@ -228,10 +264,17 @@ export class ChatGptAdapter {
     if (cached !== undefined && this.now() - cached.at < LISTING_TTL_MS) return cached.models
     const credential = await this.auth.usable().catch(() => undefined)
     if (credential === undefined) return []
-    const listed: ListedModel[] = await listModels(
-      credential.accessToken,
-      ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }],
-    )
+    let listed: ListedModel[]
+    try {
+      listed = await listModels(
+        credential.accessToken,
+        ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }],
+      )
+    } catch (error) {
+      throw isCodedError(error)
+        ? error
+        : coded(String(error instanceof Error ? error.message : error), 'chatgpt_listing_failed')
+    }
     const models = describableModels(listed)
     this.listing = { at: this.now(), models }
     return models
@@ -278,7 +321,7 @@ export class ChatGptAdapter {
     try {
       accessToken = (await this.auth.usable(request.signal)).accessToken
     } catch (error) {
-      throw new ApiError(
+      throw coded(
         `no usable ChatGPT credential: ${error instanceof Error ? error.message : String(error)}`,
         'chatgpt_not_signed_in',
       )
@@ -298,11 +341,13 @@ export class ChatGptAdapter {
     } catch (error) {
       // A refused grant means this credential is finished; the next request
       // must not reuse it, so the listing is dropped with it.
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) this.forgetListing()
+      if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
       // Whatever went wrong, the blocks this turn opened still have to close, or
       // the harness holds a block that never ends.
       for (const chunk of translator.endAll()) yield chunk
-      throw error
+      // Already coded when it came from the client; otherwise name it here so the
+      // host has something better than an unknown failure to report.
+      throw isCodedError(error) ? error : coded(String(error instanceof Error ? error.message : error), 'chatgpt_request_failed')
     }
   }
 }

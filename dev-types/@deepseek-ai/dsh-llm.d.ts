@@ -161,9 +161,24 @@ declare module '@deepseek-ai/dsh-llm' {
     replace(providers: string[]): void
   }
 
-  /** The harness's structured error. */
+  /** Optional validated facts carried beside a structured failure. */
+  export interface LlmErrorOptions extends ErrorOptions {
+    /** Valid HTTP status observed at the provider boundary. */
+    status?: number
+    providerRetryAfterMs?: number
+    requestId?: string
+    offloadImages?: number
+  }
+
+  /**
+   * The harness's structured error.
+   *
+   * The harness reads `code` and any status off a thrown error to classify a
+   * provider failure, so a plugin must throw this rather than its own class.
+   */
   export class LlmError extends Error {
-    constructor(message: string, code: string)
+    constructor(message: string, code: string, options?: LlmErrorOptions)
     readonly code: string
+    readonly failure: { status?: number }
   }
 }
