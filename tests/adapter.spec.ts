@@ -8,11 +8,15 @@ import { ChatGptAdapter, toNeutralRequest } from '../src/adapter.ts'
 import { ChatGptAuth } from '../src/auth/manager.ts'
 import { writeDocument, emptyDocument } from '../src/auth/store.ts'
 import type { ChatGptCredential } from '../src/auth/credential.ts'
+import { startTokenServer } from './helpers.ts'
 
 const servers: Server[] = []
 const dirs: string[] = []
+/** Token endpoints, which own their own listener and close through their handle. */
+const tokenServers: (() => Promise<void>)[] = []
 
 afterEach(async () => {
+  await Promise.all(tokenServers.splice(0).map(close => close()))
   await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => {
     server.close(() => resolve())
     server.closeAllConnections()
@@ -49,11 +53,20 @@ async function endpoint(options: {
   listing?: unknown
   listingStatus?: number
   frames?: string[]
+  /** Answer one request directly, overriding the scripted reply. */
+  onRequest?: (path: string) => { status: number, body: unknown } | undefined
 } = {}): Promise<{ url: string, paths: string[] }> {
   const paths: string[] = []
   const server = createServer((request, response) => {
-    paths.push(request.url ?? '/')
-    if ((request.url ?? '').startsWith('/models')) {
+    const path = request.url ?? '/'
+    paths.push(path)
+    const override = options.onRequest?.(path)
+    if (override !== undefined) {
+      response.writeHead(override.status, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(override.body))
+      return
+    }
+    if (path.startsWith('/models')) {
       response.writeHead(options.listingStatus ?? 200, { 'content-type': 'application/json' })
       response.end(JSON.stringify(options.listing ?? { models: [] }))
       return
@@ -116,7 +129,12 @@ describe('ChatGptAdapter', () => {
 
     const models = await adapter.listModels()
 
-    assert.deepEqual(models.map(model => model.id), ['gpt-6.1-sol'])
+    // Advertised first, then the measured models the listing omits.
+    assert.equal(models[0]?.id, 'gpt-6.1-sol')
+    assert.deepEqual(
+      models.map(model => model.id),
+      ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'],
+    )
     const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
     assert.equal(resolved.provider, 'chatgpt')
     assert.equal(resolved.name, 'GPT-6.1 Sol')
@@ -291,6 +309,83 @@ describe('ChatGptAdapter', () => {
     assert.deepEqual(chunks.map(chunk => chunk.type), ['block-start', 'text-delta', 'block-end'])
   })
 
+  it('renews once and retries when the endpoint refuses a token that still looks valid', async () => {
+    // Measured against a live account: an upgrade retired tokens server-side
+    // while their JWT still had 45 minutes left, and the endpoint answered
+    // `token_expired`. A local clock comparison cannot see that, so the refusal
+    // itself has to drive the renewal.
+    const refresh = await startTokenServer({
+      body: { access_token: 'renewed-access', refresh_token: 'rotated', expires_in: 3600, scope: 'chatgpt.tokens.use.direct' },
+    })
+    tokenServers.push(refresh.close)
+
+    // The endpoint refuses the stored token, then accepts the renewed one.
+    let calls = 0
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'm', visibility: 'list' }] },
+      onRequest: (path) => {
+        calls += 1
+        if (path.startsWith('/models') && calls === 1) {
+          return { status: 401, body: { error: { code: 'token_expired', message: 'Provided authentication token is expired.' } } }
+        }
+        return undefined
+      },
+    })
+    const stateDir = await signedIn()
+    const auth = new ChatGptAuth({
+      stateDir,
+      agentNameHint: 'DeepSeek Harness',
+      endpoints: { tokenUrl: refresh.url },
+    })
+    const adapter = new ChatGptAdapter({ auth, baseUrl: endpointUrl.url })
+
+    const models = await adapter.listModels()
+
+    assert.equal(models[0]?.id, 'm')
+    // One refusal, one renewal, one retry — not a loop.
+    assert.equal(refresh.requests.length, 1)
+  })
+
+  it('does not spend a refresh token on a failure that is not an authentication refusal', async () => {
+    const refresh = await startTokenServer({ body: {} })
+    tokenServers.push(refresh.close)
+    const endpointUrl = await endpoint({
+      listingStatus: 500,
+      listing: { error: { code: 'server_error' } },
+    })
+    const auth = new ChatGptAuth({
+      stateDir: await signedIn(),
+      agentNameHint: 'DeepSeek Harness',
+      endpoints: { tokenUrl: refresh.url },
+    })
+
+    await assert.rejects(new ChatGptAdapter({ auth, baseUrl: endpointUrl.url }).listModels())
+    assert.equal(refresh.requests.length, 0)
+  })
+
+  it('sends every event of a turn, including the first one', async () => {
+    // The retry path primes the stream to surface an early refusal, so the event
+    // that read produced must still reach the caller.
+    const endpointUrl = await endpoint({
+      frames: [
+        frame({ type: 'response.output_text.delta', delta: 'first' }),
+        frame({ type: 'response.output_text.delta', delta: 'second' }),
+        frame({ type: 'response.completed' }),
+      ],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const chunks = []
+    for await (const chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'm',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    })) chunks.push(chunk)
+
+    const text = chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.type === 'text-delta' ? chunk.text : '')
+    assert.deepEqual(text, ['first', 'second'])
+  })
+
   it('sends a model absent from the listing, because the listing is a roster and not an allowlist', async () => {
     // Measured against a real subscription: asking the endpoint for a model the
     // listing did not advertise was answered under the requested id, with
@@ -315,13 +410,58 @@ describe('ChatGptAdapter', () => {
     assert.match(endpointUrl.paths.filter(path => path.startsWith('/responses')).length.toString(), /^[1-9]/)
   })
 
-  it('still offers only the roster in the catalog the selector reads', async () => {
+  it('offers the models measured to work that the listing omits', async () => {
+    // The listing advertises one model and says nothing about the rest, yet this
+    // route serves several of them. A roster built from the listing alone hides
+    // capability the account already has.
     const endpointUrl = await endpoint({
       listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
     })
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
+    const ids = (await adapter.listModels()).map(model => model.id)
+
+    assert.equal(ids[0], 'gpt-6-astra')
+    for (const measured of ['gpt-6-sol', 'gpt-6-luna', 'gpt-6.1-sol']) {
+      assert.ok(ids.includes(measured), `${measured} should be offered`)
+    }
+  })
+
+  it('never offers a model the listing marks hidden', async () => {
+    // Hidden is a deliberate instruction about what a picker should show, which
+    // is a different statement from leaving a model unmentioned.
+    const endpointUrl = await endpoint({
+      listing: {
+        models: [
+          { slug: 'gpt-6-astra', visibility: 'list' },
+          { slug: 'gpt-reserve', visibility: 'hide' },
+        ],
+      },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    assert.equal((await adapter.listModels()).some(model => model.id === 'gpt-reserve'), false)
+  })
+
+  it('offers only what the account advertises when the measured extras are turned off', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
+    })
+    const auth = new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' })
+    const adapter = new ChatGptAdapter({ auth, baseUrl: endpointUrl.url, includeUnlisted: false })
+
     assert.deepEqual((await adapter.listModels()).map(model => model.id), ['gpt-6-astra'])
+  })
+
+  it('describes a measured extra from the catalog, since the listing says nothing', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [] } })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6-sol')
+
+    assert.equal(resolved.id, 'gpt-6-sol')
+    assert.ok(resolved.context.contextWindow > 0)
+    assert.ok((resolved.reasoning?.efforts.length ?? 0) > 0)
   })
 
   it('serves a model the account does offer', async () => {

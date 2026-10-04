@@ -118,10 +118,44 @@ export class ChatGptAuth {
       throw new Error('no ChatGPT account is signed in; run a sign-in first')
     }
     if (isFresh(current)) return current
+    return this.rotate(current, signal)
+  }
+
+  /**
+   * Mint a new access token from the stored grant, once, for concurrent callers.
+   *
+   * Rotation is single-use — the refresh token is replaced by the exchange — so
+   * two callers refreshing at once would have the second present a token the
+   * first already spent, and the endpoint reports that as a dead grant rather
+   * than as a race.
+   */
+  private rotate(current: ChatGptCredential, signal?: AbortSignal): Promise<ChatGptCredential> {
     this.refreshing ??= this.runRefresh(current, signal).finally(() => {
       this.refreshing = undefined
     })
     return this.refreshing
+  }
+
+  /**
+   * Exchange the stored grant for a new one, whatever the local expiry says.
+   *
+   * A token can be refused while it still looks valid: the endpoint answers
+   * `token_expired` for a grant it has invalidated server-side, and a local clock
+   * comparison cannot see that. Authorization can also change under a live
+   * session — an account upgrade, a workspace switch — which retires tokens the
+   * local expiry still considers good. This is the method a caller uses when the
+   * endpoint has just told it the token is no good.
+   *
+   * @param signal - cancellation for the exchange.
+   * @returns the rotated credential.
+   */
+  async renew(signal?: AbortSignal): Promise<ChatGptCredential> {
+    const current = this.active()
+    if (current === undefined) {
+      throw new Error('no ChatGPT account is signed in; run a sign-in first')
+    }
+    await this.refreshing?.catch(() => undefined)
+    return this.rotate(current, signal)
   }
 
   /** Refresh under the single-flight promise and persist the rotation. */

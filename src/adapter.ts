@@ -27,7 +27,9 @@
 import { ApiError, listModels, streamTurn } from './client.ts'
 import { BlockTranslator, type AdapterChunk } from './convert/blocks.ts'
 import type { NeutralMessage, NeutralRequest, NeutralTool, ToolTraffic } from './convert/request.ts'
-import { describableModels, type DescribedModel, type ListedModel } from './models/describe.ts'
+import type { ResponsesEvent } from './api/events.ts'
+import { describableModels, describeModel, type DescribedModel, type ListedModel } from './models/describe.ts'
+import { SERVED_MODELS } from './models/served.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 
 /**
@@ -77,6 +79,12 @@ export interface ChatGptAdapterOptions {
   baseUrl?: string
   /** Display name for the provider row. */
   displayName?: string
+  /**
+   * Offer the models measured to work on this route that the account's listing
+   * omits. Defaults to true: the listing demonstrably leaves out models this
+   * route serves, and hiding them hides capability the account already has.
+   */
+  includeUnlisted?: boolean
   /** Clock, so the listing cache can be tested. */
   now?: () => number
 }
@@ -204,6 +212,38 @@ export function toNeutralRequest(request: HarnessRequest): NeutralRequest {
   }
 }
 
+/**
+ * Run one authenticated call, renewing the grant once if the endpoint refuses it.
+ *
+ * A stored token can be refused while it still looks valid locally: the endpoint
+ * answers `token_expired` for a grant it invalidated server-side, and authorization
+ * can change under a live session — an account upgrade, a workspace switch. A
+ * local clock comparison cannot see either, so the endpoint's refusal is what
+ * triggers a renewal, and the call is attempted twice at most.
+ *
+ * @param usable - mints a token from the stored grant, refreshing if it looks stale.
+ * @param renew - exchanges the grant for a new one regardless of local expiry.
+ * @param call - the authenticated call, given a token.
+ * @returns what the call produced.
+ * @throws the second attempt's failure, or the first one when a renewal was not the answer.
+ */
+async function withFreshGrant<T>(
+  usable: () => Promise<{ accessToken: string }>,
+  renew: () => Promise<{ accessToken: string }>,
+  call: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const credential = await usable()
+  try {
+    return await call(credential.accessToken)
+  } catch (error) {
+    // Only an authentication refusal is worth a renewal; anything else would
+    // spend a refresh token to be told the same thing again.
+    if (!isCodedError(error) || (error.status !== 401 && error.status !== 403)) throw error
+    const renewed = await renew()
+    return await call(renewed.accessToken)
+  }
+}
+
 /** Describe a listed model in the harness's vocabulary. */
 function toHarnessResolved(provider: string, model: DescribedModel): HarnessResolvedModel {
   return {
@@ -238,6 +278,7 @@ export class ChatGptAdapter {
   private readonly auth: ChatGptAuth
   private readonly baseUrl: string | undefined
   private readonly displayName: string
+  private readonly includeUnlisted: boolean
   private readonly now: () => number
   private listing: { at: number, models: DescribedModel[] } | undefined
 
@@ -248,6 +289,7 @@ export class ChatGptAdapter {
     this.auth = options.auth
     this.baseUrl = options.baseUrl
     this.displayName = options.displayName ?? 'ChatGPT'
+    this.includeUnlisted = options.includeUnlisted ?? true
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -277,22 +319,53 @@ export class ChatGptAdapter {
   async listModels(): Promise<readonly DescribedModel[]> {
     const cached = this.listing
     if (cached !== undefined && this.now() - cached.at < LISTING_TTL_MS) return cached.models
-    const credential = await this.auth.usable().catch(() => undefined)
-    if (credential === undefined) return []
+    // No account is an empty roster, not a failure: the route exists and is
+    // waiting for a sign-in, and a throwing listing would make the selector
+    // unusable before the first one.
+    if (this.auth.active() === undefined) return []
     let listed: ListedModel[]
     try {
-      listed = await listModels(
-        credential.accessToken,
-        ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }],
+      listed = await withFreshGrant(
+        () => this.auth.usable(),
+        () => this.auth.renew(),
+        token => listModels(token, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
       )
     } catch (error) {
       throw isCodedError(error)
         ? error
         : coded(String(error instanceof Error ? error.message : error), 'chatgpt_listing_failed')
     }
-    const models = describableModels(listed)
+    const models = this.rosterOf(listed)
     this.listing = { at: this.now(), models }
     return models
+  }
+
+  /**
+   * The roster the selector offers: what the account advertises, plus the models
+   * measured to work on this route that the listing leaves out.
+   *
+   * The listing is a curated selection, not an inventory. It omits models this
+   * route serves — asked for by id, they answer — so a roster built from it alone
+   * hides models the account paid for. The extra ids come from
+   * {@link SERVED_MODELS}, which records when they were measured, because no
+   * endpoint states them.
+   *
+   * A model the listing marks hidden is not offered: hidden is a deliberate
+   * instruction about what a picker should show, and it is a different statement
+   * from leaving a model unmentioned.
+   *
+   * @param listed - every entry the account's listing returned.
+   * @returns the models to offer, listing order first.
+   */
+  private rosterOf(listed: readonly ListedModel[]): DescribedModel[] {
+    const advertised = describableModels(listed)
+    const present = new Set(advertised.map(model => model.id))
+    const extras = this.includeUnlisted
+      ? SERVED_MODELS
+          .filter(entry => !entry.advertised && !present.has(entry.id))
+          .map(entry => describeModel({ slug: entry.id }))
+      : []
+    return [...advertised, ...extras]
   }
 
   /** Drop the cached listing, so the next question re-asks the account. */
@@ -332,26 +405,40 @@ export class ChatGptAdapter {
    */
   async *stream(provider: string, request: HarnessRequest): AsyncGenerator<AdapterChunk, void, undefined> {
     void provider
-    let accessToken: string
-    try {
-      accessToken = (await this.auth.usable(request.signal)).accessToken
-    } catch (error) {
-      throw coded(
-        `no usable ChatGPT credential: ${error instanceof Error ? error.message : String(error)}`,
-        'chatgpt_not_signed_in',
-      )
-    }
-
+    const neutral = toNeutralRequest(request)
     const translator = new BlockTranslator()
-    const events = streamTurn({
-      accessToken,
-      request: toNeutralRequest(request),
-      ...this.baseUrl === undefined ? {} : { endpoints: { baseUrl: this.baseUrl } },
-      ...request.signal === undefined ? {} : { signal: request.signal },
-    })
+    let events: AsyncGenerator<ResponsesEvent, void, undefined>
+    let primed: IteratorResult<ResponsesEvent>
     try {
-      for await (const event of events) {
-        for (const chunk of translator.push(event)) yield chunk
+      ({ events, primed } = await withFreshGrant(
+        () => this.auth.usable(request.signal),
+        () => this.auth.renew(request.signal),
+        // A generator is lazy, so a refused token would not surface until the
+        // first read. Reading one step inside the retry is what lets the refusal
+        // be answered here, before the caller has seen anything — and the event
+        // that read produced is carried out, not discarded.
+        async (token) => {
+          const started = streamTurn({
+            accessToken: token,
+            request: neutral,
+            ...this.baseUrl === undefined ? {} : { endpoints: { baseUrl: this.baseUrl } },
+            ...request.signal === undefined ? {} : { signal: request.signal },
+          })
+          return { events: started, primed: await started.next() }
+        },
+      ))
+    } catch (error) {
+      if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
+      throw isCodedError(error)
+        ? error
+        : coded(
+            `no usable ChatGPT credential: ${error instanceof Error ? error.message : String(error)}`,
+            'chatgpt_not_signed_in',
+          )
+    }
+    try {
+      for (let step: IteratorResult<ResponsesEvent> = primed; !step.done; step = await events.next()) {
+        for (const chunk of translator.push(step.value)) yield chunk
       }
     } catch (error) {
       // A refused grant means this credential is finished; the next request
