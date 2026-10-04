@@ -65,7 +65,15 @@ declare module '@deepseek-ai/cordis' {
   export interface ClientContextServices {
     /** The slot registry the card registers its provider-card cell into. */
     slots: SlotRegistry
-    /** The generated Remote namespace host, keyed by wire namespace. */
-    remote: Record<string, unknown>
+    /**
+     * The Remote namespace host, keyed by wire namespace.
+     *
+     * `$mount` is the Gateway's own entry point for installing a namespace from a
+     * package's descriptors. It is how a plugin outside the generated aggregate
+     * gets a namespace at all.
+     */
+    remote: Record<string, unknown> & {
+      $mount(contribution: unknown): Promise<() => Promise<void>>
+    }
   }
 }

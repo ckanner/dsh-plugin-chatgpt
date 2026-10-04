@@ -104,9 +104,22 @@ const exports = registration.factory(specifier => {
 assert.equal(typeof exports.apply, 'function', 'the bundle must export apply')
 assert.deepEqual(exports.inject, ['slots', 'remote'], 'the bundle must declare its services')
 
-/** A context recording what the card registers. */
+/** Contributions the bundle mounted, for assertion. */
+const mounted = []
+
+/** A context recording what the card registers and mounts. */
 const ctx = {
-  remote: { chatgpt: { status: () => Promise.resolve({}) } },
+  remote: {
+    // Present so the bundle's wait for the namespace can succeed once mounted.
+    chatgpt: undefined,
+    // Nothing in the generated aggregate carries this plugin's namespace, so the
+    // bundle mounts its own. A bundle that stopped doing that would leave the card
+    // waiting for a namespace that never arrives.
+    $mount(contribution) {
+      mounted.push(contribution)
+      return Promise.resolve(() => Promise.resolve())
+    },
+  },
   slots: {
     inject(name, register) { registered.push({ name, entries: [] }); register() },
     register(options) { registered.at(-1)?.entries.push(options); return () => {} },
@@ -122,4 +135,15 @@ assert.deepEqual(
   ['chatgpt'],
   'the card must key on the namespace the host registered its provider row under',
 )
-console.log(`client bundle verified: ${registration.id} registers ${registered[0].name}:${registered[0].entries[0].key}`)
+
+assert.equal(mounted.length, 1, 'the bundle must mount exactly one Remote contribution')
+assert.equal(mounted[0].package, packageName)
+assert.deepEqual(
+  mounted[0].descriptors.map(descriptor => `${descriptor.namespace}/${descriptor.method}`),
+  ['chatgpt/status', 'chatgpt/begin', 'chatgpt/submit', 'chatgpt/cancel', 'chatgpt/signOut'],
+  'every method the card calls must be mounted, or the call fails at the click',
+)
+console.log(
+  `client bundle verified: ${registration.id} registers ${registered[0].name}:${registered[0].entries[0].key}`
+  + ` and mounts ${String(mounted[0].descriptors.length)} Remote methods`,
+)

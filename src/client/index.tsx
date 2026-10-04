@@ -7,19 +7,19 @@
  * one thing the harness cannot know: whether an account is signed in, and how to
  * sign one in.
  *
- * Two states and one transition. Signed out, it offers the authorization URL and
- * a box for the redirect URL, because a browser popup can be blocked and a
- * headless host has no browser at all. Signed in, it shows only facts about the
- * account — never a token, which never leaves the host in the first place.
+ * The Host owns every part of the flow that touches a credential. A sign-in needs
+ * a listener on this machine and ends with tokens that must never reach a page, so
+ * the card only asks the Host to start an attempt and reports what comes back.
+ * Nothing here holds a token, and nothing here could leak one.
  *
  * @module dsh-plugin-chatgpt/client
  */
 
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { Button, Input, Pill, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientContextServices, Context as CordisContext } from '@deepseek-ai/cordis'
 import type * as React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { remoteContribution } from './remote.ts'
 
 /** The browser context this plugin runs against. */
 type ClientContext = CordisContext & ClientContextServices
@@ -27,10 +27,22 @@ type ClientContext = CordisContext & ClientContextServices
 /** The namespace this plugin's provider row is registered under. */
 const SETTINGS_NS = 'chatgpt'
 
-/** The remote namespace the host exposes the sign-in surface on. */
+/** The Remote namespace the Host exposes the sign-in surface on. */
 const REMOTE_NS = 'chatgpt'
 
-/** Everything the card may show, mirrored from the host's view type. */
+/**
+ * How long the card waits for the Remote namespace before calling it unreachable.
+ *
+ * The namespace map arrives with the connection rather than with the bundle, so a
+ * card can mount before its own namespace exists. Failing at that moment would
+ * report a broken plugin for a race that resolves by itself.
+ */
+const REMOTE_WAIT_MS = 15_000
+
+/** How often the card looks for the namespace while waiting. */
+const REMOTE_POLL_MS = 250
+
+/** Everything the card may show, mirrored from the Host's view type. */
 interface StatusView {
   signedIn: boolean
   planUsageDenied: boolean
@@ -49,7 +61,7 @@ interface SignOutOutcome {
   revocationError?: string
 }
 
-/** The remote surface this card calls. */
+/** The Remote surface this card calls. */
 interface ChatGptRemote {
   status(): Promise<StatusView>
   begin(): Promise<StatusView>
@@ -58,23 +70,60 @@ interface ChatGptRemote {
   signOut(subject?: string): Promise<SignOutOutcome>
 }
 
+/**
+ * The Remote namespace for this plugin, or `undefined` before the page knows it.
+ *
+ * Read on every call rather than captured when the bundle loads: the namespace is
+ * supplied by the connection, so a card that resolved it once would keep the empty
+ * answer it got at load for as long as the window lives.
+ *
+ * @param ctx - the browser plugin context.
+ * @returns the namespace, once it is usable.
+ */
+function remoteNow(ctx: ClientContext): ChatGptRemote | undefined {
+  const namespace = (ctx.remote as Record<string, ChatGptRemote | undefined>)[REMOTE_NS]
+  // An unknown key may still resolve to an object, so the shape is checked rather
+  // than the key's presence.
+  return typeof namespace?.status === 'function' ? namespace : undefined
+}
+
+/**
+ * Wait for the Remote namespace to arrive.
+ * @param ctx - the browser plugin context.
+ * @returns the namespace.
+ * @throws When it never arrives, naming the action that fixes it.
+ */
+async function waitForRemote(ctx: ClientContext): Promise<ChatGptRemote> {
+  const deadline = Date.now() + REMOTE_WAIT_MS
+  for (;;) {
+    const namespace = remoteNow(ctx)
+    if (namespace !== undefined) return namespace
+    if (Date.now() >= deadline) {
+      throw new Error('the ChatGPT service is not reachable from this window; reload the window and try again')
+    }
+    await new Promise(resolve => { setTimeout(resolve, REMOTE_POLL_MS) })
+  }
+}
+
 /** Services this plugin consumes from the page. */
 export const inject = ['slots', 'remote']
-
-/** The remote surface, looked up once per call so a re-mounted page still works. */
-function remoteOf(ctx: ClientContext): ChatGptRemote {
-  return ctx.remote[REMOTE_NS] as ChatGptRemote
-}
 
 /**
  * Register the card.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
-  const remote = remoteOf(ctx)
+  // Nothing in the generated aggregate carries this plugin's namespace, so it is
+  // mounted here. The card waits for it to appear, which also covers the mount
+  // settling after the card's first render.
+  const mounting = ctx.remote.$mount(remoteContribution())
+  mounting.catch((error: unknown) => {
+    console.error('[chatgpt] mounting the sign-in Remote namespace failed:', error)
+  })
+
   ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register(
     { name: 'settings.models.provider-card', key: SETTINGS_NS },
-    () => <ChatGptCard remote={remote} />,
+    () => <ChatGptCard ctx={ctx} />,
   ))
 }
 
@@ -90,9 +139,9 @@ function Fact({ label, children }: { label: string, children: React.ReactNode })
 
 /**
  * The card itself.
- * @param props.remote - the host's sign-in surface.
+ * @param props.ctx - the browser plugin context carrying the Remote namespace.
  */
-export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
+export function ChatGptCard({ ctx }: { ctx: ClientContext }) {
   const [status, setStatus] = useState<StatusView | undefined>(undefined)
   const [pasted, setPasted] = useState('')
   const [busy, setBusy] = useState(false)
@@ -102,6 +151,7 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
 
   const refresh = useCallback(async () => {
     try {
+      const remote = await waitForRemote(ctx)
       setStatus(await remote.status())
     } catch (error) {
       setStatus({
@@ -111,11 +161,11 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
         error: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [remote])
+  }, [ctx])
 
   useEffect(() => { void refresh() }, [refresh])
 
-  // A browser callback lands on the host with no way to tell this page. While an
+  // A browser callback lands on the Host with no way to tell this page. While an
   // attempt is open the card asks again on a slow interval, which is cheap and
   // stops the moment the attempt settles either way.
   useEffect(() => {
@@ -124,10 +174,11 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
     return () => { clearInterval(timer) }
   }, [status?.pending, refresh])
 
-  const act = useCallback(async (operation: () => Promise<StatusView>) => {
+  const act = useCallback(async (operation: (remote: ChatGptRemote) => Promise<StatusView>) => {
     setBusy(true)
     try {
-      setStatus(await operation())
+      const remote = await waitForRemote(ctx)
+      setStatus(await operation(remote))
     } catch (error) {
       setStatus(previous => ({
         signedIn: false,
@@ -139,10 +190,14 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
     } finally {
       setBusy(false)
     }
-  }, [])
+  }, [ctx])
 
   if (status === undefined) {
-    return <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-secondary, #888)' }}>Checking account…</div>
+    return (
+      <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-secondary, #888)' }}>
+        Contacting the ChatGPT service…
+      </div>
+    )
   }
 
   const pending = status.pending
@@ -186,13 +241,13 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
               size="sm"
               disabled={busy}
               onClick={() => {
-                void act(async () => {
+                void act(async (remote) => {
                   const outcome = await remote.signOut()
                   // Signing out here is not the same as ending the grant at the
                   // server, and only one of those happened if this is set.
                   setRevocationNote(outcome.revocationConfirmed
                     ? undefined
-                    : `Signed out on this machine, but the server did not confirm the revocation`
+                    : 'Signed out on this machine, but the server did not confirm the revocation'
                       + `${outcome.revocationError === undefined ? '' : ` (${outcome.revocationError})`}.`
                       + ' Disconnect the app in ChatGPT settings to be sure.')
                   return outcome.status
@@ -210,7 +265,7 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
             installation to spend your plan on model calls; the token stays on this machine.
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <Button variant="primary" disabled={busy} onClick={() => { void act(() => remote.begin()) }}>
+            <Button variant="primary" disabled={busy} onClick={() => { void act(remote => remote.begin()) }}>
               Sign in with ChatGPT
             </Button>
           </div>
@@ -262,7 +317,7 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
               variant="outline"
               disabled={busy || pasted.trim().length === 0}
               onClick={() => {
-                void act(async () => {
+                void act(async (remote) => {
                   const next = await remote.submit(pasted.trim())
                   setPasted('')
                   return next
@@ -271,7 +326,7 @@ export function ChatGptCard({ remote }: { remote: ChatGptRemote }) {
             >
               Finish
             </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => { void act(() => remote.cancel()) }}>
+            <Button variant="ghost" disabled={busy} onClick={() => { void act(remote => remote.cancel()) }}>
               Cancel
             </Button>
           </div>
