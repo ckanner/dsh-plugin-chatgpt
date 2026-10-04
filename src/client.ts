@@ -122,10 +122,35 @@ export async function listModels(
     if (typeof slug !== 'string' || slug.length === 0) continue
     const displayName = record['display_name']
     const visibility = record['visibility']
+    const description = record['description']
     models.push({
       slug,
       ...typeof displayName === 'string' ? { displayName } : {},
       ...typeof visibility === 'string' ? { visibility } : {},
+      ...typeof description === 'string' ? { description } : {},
+      // The endpoint describes its own models far past the slug and display name
+      // the published documentation mentions: capacities, reasoning levels, and
+      // modalities all arrive here. Carrying them through is what keeps a model
+      // this account can actually call from being described by a guess.
+      ...typeof record['context_window'] === 'number' ? { contextWindow: record['context_window'] } : {},
+      ...typeof record['max_context_window'] === 'number' ? { maxContextWindow: record['max_context_window'] } : {},
+      ...Array.isArray(record['input_modalities'])
+        ? { inputModalities: record['input_modalities'].filter((value): value is string => typeof value === 'string') }
+        : {},
+      ...typeof record['default_reasoning_level'] === 'string'
+        ? { defaultReasoningLevel: record['default_reasoning_level'] }
+        : {},
+      ...Array.isArray(record['supported_reasoning_levels'])
+        ? {
+            reasoningLevels: record['supported_reasoning_levels'].flatMap((level) => {
+              if (typeof level !== 'object' || level === null) return []
+              const effort = (level as Record<string, unknown>)['effort']
+              if (typeof effort !== 'string') return []
+              const detail = (level as Record<string, unknown>)['description']
+              return [{ effort, ...typeof detail === 'string' ? { description: detail } : {} }]
+            }),
+          }
+        : {},
     })
   }
   return models

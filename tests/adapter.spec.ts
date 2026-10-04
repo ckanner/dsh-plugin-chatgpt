@@ -266,25 +266,37 @@ describe('ChatGptAdapter', () => {
     assert.deepEqual(chunks.map(chunk => chunk.type), ['block-start', 'text-delta', 'block-end'])
   })
 
-  it('refuses a model the account does not offer, instead of being silently downgraded', async () => {
-    // The endpoint accepted a model this account could not list and answered
-    // anyway, so a request can be served by a different model than the one asked
-    // for. Recording that as the asked-for model would be a quiet lie.
+  it('sends a model absent from the listing, because the listing is a roster and not an allowlist', async () => {
+    // Measured against a real subscription: asking the endpoint for a model the
+    // listing did not advertise was answered under the requested id, with
+    // `response.completed`. Refusing on roster membership would therefore refuse
+    // models the account can really call, so the roster only decides what the
+    // selector offers.
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
+      frames: [frame({ type: 'response.output_text.delta', delta: 'ok' }), frame({ type: 'response.completed' })],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const kinds: string[] = []
+
+    for await (const chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'gpt-6.1-sol',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    })) kinds.push(chunk.type)
+
+    assert.deepEqual(kinds, ['block-start', 'text-delta', 'block-end', 'finish'])
+    // It reached the endpoint with the requested id.
+    assert.match(endpointUrl.paths.filter(path => path.startsWith('/responses')).length.toString(), /^[1-9]/)
+  })
+
+  it('still offers only the roster in the catalog the selector reads', async () => {
     const endpointUrl = await endpoint({
       listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
     })
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
-    await assert.rejects(
-      (async () => {
-        for await (const _chunk of adapter.stream('chatgpt', {
-          provider: 'chatgpt',
-          model: 'gpt-6.1-sol',
-          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
-        })) { /* drain */ }
-      })(),
-      /does not offer "gpt-6.1-sol".*gpt-6-astra/s,
-    )
+    assert.deepEqual((await adapter.listModels()).map(model => model.id), ['gpt-6-astra'])
   })
 
   it('serves a model the account does offer', async () => {

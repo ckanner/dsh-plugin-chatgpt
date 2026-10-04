@@ -20,7 +20,14 @@
 
 import catalog from './catalog.json' with { type: 'json' }
 
-/** One model entry as the account's listing describes it. */
+/**
+ * One model entry as the account's listing describes it.
+ *
+ * The endpoint returns far more than the published documentation suggests — it
+ * describes capacities, reasoning levels, and modalities itself. Those fields
+ * are optional here because a listing from another implementation of the same
+ * shape may omit them, not because this endpoint does.
+ */
 export interface ListedModel {
   /** The value to pass as `model` on a request. */
   slug: string
@@ -28,6 +35,18 @@ export interface ListedModel {
   displayName?: string
   /** The server's `visibility` field; only `list` is meant for display. */
   visibility?: string
+  /** One-line description from the endpoint. */
+  description?: string
+  /** Context capacity the endpoint reports for this model. */
+  contextWindow?: number
+  /** The largest context the model can be extended to, when it says. */
+  maxContextWindow?: number
+  /** Accepted request modalities. */
+  inputModalities?: readonly string[]
+  /** The effort a request that names none is given. */
+  defaultReasoningLevel?: string
+  /** The reasoning efforts the model accepts, in the endpoint's order. */
+  reasoningLevels?: readonly { effort: string, description?: string }[]
 }
 
 /** A model the adapter can serve, with everything the harness needs to offer it. */
@@ -35,14 +54,19 @@ export interface DescribedModel {
   id: string
   name: string
   contextWindow: number
+  /** The largest context the model can be extended to, when the endpoint says. */
+  maxContextWindow?: number
+  /** Output cap, known only from the bundled catalog. */
   maxTokens?: number
+  /** One-line description from the endpoint. */
+  description?: string
   input: readonly ('text' | 'image')[]
   /** Selectable reasoning efforts, adapter-preferred order; absent when the model does not reason. */
   reasoningEfforts?: readonly { id: string, name: string }[]
   /** The effort a request omits an explicit choice for. */
   defaultReasoningEffort?: string
-  /** Whether capacities came from the catalog or from the fallback. */
-  metadataSource: 'catalog' | 'fallback'
+  /** Where this description came from: the endpoint itself, the bundled catalog, or a conservative default. */
+  metadataSource: 'endpoint' | 'catalog' | 'fallback'
 }
 
 /** One catalog entry. */
@@ -72,25 +96,53 @@ const FALLBACK = {
 
 /**
  * How a reasoning effort is spelled for a human.
- *
- * The wire value is what a request carries; this is only the label, so a map
- * missing an entry still produces a usable selector entry rather than a blank.
- */
+
+/** How a reasoning effort is spelled for a human. */
 const EFFORT_LABELS: Record<string, string> = {
   off: 'Off',
+  none: 'Off',
   minimal: 'Minimal',
   low: 'Low',
   medium: 'Medium',
   high: 'High',
   xhigh: 'Extra high',
   max: 'Max',
+  ultra: 'Ultra',
 }
 
-/** The escalation order efforts are offered in, matching the harness's own. */
-const EFFORT_ORDER = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+/** The escalation order efforts are offered in when nothing else orders them. */
+const EFFORT_ORDER = ['off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
 
-/** Read one model's reasoning efforts from its catalog entry. */
-function effortsOf(entry: CatalogEntry | undefined): { id: string, name: string }[] {
+/** Label one effort, falling back to its own wire spelling. */
+function labelOf(effort: string): string {
+  return EFFORT_LABELS[effort] ?? effort
+}
+
+/** Order efforts by the canonical escalation, keeping any unknown ones at the end. */
+function ordered(efforts: readonly { id: string, name: string, description?: string }[]) {
+  const rank = (id: string): number => {
+    const at = EFFORT_ORDER.indexOf(id as typeof EFFORT_ORDER[number])
+    return at === -1 ? EFFORT_ORDER.length : at
+  }
+  return [...efforts].sort((left, right) => rank(left.id) - rank(right.id))
+}
+
+/**
+ * The reasoning efforts a model accepts.
+ *
+ * The endpoint's own answer wins: it describes the models it lists, so its level
+ * list is authoritative and its per-level text is better than a label this
+ * plugin could invent. The bundled catalog answers only for a model the endpoint
+ * did not list, which is the case the catalog exists for.
+ */
+function effortsOf(listed: ListedModel, entry: CatalogEntry | undefined) {
+  if (listed.reasoningLevels !== undefined && listed.reasoningLevels.length > 0) {
+    return ordered(listed.reasoningLevels.map(level => ({
+      id: level.effort,
+      name: labelOf(level.effort),
+      ...level.description === undefined ? {} : { description: level.description },
+    })))
+  }
   if (entry === undefined || !entry.reasoning) return []
   const map = entry.thinkingLevelMap
   if (map === undefined) return []
@@ -100,23 +152,28 @@ function effortsOf(entry: CatalogEntry | undefined): { id: string, name: string 
     // to a string is carried on the wire under that spelling.
     const wire = map[level]
     if (wire === null || wire === undefined) continue
-    efforts.push({ id: wire, name: EFFORT_LABELS[level] ?? level })
+    efforts.push({ id: wire, name: labelOf(level) })
   }
   return efforts
 }
 
-/** The effort used when a request names none: the provider's own default ordering. */
-function defaultEffortOf(efforts: readonly { id: string, name: string }[]): string | undefined {
-  // `medium` is the documented default for the reasoning models that accept it;
-  // otherwise the middle of what the model does accept.
+/** The effort used when a request names none. */
+function defaultEffortOf(
+  listed: ListedModel,
+  efforts: readonly { id: string, name: string }[],
+): string | undefined {
+  if (listed.defaultReasoningLevel !== undefined
+    && efforts.some(effort => effort.id === listed.defaultReasoningLevel)) {
+    return listed.defaultReasoningLevel
+  }
   const medium = efforts.find(effort => effort.id === 'medium')
   if (medium !== undefined) return medium.id
   return efforts[Math.floor(efforts.length / 2)]?.id
 }
 
-/** Read one model's accepted input modalities. */
-function inputOf(entry: CatalogEntry | undefined): ('text' | 'image')[] {
-  const declared = entry?.input
+/** The modalities a model accepts, preferring what the endpoint declared. */
+function inputOf(listed: ListedModel, entry: CatalogEntry | undefined): ('text' | 'image')[] {
+  const declared = listed.inputModalities ?? entry?.input
   if (declared === undefined || declared.length === 0) return [...FALLBACK.input]
   const kept = declared.filter((value): value is 'text' | 'image' => value === 'text' || value === 'image')
   return kept.length === 0 ? [...FALLBACK.input] : kept
@@ -125,22 +182,39 @@ function inputOf(entry: CatalogEntry | undefined): ('text' | 'image')[] {
 /**
  * Describe one listed model.
  *
+ * Metadata comes from the endpoint that listed it whenever the endpoint supplied
+ * it, and from the bundled catalog otherwise. The catalog is a fallback, not the
+ * primary source: treating it as primary would let a stale snapshot override the
+ * live description of a model the account is actually entitled to.
+ *
  * @param listed - what the account's listing reported.
  * @returns everything the harness needs to offer and call the model.
  */
 export function describeModel(listed: ListedModel): DescribedModel {
   const entry = CATALOG[listed.slug]
-  const efforts = effortsOf(entry)
-  const defaultEffort = defaultEffortOf(efforts)
+  // Whether the listing itself described this model, rather than only naming it.
+  const describedByEndpoint = listed.contextWindow !== undefined
+    || (listed.reasoningLevels !== undefined && listed.reasoningLevels.length > 0)
+    || listed.inputModalities !== undefined
+  const efforts = effortsOf(listed, entry)
+  const defaultEffort = defaultEffortOf(listed, efforts)
+  const contextWindow = listed.contextWindow ?? entry?.contextWindow ?? FALLBACK.contextWindow
+  const maxTokens = entry?.maxTokens
   return {
     id: listed.slug,
     name: listed.displayName ?? entry?.name ?? listed.slug,
-    contextWindow: entry?.contextWindow ?? FALLBACK.contextWindow,
-    ...entry?.maxTokens === undefined ? {} : { maxTokens: entry.maxTokens },
-    input: inputOf(entry),
+    contextWindow,
+    ...listed.maxContextWindow === undefined ? {} : { maxContextWindow: listed.maxContextWindow },
+    ...maxTokens === undefined ? {} : { maxTokens },
+    ...listed.description === undefined ? {} : { description: listed.description },
+    input: inputOf(listed, entry),
     ...efforts.length === 0 ? {} : { reasoningEfforts: efforts },
     ...defaultEffort === undefined ? {} : { defaultReasoningEffort: defaultEffort },
-    metadataSource: entry === undefined ? 'fallback' : 'catalog',
+    // Where the description comes from, named honestly: the endpoint described it,
+    // the bundled catalog did, or neither could and a conservative default stands
+    // in. A catalog entry that merely happens to exist does not make this an
+    // endpoint description.
+    metadataSource: describedByEndpoint ? 'endpoint' : entry === undefined ? 'fallback' : 'catalog',
   }
 }
 

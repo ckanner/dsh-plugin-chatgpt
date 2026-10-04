@@ -252,10 +252,20 @@ export class ChatGptAdapter {
   }
 
   /**
-   * The models this account may use, in the server's order.
+   * The models this account advertises, in the server's order.
    *
-   * An account that is not signed in has none, which is an empty catalog rather
-   * than a failure: the route exists and is waiting for a sign-in.
+   * This is a *roster for display*, not an allowlist. The endpoint lists what it
+   * wants a picker to show, and it serves models that are absent from that list:
+   * asked directly, it answers under the requested id and reports having done so.
+   * Gating a call on membership here would refuse models the account can really
+   * use — a mistake this plugin made once and should not make again.
+   *
+   * What the harness offers is therefore the roster; what a call may reach is
+   * whatever the endpoint accepts, and its own error is the answer for a model
+   * that does not exist.
+   *
+   * An account that is not signed in has no roster, which is an empty catalog
+   * rather than a failure: the route exists and is waiting for a sign-in.
    *
    * @returns the describable models.
    */
@@ -305,38 +315,6 @@ export class ChatGptAdapter {
   }
 
   /**
-   * Refuse a model the account's own listing does not offer.
-   *
-   * The listing is the authority on entitlement, and asking for something else
-   * does not fail loudly: the endpoint accepted a model this account could not
-   * list and answered anyway, which means a request can be served by a different
-   * model than the one that was asked for. A silent substitution is worse than a
-   * refusal, because the transcript then records an answer as coming from a model
-   * that never produced it.
-   *
-   * The check is deliberately skipped when the listing is unavailable — a
-   * transport failure must not also fail every call — so it refuses only what the
-   * account has positively told us it does not have.
-   *
-   * @param model - the model the caller asked for.
-   * @throws {CodedError} code `chatgpt_model_not_available`.
-   */
-  private async assertServable(model: string): Promise<void> {
-    let available: readonly DescribedModel[]
-    try {
-      available = await this.listModels()
-    } catch {
-      return
-    }
-    if (available.length === 0) return
-    if (available.some(entry => entry.id === model)) return
-    throw coded(
-      `the signed-in ChatGPT account does not offer "${model}"; it offers ${available.map(entry => entry.id).join(', ')}`,
-      'chatgpt_model_not_available',
-    )
-  }
-
-  /**
    * Stream one turn.
    *
    * A credential that cannot be refreshed is reported as an authentication
@@ -358,8 +336,6 @@ export class ChatGptAdapter {
         'chatgpt_not_signed_in',
       )
     }
-
-    await this.assertServable(request.model)
 
     const translator = new BlockTranslator()
     const events = streamTurn({

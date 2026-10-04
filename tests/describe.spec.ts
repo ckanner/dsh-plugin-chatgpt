@@ -80,9 +80,75 @@ describe('describableModels', () => {
     assert.deepEqual(describableModels([{ slug: '' }, { slug: 'gpt-6.1-sol' }]).map(m => m.id), ['gpt-6.1-sol'])
   })
 
-  it('describes every model it returns', () => {
+  it('describes every model it returns, naming where the description came from', () => {
     const models = describableModels([{ slug: 'gpt-6.1-sol' }, { slug: 'never-heard-of-it' }])
 
     assert.deepEqual(models.map(model => model.metadataSource), ['catalog', 'fallback'])
+  })
+
+  it('prefers the endpoint\'s own description over the bundled catalog', () => {
+    // The endpoint describes the models it lists — capacities, reasoning levels,
+    // and modalities all arrive with the listing. A stale snapshot must not
+    // override the live description of a model this account is entitled to.
+    const model = describeModel({
+      slug: 'gpt-6.1-sol',
+      displayName: 'From the endpoint',
+      contextWindow: 400000,
+      maxContextWindow: 900000,
+      inputModalities: ['text'],
+      defaultReasoningLevel: 'high',
+      reasoningLevels: [
+        { effort: 'high', description: 'Deep' },
+        { effort: 'low', description: 'Quick' },
+      ],
+      description: 'Frontier model.',
+    })
+
+    assert.equal(model.metadataSource, 'endpoint')
+    assert.equal(model.name, 'From the endpoint')
+    assert.equal(model.contextWindow, 400000)
+    assert.equal(model.maxContextWindow, 900000)
+    assert.equal(model.description, 'Frontier model.')
+    assert.deepEqual(model.input, ['text'])
+    // The endpoint's order is not trusted for display: efforts are offered in
+    // escalation order, and its per-level text is kept.
+    assert.deepEqual(model.reasoningEfforts, [
+      { id: 'low', name: 'Low', description: 'Quick' },
+      { id: 'high', name: 'High', description: 'Deep' },
+    ])
+    assert.equal(model.defaultReasoningEffort, 'high')
+  })
+
+  it('falls back to the catalog for a model the endpoint did not describe', () => {
+    // A listing that carries only the slug is still answerable: the catalog
+    // describes the model, which is the reason it is bundled.
+    const model = describeModel({ slug: 'gpt-6.1-sol' })
+
+    assert.equal(model.metadataSource, 'catalog')
+    assert.ok(model.contextWindow >= 200000)
+    assert.ok((model.reasoningEfforts ?? []).length > 0)
+  })
+
+  it('ignores an endpoint default effort the model does not accept', () => {
+    const model = describeModel({
+      slug: 'x',
+      contextWindow: 1000,
+      defaultReasoningLevel: 'ultra',
+      reasoningLevels: [{ effort: 'low' }, { effort: 'high' }],
+    })
+
+    // Never offer a default the level list contradicts.
+    assert.equal(model.defaultReasoningEffort, 'high')
+  })
+
+  it('offers a new effort spelling the bundled catalog has never seen', () => {
+    const model = describeModel({
+      slug: 'future-model',
+      contextWindow: 1000,
+      reasoningLevels: [{ effort: 'ultra', description: 'Deepest' }],
+    })
+
+    assert.deepEqual(model.reasoningEfforts, [{ id: 'ultra', name: 'Ultra', description: 'Deepest' }])
+    assert.equal(model.metadataSource, 'endpoint')
   })
 })
