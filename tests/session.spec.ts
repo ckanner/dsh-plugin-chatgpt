@@ -142,9 +142,14 @@ describe('ChatGptSession', () => {
     tokenServers.push(token.close)
     const { session, announced } = await sessionWith(token, 'http://127.0.0.1:9/revoke')
 
-    await session.signOut()
+    // No argument is what the card sends for "whichever account is active", so the
+    // outcome is part of the contract and not just the announcement: the account
+    // has to be gone afterwards.
+    const outcome = await session.signOut()
 
     assert.equal(announced(), 1)
+    assert.equal(outcome.status.signedIn, false)
+    assert.deepEqual(outcome.status.accounts, [])
   })
 
   it('reports how many models the account can serve', async () => {
