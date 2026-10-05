@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-chatgpt",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sign in with ChatGPT inside DeepSeek Harness, and use your ChatGPT subscription to serve models.",
   "keywords": [
     "dsh-plugin",
@@ -38,9 +38,7 @@
     }
   },
   "files": [
-    "lib/index.js",
-    "lib/client.js",
-    "lib/types/**/*.d.ts",
+    "lib",
     "cordis.patch.yml",
     "locale",
     "screenshots.json",
@@ -68,7 +66,8 @@
     "prepare": "npm run build",
     "check:i18n": "node scripts/align-readme-i18n.mjs --check",
     "build:client": "node scripts/build-client.mjs",
-    "verify:client": "node scripts/verify-client-bundle.mjs"
+    "verify:client": "node scripts/verify-client-bundle.mjs",
+    "verify:package": "node scripts/verify-package-contents.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",

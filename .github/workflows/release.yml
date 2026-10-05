@@ -47,6 +47,8 @@ jobs:
         run: npm run typecheck
       - name: Browser bundle honours the loader contract
         run: npm run verify:client
+      - name: Published package would load
+        run: npm run verify:package
       - name: README pair is aligned
         run: npm run check:i18n
 
