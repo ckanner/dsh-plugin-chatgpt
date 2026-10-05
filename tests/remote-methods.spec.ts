@@ -37,8 +37,14 @@ function declaredMethods(): DeclaredMethod[] {
       .split(',')
       .map(part => part.trim())
       .filter(part => part.length > 0)
-      .map(part => part.split(/[?:=]/, 1)[0]?.trim() ?? '')
-      .filter(name => name.length > 0)
+      .map(part => ({
+        wire: part.split(/[?:=]/, 1)[0]?.trim() ?? '',
+        // A `?` before the type marker is what makes the argument optional, and the
+        // descriptor has to agree: the Gateway counts arguments exactly, so a
+        // required wire name for an optional parameter rejects every call that omits it.
+        optional: part.includes('?'),
+      }))
+      .filter(parameter => parameter.wire.length > 0)
     found.push({ method, parameters })
   }
   return found
@@ -51,7 +57,10 @@ describe('the client Remote table', () => {
     assert.ok(declared.length > 0, 'the controller must declare at least one Remote method')
     assert.deepEqual(
       declared,
-      REMOTE_METHODS.map(({ method, parameters }) => ({ method, parameters: [...parameters] })),
+      REMOTE_METHODS.map(({ method, parameters }) => ({
+        method,
+        parameters: parameters.map(({ wire, optional }) => ({ wire, optional: optional === true })),
+      })),
       'the mounted descriptors must match the Host surface exactly, arguments included',
     )
   })
@@ -71,9 +80,17 @@ describe('the client Remote table', () => {
       assert.equal(descriptor.namespace, REMOTE_NAMESPACE)
       assert.equal(descriptor.service, REMOTE_SERVICE_KEY)
       assert.equal(descriptor.invocation.kind, 'direct')
+      const declared = REMOTE_METHODS.find(entry => entry.method === descriptor.method)?.parameters ?? []
       assert.deepEqual(
         descriptor.parameters.map(parameter => parameter.wire),
-        REMOTE_METHODS.find(entry => entry.method === descriptor.method)?.parameters,
+        declared.map(({ wire }) => wire),
+      )
+      // The Gateway counts arguments exactly, so a parameter the Host declares
+      // optional must say so here; declaring it required rejects every call that
+      // omits it with "expected 1 argument(s), got 0".
+      assert.deepEqual(
+        descriptor.parameters.map(parameter => parameter.acceptsUndefined === true),
+        declared.map(({ optional }) => optional === true),
       )
     }
   })

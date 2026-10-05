@@ -61,6 +61,8 @@ interface RemoteDescriptor {
     wire: string
     source: 'json'
     codec: { mode: 'strict', typeSymbol: string, create: () => unknown }
+    /** Present when the Host declares the argument optional. */
+    acceptsUndefined?: true
   }[]
   /**
    * `src-json` rather than `strict`: the registry exempts it from the type symbol
@@ -90,11 +92,12 @@ export function remoteContribution(): RemoteContribution {
       namespace: REMOTE_NAMESPACE,
       method,
       invocation: { kind: 'direct' as const },
-      parameters: parameters.map(wire => ({
+      parameters: parameters.map(({ wire, optional }) => ({
         name: wire,
         wire,
         source: 'json' as const,
         codec: parameterCodec(`${PACKAGE}#${REMOTE_NAMESPACE}/${method}:${wire}`),
+        ...optional === true ? { acceptsUndefined: true as const } : {},
       })),
       result: RESULT_CODEC,
       // Pointed at the declaration the descriptor mirrors, so a diagnostic from the

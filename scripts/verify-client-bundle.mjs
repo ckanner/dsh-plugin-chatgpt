@@ -167,6 +167,16 @@ assert.ok(
   !/\.remote\s*\[?\s*(?:REMOTE_NS|'chatgpt'|"chatgpt")/.test(body),
   'the bundle must not read the namespace through the ctx.remote accessor',
 )
+
+// The built bundle carries the same argument metadata as the source, because the
+// Gateway counts arguments exactly: a parameter the Host declares optional has to
+// say so here, or every call that omits it is rejected before it is sent.
+const signOut = mounted[0]?.descriptors.find(descriptor => descriptor.method === 'signOut')
+assert.ok(signOut !== undefined, 'the contribution must describe signOut')
+assert.deepEqual(
+  signOut.parameters.map(parameter => [parameter.wire, parameter.acceptsUndefined === true]),
+  [['subject', true]],
+)
 console.log(
   `client bundle verified: ${registration.id} registers ${registered[0].name}:${registered[0].entries[0].key}`
   + ` and mounts ${String(mounted[0].descriptors.length)} Remote methods`,

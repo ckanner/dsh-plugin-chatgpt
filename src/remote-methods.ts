@@ -17,17 +17,27 @@
  * @module dsh-plugin-chatgpt/remote-methods
  */
 
+/** One argument of a Remote method. */
+export interface RemoteParameter {
+  /** Wire name, which the Gateway builds the call from. */
+  wire: string
+  /**
+   * Whether the Host declares this argument optional.
+   *
+   * The Gateway counts arguments exactly, so an optional argument is still sent —
+   * as an explicit `undefined` — and the descriptor says so with `acceptsUndefined`.
+   * Declaring it required instead makes every call that omits it fail with
+   * "expected 1 argument(s), got 0".
+   */
+  optional?: boolean
+}
+
 /** One method the Host exposes, with the wire name of each argument. */
 export interface RemoteMethod {
   /** Method name on the controller. */
   method: string
-  /**
-   * Argument wire names, in call order.
-   *
-   * The Gateway builds a call from the declared names, so each one has to match
-   * the parameter it carries on the Host side.
-   */
-  parameters: readonly string[]
+  /** Arguments, in call order. */
+  parameters: readonly RemoteParameter[]
 }
 
 /**
@@ -40,9 +50,9 @@ export interface RemoteMethod {
 export const REMOTE_METHODS: readonly RemoteMethod[] = [
   { method: 'status', parameters: [] },
   { method: 'begin', parameters: [] },
-  { method: 'submit', parameters: ['value'] },
+  { method: 'submit', parameters: [{ wire: 'value' }] },
   { method: 'cancel', parameters: [] },
-  { method: 'signOut', parameters: ['subject'] },
+  { method: 'signOut', parameters: [{ wire: 'subject', optional: true }] },
 ]
 
 /** The Cordis service key the controller registers, and the descriptor's service field. */

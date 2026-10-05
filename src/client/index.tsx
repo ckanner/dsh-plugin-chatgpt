@@ -67,7 +67,14 @@ interface ChatGptRemote {
   begin(): Promise<RemoteResult<StatusView>>
   submit(value: string): Promise<RemoteResult<StatusView>>
   cancel(): Promise<RemoteResult<StatusView>>
-  signOut(subject?: string): Promise<RemoteResult<SignOutOutcome>>
+  /**
+   * End one account's session, or the active one when given `undefined`.
+   *
+   * The argument is required so it cannot be omitted at a call site: the Gateway
+   * compares the argument count exactly, and `signOut()` fails before it leaves the
+   * page with "expected 1 argument(s), got 0".
+   */
+  signOut(subject: string | undefined): Promise<RemoteResult<SignOutOutcome>>
 }
 
 
@@ -238,6 +245,10 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
   }
 
   const pending = status.pending
+  // The Gateway counts arguments exactly, and `signOut` takes one. Passing it
+  // explicitly — `undefined` meaning whichever account is active — is what the
+  // declared descriptor expects; omitting it fails before the call leaves the page.
+  const activeSubject = status.accounts.find(entry => entry.active)?.subject
   const state = status.signedIn
     ? { tone: 'success' as const, text: 'Signed in' }
     : status.planUsageDenied
@@ -261,7 +272,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
 
       {status.signedIn || status.planUsageDenied ? (
         <>
-          <Fact label="Account">{status.email ?? status.accounts.find(entry => entry.active)?.subject ?? 'unknown'}</Fact>
+          <Fact label="Account">{status.email ?? activeSubject ?? 'unknown'}</Fact>
           <Fact label="Models">
             {status.planUsageDenied
               ? 'Authorize plan usage to use this account'
@@ -279,7 +290,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
               disabled={busy}
               onClick={() => {
                 void act(async (remote) => {
-                  const result = await remote.signOut()
+                  const result = await remote.signOut(activeSubject)
                   if (!result.ok) return result
                   const outcome = result.value
                   // Signing out here is not the same as ending the grant at the
