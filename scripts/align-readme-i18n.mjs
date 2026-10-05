@@ -35,6 +35,10 @@ const LINE_TRANSLATIONS = {
     "description: \"在 DeepSeek Harness 里用 ChatGPT 账号登录，用 ChatGPT 订阅而不是 API key 来调用模型。\"",
   "English | [中文](README.zh.md)":
     "[English](README.md) | 中文",
+  "![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)":
+    "![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)",
+  "![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)":
+    "![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":
     "为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。",
   "- [Use this package](#use-this-package)":
@@ -55,22 +59,34 @@ const LINE_TRANSLATIONS = {
     "## 使用本包",
   "### Install into a profile":
     "### 安装到 profile",
-  "The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and its row is inserted into the composition. Verify the layer without booting:":
+  "The whole install is one line:":
+    "安装就是一行：",
+  "Restart the harness afterwards: a profile is composed at startup. Removing it:":
+    "装完重启 harness：profile 在启动时组合。卸载：",
+  "Until the first npm release the name resolves nothing, so install the prebuilt tarball instead — it needs no build step either:":
+    "在首次 npm 发布之前该包名解析不到任何东西，因此请改装预构建的 tarball——它同样无需构建步骤：",
+  "Installing from the repository URL builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted, so `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`. Either approve `dsh-plugin-chatgpt` under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml` and add it again, or install the tarball above.":
+    "从仓库地址安装会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖，因此 `add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败。要么在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies` 后重新添加，要么直接装上面的 tarball。",
+  "The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and inserts its row into the composition. Verify the layer without booting:":
     "本包声明了 `dsh.bundle`，因此添加它会把该 bundle 追加到 profile 的 `dsh.profile.bundles`，并把它的行插入到组合中。可以不启动就检查这一层：",
-  "A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead. Installing from a git source also fetches sources rather than build output, so use a published version or a tarball from `npm pack` unless you intend to build it yourself.":
-    "没有声明 `dsh.bundle` 的包不会激活任何层，`dsh plugin` 只会给出警告。从 git 源安装拿到的是源码而不是构建产物，因此除非你打算自己构建，否则请使用已发布的版本或 `npm pack` 生成的 tarball。",
+  "A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead.":
+    "没有声明 `dsh.bundle` 的包不会激活任何层，`dsh plugin` 只会给出警告。",
   "### Sign in":
     "### 登录",
-  "Sign-in is not yet reachable from the Web UI — see [Known Limitations](#known-limitations-and-deferred-work). Until the account card lands, drive the flow from Node, which is also the shape the UI will use:":
-    "登录目前还无法从 Web UI 触发——见[已知限制](#known-limitations-and-deferred-work)。在账号卡片落地之前，用 Node 驱动该流程；这也正是 UI 将来使用的形态：",
+  "Open **Settings → Models**. The plugin owns a **ChatGPT** row, and the card on that row offers **Sign in with ChatGPT**. The card shows the authorization URL and selects it for copying, accepts the final redirect URL pasted back when the browser cannot reach the loopback address, and afterwards reports the account — its plan, the token's next refresh, and how many models it offers — with a **Sign out** button. No token reaches the page.":
+    "打开**设置 → 模型**。本插件拥有一行 **ChatGPT**，该行的卡片提供 **Sign in with ChatGPT**。卡片会显示授权 URL 并支持选中复制；当浏览器无法访问回环地址时，可以粘贴最终的回调 URL；完成后卡片报告该账号——套餐、token 下次刷新时间、以及它提供多少个模型——并提供 **Sign out** 按钮。任何 token 都不会到达页面。",
+  "Signing out revokes the renewable session at the authorization server before clearing it locally, and says so when the server did not confirm.":
+    "退出登录会先在授权服务器撤销可再生会话，再清除本地凭据；若服务器未能确认，卡片会如实说明。",
+  "A headless harness drives the same session object with no browser at all:":
+    "无头 harness 不需要浏览器，可以直接驱动同一个会话对象：",
   "The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a malformed or mismatched value and leaves the attempt open, so a mistyped paste can be corrected.":
     "授权凭据以仅属主可读的权限存放在 `stateDir` 下。`attempt.submit()` 对格式错误或不匹配的值会拒绝，并让本次尝试保持存活，所以粘贴错了可以改正重试。",
   "## What you get":
     "## 你会得到什么",
   "One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.":
     "一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。",
-  "Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. The account card that will own sign-in on that page is not built yet.":
-    "模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。该页面上将来负责登录的账号卡片尚未实现。",
+  "Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. Sign-in lives on that row's card.":
+    "模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。登录就在那一行的卡片上。",
   "## Understand the implementation":
     "## 实现说明",
   "<summary>Implementation internals — click to expand</summary>":
@@ -95,10 +111,10 @@ const LINE_TRANSLATIONS = {
     "| `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |",
   "| `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |":
     "| `src/convert/blocks.ts` | 线上事件转 Harness 的编号内容块。 |",
-  "| `src/client.ts` | The two HTTP calls: list models, run one turn. |":
-    "| `src/client.ts` | 两次 HTTP 调用：列模型、跑一轮。 |",
-  "| `src/models/describe.ts` | Availability from the account, capacities from the bundled catalog. |":
-    "| `src/models/describe.ts` | 可用性来自账号，容量来自内置目录。 |",
+  "| `src/api/client.ts` | The two HTTP calls: list models, run one turn. |":
+    "| `src/api/client.ts` | 两次 HTTP 调用：列出模型、跑一轮。 |",
+  "| `src/models/describe.ts` | Availability and capacities, preferring what the account reports over the bundled catalog. |":
+    "| `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |",
   "| `src/adapter.ts` | The harness-facing half of the provider contract. |":
     "| `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |",
   "Two rules the code enforces rather than documents:":
@@ -137,8 +153,8 @@ const LINE_TRANSLATIONS = {
     "相互独立。每轮都是携带自身上下文的一次独立请求，而套餐额度路由不接受 `prompt_cache_retention` 或 `previous_response_id`，因此本插件既不构建也不保留可复用的前缀。",
   "## Known Limitations and Deferred Work":
     "## 已知限制与待办",
-  "- **No Web UI sign-in** — the account card on the Models page is not built, so a grant must be created through the Node flow above. Until it exists the provider route is registered but unusable from the browser.":
-    "- **尚无 Web UI 登录** — 模型设置页上的账号卡片尚未实现，因此授权凭据必须通过上面的 Node 流程创建。在它出现之前，provider 路由虽已注册，但无法从浏览器使用。",
+  "- **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.":
+    "- **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。",
   "- **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.":
     "- **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。",
   "- **The plan-usage route is in preview** — computer use, Code Interpreter, file search, hosted MCP, image generation, and `tool_search` are refused upstream regardless of what this plugin sends, and `multi_agent`, `temperature`, and `max_output_tokens` are among fifteen fields that must be omitted.":
@@ -161,16 +177,10 @@ const LINE_TRANSLATIONS = {
     "- **登录后会向浏览器通告新的模型清单** — 模型选择器会缓存宿主 catalog，只在宿主声明有变化时重载，因此在登录时把空清单填满的插件必须发布 `llm/adapters-updated`。否则模型确实在服务，却永远不会出现在选择器里——看起来就像 provider 坏了。账号卡片会报告该账号提供多少个模型，或说明清单为何读不到。",
   "- **The cache-hit readout is zero on this route, and that is the honest value** — the composer's percentage is `cacheReadTokens / billed input`, and the numerator comes only from what the endpoint reports in `input_tokens_details.cached_tokens`. This flow mandates `store: false` and refuses `prompt_cache_retention`, and the endpoint reports zero cached tokens even for a 10,814-token prompt sent three times unchanged in immediate succession — which is the best case a cache key could improve on. The rest of that readout (rate, totals, context share) is real.":
     "- **这条路由上缓存命中率就是 0，而这正是如实的值** — composer 的百分比是 `cacheReadTokens / 计费输入`，分子只来自端点返回的 `input_tokens_details.cached_tokens`。该流程强制 `store: false` 且拒收 `prompt_cache_retention`；而端点对一个 10,814 token 的提示词**连发三次且完全不变**，返回的缓存 token 仍是 0——这已经是缓存键能改善的最好情况了。该栏其余数字（速率、总量、上下文占比）都是真实的。",
-  "## Dev Note":
-    "## Dev Note",
   "`dev-types/` holds development-only declarations for the harness's LLM and Cordis seams, transcribed from the harness sources. They are not published and never shipped; the host supplies the real packages as peer dependencies. An end-to-end mount in a real harness remains the authoritative check.":
     "`dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。",
   "Regenerate the model catalog when the upstream catalog moves:":
     "当上游目录更新时，重新生成模型目录：",
-  "![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)":
-    "![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)",
-  "![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)":
-    "![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)",
 }
 
 /** Lines carried through unchanged: they hold no prose in either language. */

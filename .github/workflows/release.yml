@@ -1,0 +1,73 @@
+# Publishing is a release, not a side effect of a push.
+#
+# The point of this workflow is that `dsh plugin add dsh-plugin-chatgpt` works
+# without a trailing URL, and that only happens when the name resolves on the
+# registry. Two ways in, and the workflow does not care which one the maintainer
+# chose: a repository `NPM_TOKEN` secret, or npm trusted publishing, where npm
+# exchanges this run's OIDC identity for a short-lived credential and no
+# long-lived token exists to leak.
+#
+# Every check the CI lane runs has to pass here too, because an artifact that is
+# already on the registry cannot be unpublished into a fix.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Trusted publishing: npm accepts this run's OIDC identity in place of a token.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # Empty when the secret is absent, which is what selects the second step.
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 is the lowest the plugin supports, so the artifact is built
+          # and published by the oldest runtime it claims to work on.
+          node-version: '22.x'
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install --ignore-scripts
+
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Type check
+        run: npm run typecheck
+      - name: Browser bundle honours the loader contract
+        run: npm run verify:client
+      - name: README pair is aligned
+        run: npm run check:i18n
+
+      - name: Refuse a tag that does not match the manifest
+        # A publish is not undoable, and an npm version can never be reused, so a
+        # mistyped tag would burn the number permanently.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - name: Publish with the repository's npm token
+        if: env.NODE_AUTH_TOKEN != ''
+        run: npm publish --access public --provenance
+
+      - name: Publish through npm trusted publishing
+        # No secret: npm exchanges the id-token for a credential scoped to this
+        # workflow. Trusted publishing has to be configured for this repository on
+        # npmjs.com before the first run.
+        if: env.NODE_AUTH_TOKEN == ''
+        run: npm publish --access public --provenance

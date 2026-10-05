@@ -42,10 +42,16 @@
     "lib/client.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
-    "locale"
+    "locale",
+    "screenshots.json",
+    "assets"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "dsh": {
     "bundle": {

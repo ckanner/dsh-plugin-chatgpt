@@ -32,22 +32,41 @@ Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls fr
 
 ### Install into a profile
 
+The whole install is one line:
+
 ```text
 dsh plugin --profile <name> add dsh-plugin-chatgpt
+```
+
+Restart the harness afterwards: a profile is composed at startup. Removing it:
+
+```text
 dsh plugin --profile <name> remove dsh-plugin-chatgpt
 ```
 
-The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and its row is inserted into the composition. Verify the layer without booting:
+Until the first npm release the name resolves nothing, so install the prebuilt tarball instead — it needs no build step either:
+
+```text
+dsh plugin --profile <name> add https://github.com/ckanner/dsh-plugin-chatgpt/releases/latest/download/dsh-plugin-chatgpt.tgz
+```
+
+Installing from the repository URL builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted, so `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`. Either approve `dsh-plugin-chatgpt` under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml` and add it again, or install the tarball above.
+
+The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and inserts its row into the composition. Verify the layer without booting:
 
 ```text
 dsh --profile <name> --dump-config   # shows a "# == dsh-plugin-chatgpt" layer
 ```
 
-A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead. Installing from a git source also fetches sources rather than build output, so use a published version or a tarball from `npm pack` unless you intend to build it yourself.
+A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead.
 
 ### Sign in
 
-Sign-in is not yet reachable from the Web UI — see [Known Limitations](#known-limitations-and-deferred-work). Until the account card lands, drive the flow from Node, which is also the shape the UI will use:
+Open **Settings → Models**. The plugin owns a **ChatGPT** row, and the card on that row offers **Sign in with ChatGPT**. The card shows the authorization URL and selects it for copying, accepts the final redirect URL pasted back when the browser cannot reach the loopback address, and afterwards reports the account — its plan, the token's next refresh, and how many models it offers — with a **Sign out** button. No token reaches the page.
+
+Signing out revokes the renewable session at the authorization server before clearing it locally, and says so when the server did not confirm.
+
+A headless harness drives the same session object with no browser at all:
 
 ```js
 import { ChatGptAuth } from 'dsh-plugin-chatgpt/src/auth/manager.ts'
@@ -78,7 +97,7 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
-Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. The account card that will own sign-in on that page is not built yet.
+Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. Sign-in lives on that row's card.
 
 -----
 
@@ -99,8 +118,8 @@ Models, their capacities, and their reasoning levels all come from the account's
 | `src/api/events.ts` | Decoding the Responses event stream and its failure modes. |
 | `src/convert/request.ts` | Harness request to Responses body, including the fields the route refuses. |
 | `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |
-| `src/client.ts` | The two HTTP calls: list models, run one turn. |
-| `src/models/describe.ts` | Availability from the account, capacities from the bundled catalog. |
+| `src/api/client.ts` | The two HTTP calls: list models, run one turn. |
+| `src/models/describe.ts` | Availability and capacities, preferring what the account reports over the bundled catalog. |
 | `src/adapter.ts` | The harness-facing half of the provider contract. |
 
 Two rules the code enforces rather than documents:
@@ -143,7 +162,7 @@ Independent. Each turn is a separate request carrying its own context, and the p
 
 ## Known Limitations and Deferred Work
 
-- **No Web UI sign-in** — the account card on the Models page is not built, so a grant must be created through the Node flow above. Until it exists the provider route is registered but unusable from the browser.
+- **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.
 - **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.
 - **The plan-usage route is in preview** — computer use, Code Interpreter, file search, hosted MCP, image generation, and `tool_search` are refused upstream regardless of what this plugin sends, and `multi_agent`, `temperature`, and `max_output_tokens` are among fifteen fields that must be omitted.
 - **The roster mixes two sources with different authority** — the account's listing supplies advertised models with the endpoint's own metadata; the models this route measurably serves but the listing omits are added from `src/models/served.ts`, dated by when they were measured. A listing that changes under a stale measurement will show extras that no longer answer, and `includeUnlisted: false` narrows the roster to the account's own answer.
@@ -167,7 +186,7 @@ Independent. Each turn is a separate request carrying its own context, and the p
 ```text
 npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
-npm run build     # emits lib/ from src/, excluding the host-typed entry point
+npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 ```
 
 `dev-types/` holds development-only declarations for the harness's LLM and Cordis seams, transcribed from the harness sources. They are not published and never shipped; the host supplies the real packages as peer dependencies. An end-to-end mount in a real harness remains the authoritative check.

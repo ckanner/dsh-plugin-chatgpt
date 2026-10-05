@@ -32,10 +32,25 @@ kind: "package-bundle"
 
 ### 安装到 profile
 
+安装就是一行：
+
 ```text
 dsh plugin --profile <name> add dsh-plugin-chatgpt
+```
+
+装完重启 harness：profile 在启动时组合。卸载：
+
+```text
 dsh plugin --profile <name> remove dsh-plugin-chatgpt
 ```
+
+在首次 npm 发布之前该包名解析不到任何东西，因此请改装预构建的 tarball——它同样无需构建步骤：
+
+```text
+dsh plugin --profile <name> add https://github.com/ckanner/dsh-plugin-chatgpt/releases/latest/download/dsh-plugin-chatgpt.tgz
+```
+
+从仓库地址安装会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖，因此 `add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败。要么在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies` 后重新添加，要么直接装上面的 tarball。
 
 本包声明了 `dsh.bundle`，因此添加它会把该 bundle 追加到 profile 的 `dsh.profile.bundles`，并把它的行插入到组合中。可以不启动就检查这一层：
 
@@ -43,11 +58,15 @@ dsh plugin --profile <name> remove dsh-plugin-chatgpt
 dsh --profile <name> --dump-config   # shows a "# == dsh-plugin-chatgpt" layer
 ```
 
-没有声明 `dsh.bundle` 的包不会激活任何层，`dsh plugin` 只会给出警告。从 git 源安装拿到的是源码而不是构建产物，因此除非你打算自己构建，否则请使用已发布的版本或 `npm pack` 生成的 tarball。
+没有声明 `dsh.bundle` 的包不会激活任何层，`dsh plugin` 只会给出警告。
 
 ### 登录
 
-登录目前还无法从 Web UI 触发——见[已知限制](#known-limitations-and-deferred-work)。在账号卡片落地之前，用 Node 驱动该流程；这也正是 UI 将来使用的形态：
+打开**设置 → 模型**。本插件拥有一行 **ChatGPT**，该行的卡片提供 **Sign in with ChatGPT**。卡片会显示授权 URL 并支持选中复制；当浏览器无法访问回环地址时，可以粘贴最终的回调 URL；完成后卡片报告该账号——套餐、token 下次刷新时间、以及它提供多少个模型——并提供 **Sign out** 按钮。任何 token 都不会到达页面。
+
+退出登录会先在授权服务器撤销可再生会话，再清除本地凭据；若服务器未能确认，卡片会如实说明。
+
+无头 harness 不需要浏览器，可以直接驱动同一个会话对象：
 
 ```js
 import { ChatGptAuth } from 'dsh-plugin-chatgpt/src/auth/manager.ts'
@@ -78,7 +97,7 @@ auth.adopt(credential)
 
 一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。
 
-模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。该页面上将来负责登录的账号卡片尚未实现。
+模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。登录就在那一行的卡片上。
 
 -----
 
@@ -99,8 +118,8 @@ auth.adopt(credential)
 | `src/api/events.ts` | 解码 Responses 事件流及其失败形态。 |
 | `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |
 | `src/convert/blocks.ts` | 线上事件转 Harness 的编号内容块。 |
-| `src/client.ts` | 两次 HTTP 调用：列模型、跑一轮。 |
-| `src/models/describe.ts` | 可用性来自账号，容量来自内置目录。 |
+| `src/api/client.ts` | 两次 HTTP 调用：列出模型、跑一轮。 |
+| `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |
 | `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |
 
 代码强制而非仅记录的两条规则：
@@ -143,7 +162,7 @@ auth.adopt(credential)
 
 ## 已知限制与待办
 
-- **尚无 Web UI 登录** — 模型设置页上的账号卡片尚未实现，因此授权凭据必须通过上面的 Node 流程创建。在它出现之前，provider 路由虽已注册，但无法从浏览器使用。
+- **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。
 - **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。
 - **套餐额度路由仍处于 preview** — computer use、Code Interpreter、file search、hosted MCP、图像生成与 `tool_search` 无论本插件发送什么都会被上游拒绝；而 `multi_agent`、`temperature` 和 `max_output_tokens` 属于必须省略的十五个字段之列。
 - **名单混合了两个权威性不同的来源** — 账号的列表提供「被宣传的」模型，并附带接口自己的元数据；实测可用但列表未提及的模型来自 `src/models/served.ts`，并记录测量日期。若列表在测量过期后发生变化，会显示出已经不再应答的额外模型；`includeUnlisted: false` 可把名单收窄为账号自己的回答。
@@ -167,7 +186,7 @@ auth.adopt(credential)
 ```text
 npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
-npm run build     # emits lib/ from src/, excluding the host-typed entry point
+npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 ```
 
 `dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。
