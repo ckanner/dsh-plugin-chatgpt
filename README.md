@@ -2,17 +2,9 @@
 
 English | [中文](docs/README.zh.md)
 
-![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)
-
-![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)
-
-![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)
+Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.
 
 ![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)
-
-## Summary
-
-Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.
 
 ## Table of Contents
 
@@ -65,6 +57,8 @@ Open **Settings → Models**. The plugin owns a **ChatGPT** row, and the card on
 
 Signing out revokes the renewable session at the authorization server before clearing it locally, and says so when the server did not confirm.
 
+![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)
+
 A headless harness drives the same session object with no browser at all:
 
 ```js
@@ -97,6 +91,12 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
 Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. Sign-in lives on that row's card.
+
+![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)
+
+The share of the plan this installation may spend is set per app, in ChatGPT settings:
+
+![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)
 
 -----
 

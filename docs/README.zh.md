@@ -2,17 +2,9 @@
 
 [English](../README.md) | 中文
 
-![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)
-
-![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)
-
-![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)
+为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。
 
 ![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)
-
-## Summary
-
-为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。
 
 ## Table of Contents
 
@@ -65,6 +57,8 @@ dsh --profile <name> --dump-config   # shows a "# == dsh-plugin-chatgpt" layer
 
 退出登录会先在授权服务器撤销可再生会话，再清除本地凭据；若服务器未能确认，卡片会如实说明。
 
+![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)
+
 无头 harness 不需要浏览器，可以直接驱动同一个会话对象：
 
 ```js
@@ -97,6 +91,12 @@ auth.adopt(credential)
 一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。
 
 模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。登录就在那一行的卡片上。
+
+![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)
+
+这个安装可以花掉的套餐份额是在 ChatGPT 设置里按应用单独设定的：
+
+![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)
 
 -----
 

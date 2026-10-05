@@ -33,16 +33,10 @@ const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 const LINE_TRANSLATIONS = {
   "English | [中文](docs/README.zh.md)":
     "[English](../README.md) | 中文",
-  "![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)":
-    "![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)",
-  "![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)":
-    "![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)",
-  "![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)":
-    "![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)",
-  "![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)":
-    "![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":
     "为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。",
+  "![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)":
+    "![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)",
   "- [Use this package](#use-this-package)":
     "- [使用本包](#use-this-package)",
   "- [What you get](#what-you-get)":
@@ -79,6 +73,8 @@ const LINE_TRANSLATIONS = {
     "打开**设置 → 模型**。本插件拥有一行 **ChatGPT**，该行的卡片提供 **Sign in with ChatGPT**。卡片会显示授权 URL 并支持选中复制；当浏览器无法访问回环地址时，可以粘贴最终的回调 URL；完成后卡片报告该账号——套餐、token 下次刷新时间、以及它提供多少个模型——并提供 **Sign out** 按钮。任何 token 都不会到达页面。",
   "Signing out revokes the renewable session at the authorization server before clearing it locally, and says so when the server did not confirm.":
     "退出登录会先在授权服务器撤销可再生会话，再清除本地凭据；若服务器未能确认，卡片会如实说明。",
+  "![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)":
+    "![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)",
   "A headless harness drives the same session object with no browser at all:":
     "无头 harness 不需要浏览器，可以直接驱动同一个会话对象：",
   "The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a malformed or mismatched value and leaves the attempt open, so a mistyped paste can be corrected.":
@@ -89,6 +85,12 @@ const LINE_TRANSLATIONS = {
     "一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。",
   "Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. Sign-in lives on that row's card.":
     "模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。登录就在那一行的卡片上。",
+  "![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)":
+    "![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)",
+  "The share of the plan this installation may spend is set per app, in ChatGPT settings:":
+    "这个安装可以花掉的套餐份额是在 ChatGPT 设置里按应用单独设定的：",
+  "![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)":
+    "![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)",
   "## Understand the implementation":
     "## 实现说明",
   "<summary>Implementation internals — click to expand</summary>":
