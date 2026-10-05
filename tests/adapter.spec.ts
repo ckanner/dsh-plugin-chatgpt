@@ -269,7 +269,55 @@ describe('ChatGptAdapter', () => {
           messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
         })) chunks.push(chunk)
       })(),
-      /no usable ChatGPT credential/,
+      (error: unknown) => {
+        assert.match(String(error), /no ChatGPT account is signed in/)
+        assert.equal((error as { code?: string }).code, 'chatgpt_not_signed_in')
+        return true
+      },
+    )
+  })
+
+  it('calls a dropped connection transport, not a missing credential', async () => {
+    // A network blip is worth retrying; telling the human to sign in again over one
+    // sends them the wrong way, and the code is what the harness's retry policy
+    // reads before deciding.
+    const dir = await mkdtemp(join(tmpdir(), 'chatgpt-adapter-'))
+    dirs.push(dir)
+    writeDocument(join(dir, 'chatgpt-auth.json'), {
+      ...emptyDocument('urn:uuid:x'),
+      accounts: {
+        'subject-1': {
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() + 3600_000,
+          clientId: 'oaiapp_issued',
+          scopes: ['chatgpt.tokens.use.openai'],
+          subject: 'subject-1',
+          savedAt: Date.now(),
+        },
+      },
+      active: 'subject-1',
+    })
+    // Port 9 refuses the connection, which undici reports as a transport failure.
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: 'http://127.0.0.1:9',
+    })
+
+    await assert.rejects(
+      (async () => {
+        for await (const chunk of adapter.stream('chatgpt', {
+          provider: 'chatgpt',
+          model: 'm',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        })) void chunk
+      })(),
+      (error: unknown) => {
+        const coded = error as { code?: string, message?: string }
+        assert.equal(coded.code, 'TRANSPORT', `expected TRANSPORT, got ${String(coded.code)}: ${String(coded.message)}`)
+        assert.doesNotMatch(String(coded.message), /signed in/)
+        return true
+      },
     )
   })
 

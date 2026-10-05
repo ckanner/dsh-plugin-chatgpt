@@ -31,6 +31,7 @@ import type { ResponsesEvent } from './api/events.ts'
 import { describableModels, describeModel, effortLabel, type DescribedModel, type ListedModel } from './models/describe.ts'
 import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord } from './models/served.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
+import { RefreshRefusedError } from './auth/refresh.ts'
 
 /**
  * A failure that already carries a machine-readable code.
@@ -66,6 +67,24 @@ function coded(message: string, code: string): CodedError {
   const error = new Error(message) as CodedError
   error.code = code
   return error
+}
+
+/**
+ * Whether a failure reads as a dropped connection rather than a decision.
+ *
+ * The wording is the built-in pi-ai adapter's, including undici's bare
+ * `terminated` — what a mid-stream socket drop looks like once the real
+ * SocketError has been flattened away — because a transient failure has to be
+ * told apart from a refusal here: one is worth retrying, the other is not.
+ *
+ * @param message - the failure's text.
+ * @returns whether it reads as transport.
+ */
+function isTransportFailure(message: string): boolean {
+  return /\b(?:network|connection|socket|fetch)\b|\bECONN[A-Z]+\b|\bterminated\b|premature close/i.test(message)
+    || /\btime(?:d)?\s*out\b|timeout/i.test(message)
+    || /\b5\d\d\b/.test(message)
+    || /\b429\b|rate.?limit/i.test(message)
 }
 
 /** How long a model listing is reused before the account is asked again. */
@@ -242,6 +261,34 @@ async function withFreshGrant<T>(
     const renewed = await renew()
     return await call(renewed.accessToken)
   }
+}
+
+/**
+ * Classify a failure from getting a usable credential.
+ *
+ * "Not signed in" is one specific condition — this installation has no account, or
+ * its grant was refused for good — and it must not be reported for a dropped
+ * connection. Reporting a network blip as a missing credential sends the human to
+ * sign in again over something a retry repairs, so a transport failure carries the
+ * code the retry policy acts on instead.
+ *
+ * @param auth - the credential owner, asked whether any account is stored.
+ * @param error - whatever the credential step or the first read threw.
+ * @returns the coded failure to report.
+ */
+function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
+  const message = error instanceof Error ? error.message : String(error)
+  if (auth.active() === undefined) {
+    return coded(`no ChatGPT account is signed in (${message})`, 'chatgpt_not_signed_in')
+  }
+  if (error instanceof RefreshRefusedError) {
+    return error.terminal
+      ? coded(`the ChatGPT grant was refused and needs a new sign-in: ${message}`, 'chatgpt_not_signed_in')
+      : coded(`the ChatGPT grant could not be renewed right now: ${message}`, 'TRANSPORT')
+  }
+  return isTransportFailure(message)
+    ? coded(`the ChatGPT request could not reach the service: ${message}`, 'TRANSPORT')
+    : coded(`the ChatGPT request could not be prepared: ${message}`, 'chatgpt_request_failed')
 }
 
 /** Describe a listed model in the harness's vocabulary. */
@@ -464,12 +511,7 @@ export class ChatGptAdapter {
       ))
     } catch (error) {
       if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
-      throw isCodedError(error)
-        ? error
-        : coded(
-            `no usable ChatGPT credential: ${error instanceof Error ? error.message : String(error)}`,
-            'chatgpt_not_signed_in',
-          )
+      throw isCodedError(error) ? error : credentialFailure(this.auth, error)
     }
     try {
       for (let step: IteratorResult<ResponsesEvent> = primed; !step.done; step = await events.next()) {
@@ -484,7 +526,13 @@ export class ChatGptAdapter {
       for (const chunk of translator.endAll()) yield chunk
       // Already coded when it came from the client; otherwise name it here so the
       // host has something better than an unknown failure to report.
-      throw isCodedError(error) ? error : coded(String(error instanceof Error ? error.message : error), 'chatgpt_request_failed')
+      if (isCodedError(error)) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      // A stream cut short is retryable, and the harness retries exactly the codes
+      // its policy names; anything else keeps the honest protocol-error code.
+      throw isTransportFailure(message)
+        ? coded(`the ChatGPT response was cut short: ${message}`, 'TRANSPORT')
+        : coded(message, 'chatgpt_request_failed')
     }
   }
 }
