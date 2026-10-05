@@ -279,7 +279,8 @@ async function withFreshGrant<T>(
 function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
   const message = error instanceof Error ? error.message : String(error)
   if (auth.active() === undefined) {
-    return coded(`no ChatGPT account is signed in (${message})`, 'chatgpt_not_signed_in')
+    // `usable()` already says exactly this, so wrapping it would say it twice.
+    return coded(message, 'chatgpt_not_signed_in')
   }
   if (error instanceof RefreshRefusedError) {
     return error.terminal
