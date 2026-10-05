@@ -151,7 +151,11 @@ describe('ChatGptAuth', () => {
     assert.equal(auth.status().email, 'work@example.com')
   })
 
-  it('signs every account out', async () => {
+  it('signs every account out while keeping what each one registered', async () => {
+    // The documentation is explicit: signing out clears the tokens and retains the
+    // account/client mapping, because a client belongs to the account rather than
+    // to the session. Forgetting it makes the next sign-in register a second client,
+    // and every registration is another app row in the account's ChatGPT settings.
     const dir = await stateDir()
     const auth = new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' })
     auth.adopt(grant())
@@ -159,7 +163,41 @@ describe('ChatGptAuth', () => {
     auth.signOut()
 
     assert.equal(auth.status().signedIn, false)
-    assert.equal(readDocument(join(dir, 'chatgpt-auth.json')), undefined)
+    const document = readDocument(join(dir, 'chatgpt-auth.json'))
+    assert.deepEqual(document?.accounts, {})
+    assert.deepEqual(document?.registrations, {
+      'subject-1': { clientId: 'oaiapp_issued', email: 'me@example.com', at: document?.registrations?.['subject-1']?.at },
+    })
+  })
+
+  it('offers the retained registration on the next sign-in instead of registering again', async () => {
+    const dir = await stateDir()
+    const auth = new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' })
+    auth.adopt(grant())
+    auth.signOut()
+
+    const attempt = await auth.begin()
+    const url = new URL(attempt.authorizationUrl)
+
+    assert.equal(url.searchParams.get('client_id'), 'oaiapp_issued')
+    // A reauthorization omits the registration hints and sends the saved account.
+    assert.equal(url.searchParams.get('agent_name_hint'), null)
+    assert.equal(url.searchParams.get('login_hint'), 'me@example.com')
+    attempt.cancel()
+    await assert.rejects(attempt.result)
+  })
+
+  it('registers a client only when this installation has none', async () => {
+    const auth = new ChatGptAuth({ stateDir: await stateDir(), agentNameHint: 'DeepSeek Harness' })
+
+    const attempt = await auth.begin()
+    const url = new URL(attempt.authorizationUrl)
+
+    assert.equal(url.searchParams.get('client_id'), 'dynamic_agent_client')
+    assert.equal(url.searchParams.get('agent_name_hint'), 'DeepSeek Harness')
+    assert.notEqual(url.searchParams.get('ext_agent_host_id'), null)
+    attempt.cancel()
+    await assert.rejects(attempt.result)
   })
 
   it('refuses to hand out a credential when nobody signed in', async () => {

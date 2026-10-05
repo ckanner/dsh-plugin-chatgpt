@@ -180,6 +180,8 @@ auth.adopt(credential)
 
 - **这条路由上缓存命中率就是 0，而这正是如实的值** — composer 的百分比是 `cacheReadTokens / 计费输入`，分子只来自端点返回的 `input_tokens_details.cached_tokens`。该流程强制 `store: false` 且拒收 `prompt_cache_retention`；而端点对一个 10,814 token 的提示词**连发三次且完全不变**，返回的缓存 token 仍是 0——这已经是缓存键能改善的最好情况了。该栏其余数字（速率、总量、上下文占比）都是真实的。
 
+- **每个安装各自注册一个 client** — ChatGPT 设置里每个注册对应一行应用，名称取自 `agent_name_hint`；本插件在登出后仍保留「账号 ↔ client」的映射，因此同一安装下次登录会复用原来那一行，而不是再添一行。第二个 state 目录对 OpenAI 而言就是第二个安装，会单独注册；删除某个 state 目录即等于忘记那个安装。
+
 ## Dev Note
 
 ```text

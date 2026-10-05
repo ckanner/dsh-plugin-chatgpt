@@ -180,6 +180,8 @@ Independent. Each turn is a separate request carrying its own context, and the p
 
 - **The cache-hit readout is zero on this route, and that is the honest value** — the composer's percentage is `cacheReadTokens / billed input`, and the numerator comes only from what the endpoint reports in `input_tokens_details.cached_tokens`. This flow mandates `store: false` and refuses `prompt_cache_retention`, and the endpoint reports zero cached tokens even for a 10,814-token prompt sent three times unchanged in immediate succession — which is the best case a cache key could improve on. The rest of that readout (rate, totals, context share) is real.
 
+- **Each installation registers its own client** — ChatGPT settings lists one app row per registration, named by `agent_name_hint`, and this plugin keeps the account/client mapping after signing out so the next sign-in on the same installation reuses its row instead of adding another. A second state directory is a second installation to OpenAI, and registers separately; deleting a state directory is what forgets one.
+
 ## Dev Note
 
 ```text

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { emptyDocument, readDocument, removeDocument, writeDocument } from '../src/auth/store.ts'
+import { emptyDocument, readDocument, writeDocument } from '../src/auth/store.ts'
 import type { ChatGptCredential } from '../src/auth/credential.ts'
 
 const dirs: string[] = []
@@ -31,7 +31,12 @@ afterEach(async () => {
 describe('credential store', () => {
   it('round-trips a document', async () => {
     const path = await file()
-    const document = { ...emptyDocument('urn:uuid:x'), accounts: { 'subject-1': GRANT }, active: 'subject-1' }
+    const document = {
+      ...emptyDocument('urn:uuid:x'),
+      accounts: { 'subject-1': GRANT },
+      registrations: { 'subject-1': { clientId: 'oaiapp_issued', email: 'me@example.com', at: 7 } },
+      active: 'subject-1',
+    }
 
     writeDocument(path, document)
 
@@ -83,12 +88,4 @@ describe('credential store', () => {
     assert.match(text, /"accessToken": "access"/)
   })
 
-  it('removes the document on sign-out', async () => {
-    const path = await file()
-    writeDocument(path, emptyDocument('urn:uuid:x'))
-
-    removeDocument(path)
-
-    assert.equal(readDocument(path), undefined)
-  })
 })

@@ -32,11 +32,32 @@ export interface ChatGptStoreDocument {
   accounts: Record<string, ChatGptCredential>
   /** The subject whose grant the request path uses; absent when no account is active. */
   active?: string
+  /**
+   * The issued client each account registered, kept after signing out.
+   *
+   * A client registration belongs to the account, not to the session: the
+   * documentation is explicit that signing out retains the account/client mapping
+   * and that signing back in with a saved account "does not create a new client".
+   * Dropping this with the credential would make every sign-out followed by a
+   * sign-in register again, and each registration is another app row in the
+   * account's ChatGPT settings.
+   */
+  registrations?: Record<string, ChatGptRegistration>
+}
+
+/** What a sign-in registered, retained independently of the credential. */
+export interface ChatGptRegistration {
+  /** The issued `oaiapp_…` id this account registered. */
+  clientId: string
+  /** The account's email, used as `login_hint` on a later sign-in. */
+  email?: string
+  /** When this registration was last confirmed, for choosing the most recent. */
+  at: number
 }
 
 /** An empty document for a fresh installation. */
 export function emptyDocument(hostId: string): ChatGptStoreDocument {
-  return { version: 1, hostId, accounts: {} }
+  return { version: 1, hostId, accounts: {}, registrations: {} }
 }
 
 /** Read one document, tolerating absence and rejecting corruption loudly. */
@@ -65,8 +86,35 @@ export function readDocument(file: string): ChatGptStoreDocument | undefined {
     version: 1,
     hostId: document.hostId,
     accounts: document.accounts,
+    registrations: registrationsOf(document.registrations),
     ...typeof document.active === 'string' ? { active: document.active } : {},
   }
+}
+
+/**
+ * Read the retained registrations, dropping anything not shaped like one.
+ *
+ * A registration is a convenience for the next sign-in rather than a credential,
+ * so a damaged entry is discarded instead of refusing a document whose grants are
+ * perfectly usable.
+ *
+ * @param value - whatever the file held under `registrations`.
+ * @returns the entries worth keeping.
+ */
+function registrationsOf(value: unknown): Record<string, ChatGptRegistration> {
+  if (typeof value !== 'object' || value === null) return {}
+  const kept: Record<string, ChatGptRegistration> = {}
+  for (const [subject, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const candidate = entry as Partial<ChatGptRegistration>
+    if (typeof candidate.clientId !== 'string' || candidate.clientId.length === 0) continue
+    kept[subject] = {
+      clientId: candidate.clientId,
+      at: typeof candidate.at === 'number' ? candidate.at : 0,
+      ...typeof candidate.email === 'string' ? { email: candidate.email } : {},
+    }
+  }
+  return kept
 }
 
 /**
@@ -90,7 +138,3 @@ export function writeDocument(file: string, document: ChatGptStoreDocument): voi
   }
 }
 
-/** Remove the store entirely (sign-out of every account). */
-export function removeDocument(file: string): void {
-  rmSync(file, { force: true })
-}

@@ -18,9 +18,10 @@ import { ensureHostId } from './host-id.ts'
 import { beginSignIn, type SignInAttempt, type SignInOptions } from './sign-in.ts'
 import { refreshCredential, RefreshRefusedError } from './refresh.ts'
 import {
-  emptyDocument, readDocument, removeDocument, writeDocument, type ChatGptStoreDocument,
+  emptyDocument, readDocument, writeDocument, type ChatGptStoreDocument,
 } from './store.ts'
 import { canSpendPlan, isFresh, type ChatGptCredential } from './credential.ts'
+import type { ChatGptRegistration } from './store.ts'
 import { revokeGrant, type RevocationResult, type RevokeOptions } from './revoke.ts'
 
 /** What the UI may know about this installation's ChatGPT access. */
@@ -182,8 +183,31 @@ export class ChatGptAuth {
    *
    * @returns the attempt, already listening for its callback.
    */
+  /**
+   * The registration to reuse when no credential is active.
+   *
+   * With one account this is that account's client, so signing out and back in
+   * returns to the same registration instead of registering a second client. With
+   * several, the most recently confirmed one is offered and the browser's account
+   * selector still decides; the returned ID token is validated against the client
+   * the attempt used, as always.
+   */
+  private retainedRegistration(): ChatGptRegistration | undefined {
+    const registrations = this.load().registrations ?? {}
+    let best: ChatGptRegistration | undefined
+    for (const registration of Object.values(registrations)) {
+      if (best === undefined || registration.at > best.at) best = registration
+    }
+    return best
+  }
+
   async begin(): Promise<SignInAttempt> {
-    const existing = this.active()
+    const stored = this.active()
+    const retained = stored === undefined ? this.retainedRegistration() : undefined
+    const existing = stored ?? (retained === undefined ? undefined : {
+      clientId: retained.clientId,
+      email: retained.email,
+    })
     const attemptOptions: SignInOptions = {
       agentHostId: this.hostId(),
       agentNameHint: this.options.agentNameHint,
@@ -195,7 +219,7 @@ export class ChatGptAuth {
       ...existing === undefined ? {} : {
         registration: {
           clientId: existing.clientId,
-          ...existing.subject === undefined ? {} : { loginHint: existing.email },
+          ...existing.email === undefined ? {} : { loginHint: existing.email },
         },
       },
     }
@@ -214,6 +238,14 @@ export class ChatGptAuth {
     this.save({
       ...document,
       accounts: { ...document.accounts, [subject]: { ...credential, subject } },
+      registrations: {
+        ...document.registrations ?? {},
+        [subject]: {
+          clientId: credential.clientId,
+          at: Date.now(),
+          ...credential.email === undefined ? {} : { email: credential.email },
+        },
+      },
       active: subject,
     })
     return subject
@@ -267,9 +299,11 @@ export class ChatGptAuth {
   signOut(subject?: string): void {
     const document = this.load()
     if (subject === undefined) {
-      removeDocument(this.file)
-      this.document = undefined
-      this.loaded = false
+      // Every credential goes; the registrations stay, because they describe the
+      // account rather than the session and the next sign-in is expected to reuse
+      // them. Deleting the directory is what forgets an installation entirely.
+      const { active: _cleared, ...rest } = document
+      this.save({ ...rest, accounts: {} })
       return
     }
     const accounts = { ...document.accounts }
