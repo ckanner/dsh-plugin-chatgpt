@@ -1,15 +1,14 @@
----
-description: "Sign in with ChatGPT in DeepSeek Harness and serve models from a ChatGPT subscription instead of an API key."
-kind: "package-bundle"
----
-
 # dsh-plugin-chatgpt
 
-English | [中文](README.zh.md)
+English | [中文](docs/README.zh.md)
 
-![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)
+![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)
 
-![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)
+![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)
+
+![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)
+
+![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)
 
 ## Summary
 

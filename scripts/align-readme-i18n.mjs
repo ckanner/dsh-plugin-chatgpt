@@ -1,5 +1,5 @@
 /**
- * Regenerate `README.zh.md` from `README.md`, keeping the two pages line-for-line
+ * Regenerate `docs/README.zh.md` from `README.md`, keeping the two pages line-for-line
  * equal.
  *
  * The bilingual convention here is not "translate the prose". The English and
@@ -15,7 +15,7 @@
  * rather than passed through, because English leaking into the Chinese page is
  * the one failure nothing else would catch.
  *
- *   node scripts/align-readme-i18n.mjs           # rewrite README.zh.md
+ *   node scripts/align-readme-i18n.mjs           # rewrite docs/README.zh.md
  *   node scripts/align-readme-i18n.mjs --check   # fail if the pair drifted
  *
  * @module dsh-plugin-chatgpt/scripts/align-readme-i18n
@@ -27,18 +27,20 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const englishPath = join(here, '..', 'README.md')
-const chinesePath = join(here, '..', 'README.zh.md')
+const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 
 /** Chinese text for each English line that carries prose, keyed exactly. */
 const LINE_TRANSLATIONS = {
-  "description: \"Sign in with ChatGPT in DeepSeek Harness and serve models from a ChatGPT subscription instead of an API key.\"":
-    "description: \"在 DeepSeek Harness 里用 ChatGPT 账号登录，用 ChatGPT 订阅而不是 API key 来调用模型。\"",
-  "English | [中文](README.zh.md)":
-    "[English](README.md) | 中文",
-  "![The ChatGPT provider row on the Models page, signed out, with a Sign in with ChatGPT button](assets/screenshot-1-sign-in.png)":
-    "![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)",
-  "![A turn running on the subscription: the composer shows GPT-6.1 Sol Max and the usage bar reports its tokens and rate](assets/screenshot-2-serving-models.png)":
-    "![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)",
+  "English | [中文](docs/README.zh.md)":
+    "[English](../README.md) | 中文",
+  "![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)":
+    "![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)",
+  "![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)":
+    "![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)",
+  "![The ChatGPT app's share of the plan, set per app in ChatGPT settings](assets/screenshot-4-app-limits.png)":
+    "![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)",
+  "![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)":
+    "![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":
     "为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。",
   "- [Use this package](#use-this-package)":
@@ -249,7 +251,7 @@ const chinese = build(english)
 if (process.argv.includes('--check')) {
   const current = readFileSync(chinesePath, 'utf8').replace(/\n$/, '').split('\n')
   if (current.join('\n') !== chinese.join('\n')) {
-    console.error('README.zh.md is out of date; run: node scripts/align-readme-i18n.mjs')
+    console.error('docs/README.zh.md is out of date; run: node scripts/align-readme-i18n.mjs')
     process.exit(1)
   }
   console.log(`README pair aligned: ${chinese.length} lines each`)
@@ -257,4 +259,4 @@ if (process.argv.includes('--check')) {
 }
 
 writeFileSync(chinesePath, `${chinese.join('\n')}\n`, 'utf8')
-console.log(`wrote README.zh.md (${chinese.length} lines, matching README.md)`)
+console.log(`wrote docs/README.zh.md (${chinese.length} lines, matching README.md)`)

@@ -1,15 +1,14 @@
----
-description: "在 DeepSeek Harness 里用 ChatGPT 账号登录，用 ChatGPT 订阅而不是 API key 来调用模型。"
-kind: "package-bundle"
----
-
 # dsh-plugin-chatgpt
 
-[English](README.md) | 中文
+[English](../README.md) | 中文
 
-![模型页上的 ChatGPT provider 行，处于已登出状态，带有一个 Sign in with ChatGPT 按钮](assets/screenshot-1-sign-in.png)
+![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)
 
-![一轮跑在订阅上的对话：composer 显示 GPT-6.1 Sol Max，用量栏报告其 token 与速率](assets/screenshot-2-serving-models.png)
+![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)
+
+![该应用在套餐中的额度占比，在 ChatGPT 设置里逐应用设置](../assets/screenshot-4-app-limits.png)
+
+![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)
 
 ## Summary
 

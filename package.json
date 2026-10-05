@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-chatgpt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sign in with ChatGPT inside DeepSeek Harness, and use your ChatGPT subscription to serve models.",
   "keywords": [
     "dsh-plugin",
@@ -44,7 +44,8 @@
     "cordis.patch.yml",
     "locale",
     "screenshots.json",
-    "assets"
+    "assets",
+    "docs/README.zh.md"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
