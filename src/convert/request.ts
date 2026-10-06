@@ -46,6 +46,12 @@ export const REFUSED_FIELDS = [
   'moderation',
   'multi_agent',
   'prompt',
+  // Measured on this route: `prompt_cache_options` answers
+  // "not supported on this model" and `prompt_cache_breakpoint` answers
+  // "Unsupported parameter", so the cache controls these model generations
+  // document are closed here. `prompt_cache_key` is not among them and is sent.
+  'prompt_cache_breakpoint',
+  'prompt_cache_options',
   'prompt_cache_retention',
   'safety_identifier',
   'temperature',

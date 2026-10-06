@@ -157,7 +157,7 @@ auth.adopt(credential)
 
 #### KV Cache 影响
 
-由端点自己的自动缓存决定，而它确实会返回命中：套餐额度路由拒收 `prompt_cache_retention`，也不接受 `previous_response_id`，因此本插件不自行声明任何前缀。在一个安装上实测 303 个 chatgpt 轮次，其中 79 轮报告了缓存读取，占全部计费输入的 7.4%。命中时要么是上一轮提示词的全部（对 13,624 token 的前一轮读到 13,440），要么是很长提示词中的一段。请求现在会带上 `prompt_cache_key`，这是这些模型代际要使用端点「更可靠的匹配」所必需的。
+由端点自己的自动缓存决定，而它确实会返回命中：套餐额度路由拒收 `prompt_cache_retention`，也不接受 `previous_response_id`，因此本插件不自行声明任何前缀。在一个安装上实测 303 个 chatgpt 轮次，其中 79 轮报告了缓存读取，占全部计费输入的 7.4%。命中时要么是上一轮提示词的全部（对 13,624 token 的前一轮读到 13,440），要么是很长提示词中的一段。请求现在会带上 `prompt_cache_key`，这是这些模型代际要使用端点「更可靠的匹配」所必需的。可以用来延长它的手段在此是关闭的：`prompt_cache_options`（TTL）被这条路由答以「not supported on this model」，`prompt_cache_breakpoint`（显式稳定前缀）被答以「Unsupported parameter」，因此端点自动的尽力而为行为就是全部可用的手段。
 
 ## 已知限制与待办
 

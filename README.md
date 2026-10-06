@@ -157,7 +157,7 @@ Variable. The plugin adds no tokens beyond what the harness already assembled; i
 
 #### KV Cache effect
 
-The endpoint's own automatic caching decides, and it does report reads: the plan-usage route refuses `prompt_cache_retention` and takes no `previous_response_id`, so this plugin declares no prefix of its own. Measured across 303 chatgpt turns on one installation, 79 of them reported a cache read, amounting to 7.4% of all billed input. A hit is either the whole of the previous prompt (a 13,440-token read against a 13,624-token predecessor) or a slice of a much longer one. Requests now name a `prompt_cache_key`, which these model generations require for the endpoint's more reliable matching.
+The endpoint's own automatic caching decides, and it does report reads: the plan-usage route refuses `prompt_cache_retention` and takes no `previous_response_id`, so this plugin declares no prefix of its own. Measured across 303 chatgpt turns on one installation, 79 of them reported a cache read, amounting to 7.4% of all billed input. A hit is either the whole of the previous prompt (a 13,440-token read against a 13,624-token predecessor) or a slice of a much longer one. Requests now name a `prompt_cache_key`, which these model generations require for the endpoint's more reliable matching. The controls that would extend that — `prompt_cache_options` for the TTL and `prompt_cache_breakpoint` for an explicit stable prefix — are closed here: this route answers "not supported on this model" to the first and "Unsupported parameter" to the second, so the endpoint's automatic best-effort behaviour is the whole of what is available.
 
 ## Known Limitations and Deferred Work
 
