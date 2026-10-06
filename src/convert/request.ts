@@ -157,6 +157,8 @@ export interface ResponsesBody {
   input: InputItem[]
   stream: typeof STREAM
   store: typeof STORE
+  /** Routing key for prompt-cache matching; see {@link CACHE_KEY}. */
+  prompt_cache_key: string
   instructions?: string
   tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown> }[]
   reasoning?: {
@@ -281,6 +283,7 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     input,
     stream: STREAM,
     store: STORE,
+    prompt_cache_key: CACHE_KEY,
     ...instructions === undefined ? {} : { instructions },
     ...request.tools === undefined || request.tools.length === 0 ? {} : {
       tools: request.tools.map(tool => ({
@@ -295,6 +298,24 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
       : { reasoning: { effort: request.reasoningEffort, summary: 'concise' as const } },
   }
 }
+
+/**
+ * The routing key every request carries.
+ *
+ * On GPT-5.6 and later, which these routes serve, OpenAI's prompt caching matches a
+ * cached prefix reliably only when the request names a key: "you must set
+ * `prompt_cache_key` to use the more reliable matching for both implicit and
+ * explicit caching… Without a key, requests may still receive automatic cache
+ * hits, but they do not use the improved matching", and caching "only works if two
+ * requests share the same prefix and land on the same machine".
+ *
+ * One stable value per installation is what that guidance asks for: the key is
+ * combined with the prefix hash rather than replacing it, so requests that share a
+ * prefix keep landing together while different conversations stay apart. Over
+ * roughly fifteen requests per minute per prefix and key the service spreads traffic
+ * across machines, so nothing here needs to partition by conversation.
+ */
+export const CACHE_KEY = 'dsh-plugin-chatgpt'
 
 /** The scope a usable credential must carry; re-exported for callers that gate on it. */
 export { DIRECT_TOKEN_SCOPE }

@@ -157,7 +157,7 @@ Variable. The plugin adds no tokens beyond what the harness already assembled; i
 
 #### KV Cache effect
 
-Independent. Each turn is a separate request carrying its own context, and the plan-usage route does not accept `prompt_cache_retention` or `previous_response_id`, so this plugin neither builds nor preserves a reusable prefix.
+The endpoint's own automatic caching decides, and it does report reads: the plan-usage route refuses `prompt_cache_retention` and takes no `previous_response_id`, so this plugin declares no prefix of its own. Measured across 303 chatgpt turns on one installation, 79 of them reported a cache read, amounting to 7.4% of all billed input. A hit is either the whole of the previous prompt (a 13,440-token read against a 13,624-token predecessor) or a slice of a much longer one. Requests now name a `prompt_cache_key`, which these model generations require for the endpoint's more reliable matching.
 
 ## Known Limitations and Deferred Work
 
@@ -178,7 +178,7 @@ Independent. Each turn is a separate request carrying its own context, and the p
 
 - **Signing in announces the new roster to the browser** — a model selector caches the Host catalog and reloads it only when the Host says something changed, so a plugin that fills an empty roster at sign-in time has to publish `llm/adapters-updated`. Without it the models are served and never appear in the selector, which looks exactly like a broken provider. The account card reports how many models the account offers, or why the listing could not be read.
 
-- **The cache-hit readout is zero on this route, and that is the honest value** — the composer's percentage is `cacheReadTokens / billed input`, and the numerator comes only from what the endpoint reports in `input_tokens_details.cached_tokens`. This flow mandates `store: false` and refuses `prompt_cache_retention`, and the endpoint reports zero cached tokens even for a 10,814-token prompt sent three times unchanged in immediate succession — which is the best case a cache key could improve on. The rest of that readout (rate, totals, context share) is real.
+- **The cache-hit readout is the endpoint's own number, and on this route it runs low** — the percentage is `cacheReadTokens / billed input`, and the numerator is only what the endpoint reports in `input_tokens_details.cached_tokens`. Measured over 303 chatgpt turns on one installation it came to 7.4%: 224 of those turns reported no cache read at all, and the rest were either the whole previous prompt or a slice of a much longer one, since those sessions ran from tens of thousands to four hundred thousand prompt tokens. Caching here is automatic and best-effort, and the endpoint documents that a hit needs the same prefix to reach the same machine; each request now names a `prompt_cache_key`, which these model generations require for the more reliable matching. Nothing in the readout is inferred by this plugin.
 
 - **Each installation registers its own client** — ChatGPT settings lists one app row per registration, named by `agent_name_hint`, and this plugin keeps the account/client mapping after signing out so the next sign-in on the same installation reuses its row instead of adding another. A second state directory is a second installation to OpenAI, and registers separately; deleting a state directory is what forgets one.
 

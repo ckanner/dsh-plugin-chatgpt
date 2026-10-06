@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { REFUSED_FIELDS, toResponsesBody } from '../src/convert/request.ts'
+import { CACHE_KEY, REFUSED_FIELDS, toResponsesBody } from '../src/convert/request.ts'
 
 /** The body's own keys, for asserting on refusals. */
 function keysOf(body: object): string[] {
@@ -13,6 +13,18 @@ describe('toResponsesBody', () => {
 
     assert.equal(body.stream, true)
     assert.equal(body.store, false)
+  })
+
+  it('names a cache key, which is what makes matching reliable on these models', () => {
+    // On GPT-5.6 and later the service uses "the more reliable matching" only when
+    // the request names a key; without one, hits stay best-effort. The value is
+    // stable per installation because the service combines it with the prefix hash
+    // for routing rather than treating it as the prefix itself.
+    const body = toResponsesBody({ model: 'gpt-6-astra', messages: [{ role: 'user', content: 'hi' }] })
+
+    assert.equal(body.prompt_cache_key, CACHE_KEY)
+    assert.equal(typeof CACHE_KEY, 'string')
+    assert.ok(CACHE_KEY.length > 0)
   })
 
   it('lifts a leading system message into instructions instead of forwarding it', () => {
