@@ -384,9 +384,11 @@ describe('ChatGptAdapter', () => {
         reason: {
           kind: 'error',
           failure: {
-            message: 'out of allowance This account has no ChatGPT plan usage left for this app right now;'
-              + " review or raise the app's limit at https://chatgpt.com/settings/usage."
-              + ' The plan itself may still have usage, since an app-specific limit applies too.',
+            message: 'out of allowance This account has no ChatGPT plan allowance left for app inference right now.'
+              + ' The window that governs it is shared across every app on the plan and is not the one the ChatGPT site reports,'
+              + ' and this channel offers no quota readout, so a plan that looks well within its limits there can still be refused here.'
+              + ' It resets over hours rather than seconds.'
+              + ' Review usage at https://chatgpt.com/settings/usage; an API key or another provider works in the meantime.',
             code: 'subscription_sharing_usage_limit_exceeded',
           },
         },

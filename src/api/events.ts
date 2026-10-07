@@ -85,9 +85,16 @@ export const USAGE_SETTINGS_URL = 'https://chatgpt.com/settings/usage'
  */
 function recoveryHint(code: string): string | undefined {
   if (code === 'subscription_sharing_usage_limit_exceeded') {
-    return 'This account has no ChatGPT plan usage left for this app right now;'
-      + ` review or raise the app's limit at ${USAGE_SETTINGS_URL}.`
-      + ' The plan itself may still have usage, since an app-specific limit applies too.'
+    // The ChatGPT site and this channel do not meter the same thing, which is why a
+    // plan that looks well within its limits there can still be refused here: the
+    // governing window is shared across every app using the plan, has no per-app
+    // allowance, and this channel reports no quota at all. It resets over hours
+    // rather than seconds, so "check your usage" is the honest action, not "retry".
+    return 'This account has no ChatGPT plan allowance left for app inference right now.'
+      + ' The window that governs it is shared across every app on the plan and is not the one the ChatGPT site reports,'
+      + ' and this channel offers no quota readout, so a plan that looks well within its limits there can still be refused here.'
+      + ' It resets over hours rather than seconds.'
+      + ` Review usage at ${USAGE_SETTINGS_URL}; an API key or another provider works in the meantime.`
   }
   if (code === 'subscription_sharing_usage_unavailable') {
     return 'The plan usage could not be checked; retrying shortly is reasonable.'
