@@ -85,16 +85,15 @@ export const USAGE_SETTINGS_URL = 'https://chatgpt.com/settings/usage'
  */
 function recoveryHint(code: string): string | undefined {
   if (code === 'subscription_sharing_usage_limit_exceeded') {
-    // The ChatGPT site and this channel do not meter the same thing, which is why a
-    // plan that looks well within its limits there can still be refused here: the
-    // governing window is shared across every app using the plan, has no per-app
-    // allowance, and this channel reports no quota at all. It resets over hours
-    // rather than seconds, so "check your usage" is the honest action, not "retry".
-    return 'This account has no ChatGPT plan allowance left for app inference right now.'
-      + ' The window that governs it is shared across every app on the plan and is not the one the ChatGPT site reports,'
-      + ' and this channel offers no quota readout, so a plan that looks well within its limits there can still be refused here.'
-      + ' It resets over hours rather than seconds.'
-      + ` Review usage at ${USAGE_SETTINGS_URL}; an API key or another provider works in the meantime.`
+    // The endpoint's own guidance for this code: "Do not assume the entire plan is
+    // empty or infer a reset time from this code alone; an app-specific limit can
+    // also apply." So the hint must not pick a cause — it says which two are
+    // possible, where to look, and that the code carries no reset time.
+    return 'This account has no ChatGPT plan allowance left for app inference right now, or an app-specific limit applies;'
+      + ' the returned code does not say which.'
+      + ` Review usage at ${USAGE_SETTINGS_URL} to see both the plan and this app's limit.`
+      + " No reset time can be read from the code itself, so waiting is the only option"
+      + ' unless an API key or another provider is available in the meantime.'
   }
   if (code === 'subscription_sharing_usage_unavailable') {
     return 'The plan usage could not be checked; retrying shortly is reasonable.'

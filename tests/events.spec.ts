@@ -155,9 +155,8 @@ describe('decodeEvent', () => {
 
   it('tells the human where to act, not to retry, when the allowance is spent', () => {
     // Retrying a spent allowance cannot help, and the page that can is named. The
-    // hint has to explain the confusion this error actually causes: the ChatGPT site
-    // and this channel meter different things, so "my plan has plenty left" and this
-    // refusal are both true at once.
+    // endpoint's guidance is explicit that the code does not identify the cause, so
+    // the hint names both possibilities rather than picking one.
     const spent = decodeEvent(JSON.stringify({
       type: 'response.failed',
       response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'spent' } },
@@ -165,9 +164,9 @@ describe('decodeEvent', () => {
     const hint = spent?.kind === 'failed' ? spent.message : ''
 
     assert.match(hint, /no ChatGPT plan allowance left/)
-    assert.match(hint, /not the one the ChatGPT site reports/)
-    assert.match(hint, /shared across every app on the plan/)
-    assert.match(hint, /resets over hours/)
+    assert.match(hint, /or an app-specific limit applies/)
+    assert.match(hint, /does not say which/)
+    assert.match(hint, /No reset time can be read/)
   })
 
   it('calls a temporary unavailability retryable, unlike a spent allowance', () => {
