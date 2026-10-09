@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.10
+
+Documentation and metadata only; no behaviour change.
+
+The install section still said the name resolves nothing until the first npm release and sent readers to a
+prebuilt tarball. The package has been on npm since 0.1.0 — nine releases earlier — and the tarball it pointed
+at was the v0.1.0 GitHub release, so the workaround was both unnecessary and stale. The part worth keeping,
+that installing from a repository URL needs a build-script allowlist, is still there.
+
+Also fixes "Two rules the code enforces" over a list of three.
+
 Grouped from the commit history, newest first. Earlier entries are terser than later ones because they were
 written when the release was the only record.
 
