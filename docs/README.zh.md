@@ -35,13 +35,13 @@ dsh plugin --profile <name> add dsh-plugin-chatgpt
 dsh plugin --profile <name> remove dsh-plugin-chatgpt
 ```
 
-在首次 npm 发布之前该包名解析不到任何东西，因此请改装预构建的 tarball——它同样无需构建步骤：
+该包已在 npm 上，因此从 registry 安装就是全部步骤，不涉及任何构建：
 
 ```text
-dsh plugin --profile <name> add https://github.com/ckanner/dsh-plugin-chatgpt/releases/latest/download/dsh-plugin-chatgpt.tgz
+dsh plugin --profile <name> add dsh-plugin-chatgpt@0.1.9   # pin a version, or omit it for the latest
 ```
 
-从仓库地址安装会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖，因此 `add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败。要么在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies` 后重新添加，要么直接装上面的 tarball。
+改从仓库地址安装则会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖：`add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败，直到在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies`。
 
 本包声明了 `dsh.bundle`，因此添加它会把该 bundle 追加到 profile 的 `dsh.profile.bundles`，并把它的行插入到组合中。可以不启动就检查这一层：
 
@@ -121,7 +121,7 @@ auth.adopt(credential)
 | `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |
 | `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |
 
-代码强制而非仅记录的两条规则：
+代码强制而非仅记录的三条规则：
 
 - 请求绝不携带 `temperature`、`max_output_tokens`、`top_p`、`truncation` 等套餐额度路由拒收的字段。它们被显式列在 `REFUSED_FIELDS` 中，因此不会被误加回来。
 - `response.completed` 是唯一成功的终态。没有它就以结束的流算作错误，因为「被截断却看起来已完成」的回答比一个可见的失败更糟。

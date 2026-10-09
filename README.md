@@ -35,13 +35,13 @@ Restart the harness afterwards: a profile is composed at startup. Removing it:
 dsh plugin --profile <name> remove dsh-plugin-chatgpt
 ```
 
-Until the first npm release the name resolves nothing, so install the prebuilt tarball instead — it needs no build step either:
+The package is on npm, so the registry is the whole install and no build step is involved:
 
 ```text
-dsh plugin --profile <name> add https://github.com/ckanner/dsh-plugin-chatgpt/releases/latest/download/dsh-plugin-chatgpt.tgz
+dsh plugin --profile <name> add dsh-plugin-chatgpt@0.1.9   # pin a version, or omit it for the latest
 ```
 
-Installing from the repository URL builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted, so `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`. Either approve `dsh-plugin-chatgpt` under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml` and add it again, or install the tarball above.
+Installing from a repository URL instead builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted: `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` until `dsh-plugin-chatgpt` is approved under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml`.
 
 The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and inserts its row into the composition. Verify the layer without booting:
 
@@ -121,7 +121,7 @@ The share of the plan this installation may spend is set per app, in ChatGPT set
 | `src/models/describe.ts` | Availability and capacities, preferring what the account reports over the bundled catalog. |
 | `src/adapter.ts` | The harness-facing half of the provider contract. |
 
-Two rules the code enforces rather than documents:
+Three rules the code enforces rather than documents:
 
 - A request never carries `temperature`, `max_output_tokens`, `top_p`, `truncation`, or the other fields the plan-usage route refuses. They are named in `REFUSED_FIELDS` so they cannot be reintroduced by accident.
 - `response.completed` is the only successful terminal. A stream that ends without one is an error, because a truncated answer that reads as finished is worse than a visible failure.

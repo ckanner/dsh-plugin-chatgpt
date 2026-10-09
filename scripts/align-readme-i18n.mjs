@@ -59,10 +59,10 @@ const LINE_TRANSLATIONS = {
     "安装就是一行：",
   "Restart the harness afterwards: a profile is composed at startup. Removing it:":
     "装完重启 harness：profile 在启动时组合。卸载：",
-  "Until the first npm release the name resolves nothing, so install the prebuilt tarball instead — it needs no build step either:":
-    "在首次 npm 发布之前该包名解析不到任何东西，因此请改装预构建的 tarball——它同样无需构建步骤：",
-  "Installing from the repository URL builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted, so `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`. Either approve `dsh-plugin-chatgpt` under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml` and add it again, or install the tarball above.":
-    "从仓库地址安装会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖，因此 `add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败。要么在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies` 后重新添加，要么直接装上面的 tarball。",
+  "The package is on npm, so the registry is the whole install and no build step is involved:":
+    "该包已在 npm 上，因此从 registry 安装就是全部步骤，不涉及任何构建：",
+  "Installing from a repository URL instead builds from source, and pnpm refuses a git dependency's build scripts until they are allowlisted: `add https://github.com/ckanner/dsh-plugin-chatgpt` fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` until `dsh-plugin-chatgpt` is approved under `onlyBuiltDependencies` in the profile's `pnpm-workspace.yaml`.":
+    "改从仓库地址安装则会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖：`add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败，直到在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies`。",
   "The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and inserts its row into the composition. Verify the layer without booting:":
     "本包声明了 `dsh.bundle`，因此添加它会把该 bundle 追加到 profile 的 `dsh.profile.bundles`，并把它的行插入到组合中。可以不启动就检查这一层：",
   "A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead.":
@@ -121,8 +121,8 @@ const LINE_TRANSLATIONS = {
     "| `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |",
   "| `src/adapter.ts` | The harness-facing half of the provider contract. |":
     "| `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |",
-  "Two rules the code enforces rather than documents:":
-    "代码强制而非仅记录的两条规则：",
+  "Three rules the code enforces rather than documents:":
+    "代码强制而非仅记录的三条规则：",
   "- A request never carries `temperature`, `max_output_tokens`, `top_p`, `truncation`, or the other fields the plan-usage route refuses. They are named in `REFUSED_FIELDS` so they cannot be reintroduced by accident.":
     "- 请求绝不携带 `temperature`、`max_output_tokens`、`top_p`、`truncation` 等套餐额度路由拒收的字段。它们被显式列在 `REFUSED_FIELDS` 中，因此不会被误加回来。",
   "- `response.completed` is the only successful terminal. A stream that ends without one is an error, because a truncated answer that reads as finished is worse than a visible failure.":

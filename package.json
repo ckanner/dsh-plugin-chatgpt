@@ -6,21 +6,23 @@
     "dsh-plugin",
     "deepseek-harness",
     "dsh",
+    "cordis",
     "chatgpt",
     "openai",
     "oauth",
-    "subscription"
+    "subscription",
+    "model-provider"
   ],
   "license": "MIT",
   "author": {
     "name": "Kanner",
     "email": "kanner.chen@gmail.com"
   },
+  "homepage": "https://github.com/ckanner/dsh-plugin-chatgpt#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ckanner/dsh-plugin-chatgpt.git"
   },
-  "homepage": "https://github.com/ckanner/dsh-plugin-chatgpt#readme",
   "bugs": {
     "url": "https://github.com/ckanner/dsh-plugin-chatgpt/issues"
   },
