@@ -19,6 +19,11 @@ discovery, Responses serialization, and its opaque replay envelope.
    agreement with all observed positions and content. Unmatched/conflicting
    snapshots cannot overwrite a different block or throw away a completed turn.
    SIWC's `output: []` never erases previously received complete items.
+   Structurally complete done-only messages lacking both index and ID retain
+   their text in arrival order; no identity is invented. Malformed message items
+   missing `role: "assistant"` or a supported `content` array are ignored, while
+   any text already received through deltas remains visible. Tests cover both
+   paths through the decoder and real DSH assembler.
 3. DSH stores that data through the standard `finish.replayState` envelope.
    Each visible block has a fingerprint. Changed content, removed blocks, unknown
    envelope versions, different accounts/endpoints/providers/models, and foreign
@@ -134,8 +139,12 @@ caused the measured cache misses.
 These checks establish serialization and persistence correctness. They do not
 measure the service's live cache hit rate or ChatGPT allowance deduction.
 
-A bounded live smoke check on 2026-10-12 used GPT-6.1 Sol with medium effort and
-three short synthetic requests (including a function call and a developer update).
+A bounded live smoke check on 2026-10-12 used the initial repair working tree,
+before the authorization and stream-reconciliation fixes in `3016090` and
+`272cbce`. The probe did not record an exact Git revision, so these historical
+numbers must not be attributed to the current revision. It used GPT-6.1 Sol
+with medium effort and three short synthetic requests (including a function
+call and a developer update).
 All three completed and saved native replay state. The two continuation requests
 preserved the complete preceding input and reported 2,816 / 3,062 (91.97%) and
 2,944 / 3,096 (95.09%) cached input tokens. The cold first request reported none.

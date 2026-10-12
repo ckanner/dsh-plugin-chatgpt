@@ -39,6 +39,27 @@ export const streamCases: StreamCase[] = [
     replay: true,
   },
   {
+    name: 'complete done messages without indexes or IDs retain both texts in arrival order',
+    events: [
+      done({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'AAA' }] }),
+      done({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'BBB' }] }),
+      completed([]),
+    ],
+    blocks: [{ type: 'text', text: 'AAA' }, { type: 'text', text: 'BBB' }],
+    replay: true,
+  },
+  {
+    name: 'malformed anonymous done messages cannot erase already streamed text',
+    events: [
+      { type: 'response.output_text.delta', delta: 'Keep this text' },
+      done({ type: 'message', content: [{ type: 'output_text', text: 'Missing role' }] }),
+      done({ type: 'message', role: 'assistant' }),
+      completed([]),
+    ],
+    blocks: [{ type: 'text', text: 'Keep this text' }],
+    replay: false,
+  },
+  {
     name: 'a late complete snapshot fills an earlier index without reversing visible order',
     events: [
       { type: 'response.output_text.delta', output_index: 1, item_id: 'msg_b', delta: 'Hello' },
