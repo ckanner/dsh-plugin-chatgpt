@@ -54,7 +54,7 @@ export interface DescribedModel {
   id: string
   name: string
   contextWindow: number
-  /** Maximum client context override advertised by the account catalog. */
+  /** Catalog maximum metadata; this plugin does not clamp explicit context overrides to it. */
   maxContextWindow?: number
   /** Output cap, known only from the bundled catalog. */
   maxTokens?: number

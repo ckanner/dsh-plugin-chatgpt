@@ -107,7 +107,7 @@ export interface ChatGptAdapterOptions {
    * route serves, and hiding them hides capability the account already has.
    */
   includeUnlisted?: boolean
-  /** Optional DSH context budget; absent means the model's account-catalog default. */
+  /** Explicit DSH context budget takes precedence over catalog metadata; absent follows the default. */
   contextWindowLimit?: number | (() => number | undefined)
   /** Clock, so the listing cache can be tested. */
   now?: () => number
@@ -267,8 +267,9 @@ function toHarnessResolved(provider: string, model: DescribedModel, limit?: numb
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1024)) {
     throw new Error('contextWindowLimit must be a safe integer of at least 1024 tokens')
   }
-  const requested = limit ?? model.contextWindow
-  const contextWindow = Math.min(requested, model.maxContextWindow ?? model.contextWindow)
+  // Like Pi's model override, an explicit budget is used verbatim. Catalog
+  // maxima describe the provider; they do not silently shrink the user's setting.
+  const contextWindow = limit ?? model.contextWindow
   return {
     provider,
     id: model.id,
@@ -388,10 +389,9 @@ export class ChatGptAdapter {
           .map(entry => {
             const described = describeModel({ slug: entry.id })
             // No account default is available. Keep the bundled default and
-            // use the measured route capacity only as the expansion ceiling.
+            // retain the observed route maximum as descriptive metadata only.
             return {
               ...described,
-              contextWindow: Math.min(described.contextWindow, ROUTE_MAX_CONTEXT_WINDOW),
               maxContextWindow: ROUTE_MAX_CONTEXT_WINDOW,
               maxTokens: described.maxTokens ?? ROUTE_MAX_OUTPUT_TOKENS,
               metadataSource: 'measured' as const,

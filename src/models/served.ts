@@ -68,13 +68,12 @@ export interface ServedModel {
  * The largest configurable context budget the account's listing advertised
  * for this generation on the measurement date, in tokens.
  *
- * This is client configuration metadata, not an independently tested maximum
- * request size. Codex also bounds explicit context overrides by the catalog's
- * max_context_window. The published model window can be larger; that does not
- * establish a different account-specific override ceiling.
+ * This is catalog metadata, not an independently tested maximum request size.
+ * Explicit context overrides in this plugin take precedence over it, following
+ * Pi's override behavior rather than Codex's catalog clamping.
  *
- * Listed models use live metadata. This historical value is only an expansion
- * ceiling for measured models omitted from the account catalog; their default
+ * Listed models use live metadata. This historical value is retained only as
+ * metadata for measured models omitted from the account catalog; their default
  * context budget comes from the bundled model description.
  */
 export const ROUTE_MAX_CONTEXT_WINDOW = 872_000

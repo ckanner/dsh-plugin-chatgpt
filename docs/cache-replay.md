@@ -44,8 +44,8 @@ discovery, Responses serialization, and its opaque replay envelope.
    Sessionless calls omit cache identifiers. Missing/invalid namespaces disable
    both native replay and these identifiers until the credential is managed.
 6. Default context follows each model's account-catalog window, without a shared
-   fixed cap. `contextWindowLimit` can lower the budget or explicitly enable an
-   extended window, bounded by account metadata. It is read when a model is resolved.
+   fixed cap. An explicit `contextWindowLimit` is used as-is, following Pi's
+   override behavior. It is read when a model is resolved.
    Default output reservation fits within half the selected budget. DSH still
    decides when and how to compact; the adapter does not delete history.
 
@@ -93,38 +93,42 @@ The context budget does not impose a spending cap; SIWC rejects
 window grows keeps more history before DSH compacts, and an explicit
 `contextWindowLimit` below that default compacts sooner.
 
-Without an override, the context budget is the model's `contextWindow`, bounded
-by `maxContextWindow` when present. No fixed 272K, 500K, or 1M cap replaces the
-account default. A catalog refresh after the 60-second listing cache expires
+Without an override, the context budget is the model's `contextWindow`.
+No fixed 272K, 500K, or 1M cap replaces the account default.
+A catalog refresh after the 60-second listing cache expires
 updates that default on the next model resolution. Missing account capacity
 metadata falls back to the bundled catalog or conservative unknown-model default;
-an unlisted measured model keeps that default, with the measured route maximum
-used only as its expansion ceiling.
+an unlisted measured model keeps that default. Observed route maximums remain
+descriptive metadata and do not impose a separate budget ceiling.
 
-An explicit `contextWindowLimit` is an integer of at least 1,024 tokens. The
-effective budget is `min(contextWindowLimit, maxContextWindow ?? contextWindow)`.
-For a model with a 500,000 default and 872,000 maximum, setting
-`contextWindowLimit: 1000000` selects 872,000. If the maximum is 1,050,000, the
-same setting selects 1,000,000. If no maximum is advertised, expansion stops at
-the described context window. Clearing the setting restores each model's own
-default. The override applies to this provider's models, independently of Codex
-configuration; DSH still computes its own compaction threshold and output headroom.
+An explicit `contextWindowLimit` must be a safe integer of at least 1,024 tokens.
+The effective budget is `contextWindowLimit ?? model.contextWindow`: an explicit
+value is never clamped to the catalog default or maximum. For a model with a
+500,000 default and 872,000 maximum, `contextWindowLimit: 1000000` selects
+1,000,000. The same override works when maximum metadata is missing or the model
+is unlisted. Catalog refreshes do not shrink an explicit budget. Clearing the
+setting restores each model's latest default. The override applies to this
+provider's models, independently of Codex configuration; DSH still computes its
+own compaction threshold and output headroom.
 
-The model's published total context window, catalog default, override ceiling,
-and effective client budget are separate values. The official model pages list
+The model's published total context window, catalog metadata, and effective
+client budget are separate values. The official model pages list
 a 1,050,000-token total window and 128,000 maximum output tokens for
 [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
 [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra).
-Codex defines `max_context_window` as the maximum allowed for configuration
-overrides and applies `min(configured, max_context_window)` when it is present:
-see its [model metadata](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/protocol/src/openai_models.rs)
-and [override resolution](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/models-manager/src/model_info.rs).
-Thus a configured one-million window does not by itself prove that one million
-is effective. The same distinction applies here. An observed 872,000 catalog
-ceiling is not evidence that a larger HTTP request was tried and rejected.
+This plugin follows [Pi 1.1.0's explicit override precedence](https://github.com/earendil-works/pi/blob/v1.1.0/packages/coding-agent/src/core/provider-composer.ts),
+while using the account catalog for defaults. Pi's own defaults instead come
+from its bundled catalog and pi.dev updates. Codex uses a different
+[override rule](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/models-manager/src/model_info.rs)
+that clamps to `max_context_window`; this plugin does not apply that clamp.
+Changing a client budget does not change the service's actual request limits.
+An observed 872,000 catalog value is not evidence that a larger HTTP request
+was tried and rejected, and a one-million client budget is not a live inference
+capacity test.
 
 Tests cover different defaults in one account, catalog updates, explicit one-million
-requests, per-model ceilings, smaller budgets, and clearing an override.
+budgets above catalog maxima, missing metadata, smaller budgets, invalid values,
+and clearing an override after catalog changes.
 
 ## Verification
 
