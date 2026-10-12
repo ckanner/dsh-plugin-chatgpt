@@ -24,9 +24,13 @@ discovery, Responses serialization, and its opaque replay envelope.
    advertises `systemPromptUpdate: "in-history"`, allowing DSH to append updates
    at their original positions. Tools remain in host-provided order.
 5. A stable 64-character hash scopes `prompt_cache_key` and the `session_id`
-   header to the account registration, endpoint, provider, session, and purpose.
-   Tokens and email addresses are never part of the key. Renewing an access token
-   preserves the identity. Sessionless calls omit both fields.
+   header to a local authorization namespace, client registration, endpoint,
+   provider, session, and purpose. The manager creates a fresh random namespace
+   on adoption, even if a caller supplies the same client ID, subject, or email.
+   Refresh and restart preserve it; reauthorization replaces it. Tokens, email
+   addresses, and synthetic account labels are never used as replay identities.
+   Sessionless calls omit cache identifiers. Missing/invalid namespaces disable
+   both native replay and these identifiers until the credential is managed.
 6. Default context is the account's ordinary window, limited to 272,000 tokens.
    `contextWindowLimit` can lower the budget or explicitly enable an extended
    window, bounded by account metadata. It is read when a model is resolved.
@@ -51,6 +55,19 @@ It does not introduce another agent loop or replace DSH's persistence with Pi's.
 
 ## Compatibility and migration
 
+The interactive token exchange already rejects missing ID tokens and absent or
+empty `sub` claims. Optional subjects exist at the credential/storage seam; a
+programmatic adoption previously promoted its fallback map key into that field.
+The account-scope hash also included `clientId`, so a collision required the same
+issued client ID. Version 0.1.11 removes reliance on either subject provenance or
+positional map keys: grants get independent replay namespaces. This is local
+authorization isolation, not an assertion of cryptographic OIDC identity validation.
+
+Legacy credential records acquire and persist a namespace on first load, without
+changing tokens or account selection. The auth-file version remains 1 with an
+additive field. Old replay scopes no longer match. Unknown subjects stay unknown;
+their local UI account keys are random and are not written back into `subject`.
+
 The host must support DSH's `ReplayEnvelope` on the terminal finish chunk and
 `systemPromptUpdate` in resolved model metadata. No DSH core change or session
 format migration is required. Old sessions remain readable but cannot recover
@@ -62,7 +79,17 @@ tool changes, account changes, and normal cache expiry can still reduce reuse.
 The context budget does not impose a spending cap; SIWC rejects
 `max_output_tokens`. It can cause existing large sessions to compact earlier.
 
+The 272,000-token default is a configurable plugin budget chosen from the ordinary
+window observed in the route's model catalog, not an OpenAI-wide model limit.
+Without an override it is `min(account.contextWindow, 272000)`; an override is
+bounded by `maxContextWindow ?? contextWindow`. For example, an ordinary 200,000
+window stays at 200,000. Tests cover that case and explicit extended-window clamps.
+
 ## Verification
+
+On a clean checkout, install development dependencies with `npm ci --ignore-scripts`.
+Run `npm run build` before `npm run verify:package`; packaging validation reads
+the generated `lib/` artifacts. Typechecking requires the installed `@types/node`.
 
 `npm test` includes:
 
@@ -93,6 +120,14 @@ This sample produced zero reasoning tokens, so encrypted reasoning is covered by
 offline/real-assembler fixtures, not demonstrated by that live sample. The check
 does not establish a sustained hit rate, a controlled comparison with Pi or the old
 adapter, or an exact reduction in ChatGPT plan usage.
+
+A separate live fallback check on 2026-10-12 used GPT-6 Astra / high. A short
+arithmetic prompt produced 234 reasoning tokens, one encrypted reasoning item,
+and one function call. Replaying the native reasoning and call completed
+successfully. Removing replay metadata then sending the same visible call and
+tool result also completed: the fallback kept `call_id` but omitted the native
+call item `id` and the reasoning item. This validates endpoint acceptance for
+that concrete fallback, not equivalent answer quality for arbitrary histories.
 
 For a bounded live comparison, use the same public SIWC endpoint, account,
 model, effort, stable tools, synthetic prompt, and request spacing for each

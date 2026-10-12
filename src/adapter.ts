@@ -478,8 +478,8 @@ export class ChatGptAdapter {
         // be answered here, before the caller has seen anything — and the event
         // that read produced is carried out, not discarded.
         async (credential) => {
-          const scope = accountScope(this.baseUrl ?? RESOURCE, credential.clientId, credential.subject)
-          const translator = new BlockTranslator({ provider: request.provider, model: request.model, scope })
+          const scope = accountScope(this.baseUrl ?? RESOURCE, credential)
+          const translator = new BlockTranslator(scope === undefined ? undefined : { provider: request.provider, model: request.model, scope })
           const neutral = toNeutralRequest(request, scope)
           const started = streamTurn({
             accessToken: credential.accessToken,
