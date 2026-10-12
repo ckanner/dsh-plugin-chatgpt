@@ -43,6 +43,7 @@ describe('authorization-scoped replay', () => {
     const a = await auth.usable()
     const scopeA = accountScope(endpoint, a)
     assert.ok(scopeA)
+    assert.ok(a.replayNamespace)
     const output: OutputItem[] = [
       { type: 'reasoning', id: 'rs_a', summary: [], encrypted_content: 'opaque-a' },
       { type: 'message', role: 'assistant', id: 'msg_a', content: [{ type: 'output_text', text: 'Visible history' }] },
@@ -90,7 +91,9 @@ describe('authorization-scoped replay', () => {
 
   it('fails closed for a credential whose local replay namespace is absent or malformed', () => {
     for (const replayNamespace of [undefined, '', 'account-1', 'display@example.test']) {
-      assert.equal(accountScope(endpoint, grant({ subject: 'subject', replayNamespace })), undefined)
+      assert.equal(accountScope(endpoint, grant({
+        subject: 'subject', ...replayNamespace === undefined ? {} : { replayNamespace },
+      })), undefined)
     }
     assert.equal(accountScope(endpoint, { clientId: '', replayNamespace: 'cf5a7f74-6069-4dfa-bd1c-df7d2e76f278' }), undefined)
   })

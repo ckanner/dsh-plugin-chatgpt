@@ -54,7 +54,7 @@ export interface ResponsesBody {
   stream: typeof STREAM
   store: typeof STORE
   prompt_cache_key?: string
-  include: ['reasoning.encrypted_content']
+  include?: ['reasoning.encrypted_content']
   tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown> }[]
   reasoning?: { effort: string, summary: 'concise' }
 }
@@ -72,7 +72,10 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
   }
   for (const message of request.messages) {
     if (message.role === 'assistant' && message.replay !== undefined) {
-      input.push(...structuredClone(message.replay))
+      // Stream fragments may omit summary; the Responses input shape requires
+      // the array even when reasoning is carried solely by encrypted_content.
+      input.push(...structuredClone(message.replay).map(item => item.type === 'reasoning' && item['summary'] === undefined
+        ? { ...item, summary: [] } : item))
       continue
     }
     if (message.role === 'tool') {
@@ -103,12 +106,13 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
   }
   return {
     model: request.model, input, stream: STREAM, store: STORE,
-    include: ['reasoning.encrypted_content'],
     ...request.cacheKey === undefined ? {} : { prompt_cache_key: request.cacheKey },
     ...request.tools?.length ? {
       tools: request.tools.map(tool => ({ type: 'function' as const, name: tool.name, description: tool.description, parameters: tool.parameters })),
     } : {},
-    ...request.reasoningEffort === undefined ? {} : { reasoning: { effort: request.reasoningEffort, summary: 'concise' } },
+    ...request.reasoningEffort === undefined ? {} : {
+      reasoning: { effort: request.reasoningEffort, summary: 'concise' }, include: ['reasoning.encrypted_content'],
+    },
   }
 }
 

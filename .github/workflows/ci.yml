@@ -23,8 +23,22 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm install --ignore-scripts
+      - name: Checkout pinned DSH contract sources
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: d743267388641bc76f17c45ce8b4c231aed1d32c
+          path: .harness-contract
+          persist-credentials: false
+          sparse-checkout: |
+            packages/llm/llm/src
+            packages/util/brand/src
+            packages/util/values/src
+            packages/util/crypto/src
       - name: Unit tests
         run: npm test
+      - name: Real DSH stream and replay contract
+        run: npm run verify:harness -- .harness-contract
       - name: Build
         run: npm run build
       - name: Type check

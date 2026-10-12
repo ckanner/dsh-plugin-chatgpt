@@ -12,7 +12,7 @@ const controller = readFileSync(join(here, '..', 'src', 'controller.ts'), 'utf8'
 /** One decorated method as the controller declares it. */
 interface DeclaredMethod {
   method: string
-  parameters: string[]
+  parameters: { wire: string, optional: boolean }[]
 }
 
 /**

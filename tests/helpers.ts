@@ -7,6 +7,13 @@
  */
 
 import { createServer, type Server } from 'node:http'
+import assert from 'node:assert/strict'
+
+/** Narrow an expected fixture element with a real runtime assertion. */
+export function required<T>(value: T | undefined): T {
+  assert.ok(value !== undefined, 'expected a fixture value')
+  return value
+}
 
 /** One request the token endpoint received. */
 export interface RecordedRequest {

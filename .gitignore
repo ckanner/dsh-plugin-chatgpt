@@ -2,6 +2,7 @@ node_modules/
 lib/
 *.tsbuildinfo
 .probe/
+.harness-contract/
 .DS_Store
 
 # Packed artifacts
