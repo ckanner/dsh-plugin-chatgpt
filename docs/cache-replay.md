@@ -89,7 +89,9 @@ Corrected roles/order and the new cache identity change the initial wire prefix.
 Expect a cold request after upgrading. Model/effort switches, context compaction,
 tool changes, account changes, and normal cache expiry can still reduce reuse.
 The context budget does not impose a spending cap; SIWC rejects
-`max_output_tokens`. It can cause existing large sessions to compact earlier.
+`max_output_tokens`. It follows the account catalog, so a model whose advertised
+window grows keeps more history before DSH compacts, and an explicit
+`contextWindowLimit` below that default compacts sooner.
 
 Without an override, the context budget is the model's `contextWindow`, bounded
 by `maxContextWindow` when present. No fixed 272K, 500K, or 1M cap replaces the
