@@ -45,7 +45,8 @@
     "locale",
     "screenshots.json",
     "assets",
-    "docs/README.zh.md"
+    "docs/README.zh.md",
+    "docs/cache-replay.md"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -69,6 +70,7 @@
     "check:i18n": "node scripts/align-readme-i18n.mjs --check",
     "build:client": "node scripts/build-client.mjs",
     "verify:client": "node scripts/verify-client-bundle.mjs",
+    "verify:harness": "node scripts/verify-harness.mjs",
     "verify:package": "node scripts/verify-package-contents.mjs"
   },
   "peerDependencies": {

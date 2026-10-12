@@ -26,7 +26,10 @@
 
 import { ApiError, listModels, streamTurn } from './api/client.ts'
 import { BlockTranslator, type AdapterChunk } from './convert/blocks.ts'
-import type { NeutralMessage, NeutralRequest, NeutralTool, ToolTraffic } from './convert/request.ts'
+import type { InputPart, NeutralMessage, NeutralRequest } from './convert/request.ts'
+import { accountScope, replayOutput, sessionCacheKey, type ReplayContext } from './convert/replay.ts'
+import type { ChatGptCredential } from './auth/credential.ts'
+import { RESOURCE } from './auth/protocol.ts'
 import type { ResponsesEvent } from './api/events.ts'
 import { describableModels, describeModel, effortLabel, type DescribedModel, type ListedModel } from './models/describe.ts'
 import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord } from './models/served.ts'
@@ -104,6 +107,8 @@ export interface ChatGptAdapterOptions {
    * route serves, and hiding them hides capability the account already has.
    */
   includeUnlisted?: boolean
+  /** DSH's compaction budget. Extended windows require an explicit override. */
+  contextWindowLimit?: number | (() => number | undefined)
   /** Clock, so the listing cache can be tested. */
   now?: () => number
 }
@@ -120,6 +125,7 @@ export interface HarnessModelInfo {
 export interface HarnessResolvedModel extends HarnessModelInfo {
   context: { contextWindow: number }
   defaultMaxTokens?: number
+  systemPromptUpdate?: 'in-history'
   reasoning?: {
     efforts: readonly { id: string, name: string, description?: string }[]
     defaultEffort?: string
@@ -135,6 +141,8 @@ export interface HarnessRequest {
   tools?: readonly { name: string, description: string, parameters: Record<string, unknown> }[]
   reasoningEffort?: string
   signal?: AbortSignal
+  sessionId?: string
+  purpose?: 'compaction' | 'session-title'
 }
 
 /** One message as the harness states it. */
@@ -144,6 +152,7 @@ export interface HarnessMessage {
   /** Present on a tool-role message: the call it answers. */
   toolCallId?: string
   isError?: boolean
+  source?: unknown
 }
 
 /** One content block as the harness states it. */
@@ -153,81 +162,42 @@ export type HarnessBlock =
   | { type: 'tool-call', id: string, name: string, arguments: string }
   | { type: string, [key: string]: unknown }
 
-/** Reduce a harness message to the neutral shape the translation consumes. */
-function neutralMessage(message: HarnessMessage): NeutralMessage {
-  const text = message.content
-    .map(block => (block.type === 'text' && typeof (block as { text?: unknown }).text === 'string'
-      ? (block as { text: string }).text
-      : ''))
-    .filter(value => value.length > 0)
-    .join('\n')
-  return {
-    role: message.role === 'assistant' ? 'assistant' : 'user',
-    content: text,
-  }
-}
-
-/**
- * Turn a harness request into the neutral request the client sends.
- *
- * Tool traffic is lifted out of the message stream into the top-level items the
- * wire format expects, keeping calls and their results in the order they
- * happened: a replayed call must precede the result that answers it, and leaving
- * either as a plain message would give the model a conversation it cannot
- * correlate.
- *
- * @param request - the harness request.
- * @returns the neutral request.
- */
-export function toNeutralRequest(request: HarnessRequest): NeutralRequest {
-  const messages: NeutralMessage[] = []
-  const toolTraffic: ToolTraffic[] = []
-
-  for (const message of request.messages) {
-    if (message.role === 'tool') {
-      const output = message.content
-        .map(block => (block.type === 'text' ? (block as { text: string }).text : ''))
-        .join('')
-      if (message.toolCallId === undefined) continue
-      toolTraffic.push({
-        kind: 'result',
-        result: {
-          callId: message.toolCallId,
-          output,
-          ...message.isError === true ? { isError: true } : {},
-        },
-      })
-      continue
-    }
-
-    // An assistant turn's calls are replayed as calls, ahead of the prose the
-    // same turn produced.
+/** Preserve roles, blocks and tool results in the host's conversational order. */
+export function toNeutralRequest(request: HarnessRequest, scope?: string): NeutralRequest {
+  const context: ReplayContext | undefined = scope === undefined
+    ? undefined : { provider: request.provider, model: request.model, scope }
+  const messages: NeutralMessage[] = request.messages.map(message => {
+    const source = typeof message.source === 'object' && message.source !== null
+      ? message.source as Record<string, unknown> : undefined
+    const replay = message.role === 'assistant'
+      && source?.['provider'] === request.provider && source['model'] === request.model
+      ? replayOutput(source['replayState'], message.content, context) : undefined
+    const content: InputPart[] = []
     for (const block of message.content) {
-      if (block.type !== 'tool-call') continue
-      const call = block as { id: string, name: string, arguments: string }
-      toolTraffic.push({
-        kind: 'call',
-        call: { callId: call.id, name: call.name, arguments: call.arguments },
-      })
+      if (block.type === 'text' && typeof block['text'] === 'string') {
+        content.push({ type: 'text', text: block['text'] })
+      } else if (block.type === 'tool-call') {
+        const call = block as { id: string, name: string, arguments: string }
+        content.push({ type: 'tool-call', id: call.id, name: call.name, arguments: call.arguments })
+      }
+      // Old/foreign reasoning summaries are for display, not a replacement for
+      // opaque provider reasoning. Missing native state cannot be reconstructed.
     }
-
-    const neutral = neutralMessage(message)
-    if (typeof neutral.content === 'string' && neutral.content.length > 0) messages.push(neutral)
-  }
-
-  const tools: NeutralTool[] = (request.tools ?? []).map(tool => ({
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
-  }))
-
+    return {
+      role: message.role, content,
+      ...message.toolCallId === undefined ? {} : { toolCallId: message.toolCallId },
+      ...message.isError === undefined ? {} : { isError: message.isError },
+      ...replay === undefined ? {} : { replay },
+    }
+  })
+  const cacheKey = scope === undefined ? undefined
+    : sessionCacheKey(scope, request.provider, request.sessionId, request.purpose)
   return {
-    model: request.model,
-    messages,
+    model: request.model, messages,
     ...request.system === undefined ? {} : { system: request.system },
-    ...tools.length === 0 ? {} : { tools },
-    ...toolTraffic.length === 0 ? {} : { toolTraffic },
+    ...request.tools?.length ? { tools: request.tools } : {},
     ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort },
+    ...cacheKey === undefined ? {} : { cacheKey },
   }
 }
 
@@ -247,19 +217,19 @@ export function toNeutralRequest(request: HarnessRequest): NeutralRequest {
  * @throws the second attempt's failure, or the first one when a renewal was not the answer.
  */
 async function withFreshGrant<T>(
-  usable: () => Promise<{ accessToken: string }>,
-  renew: () => Promise<{ accessToken: string }>,
-  call: (accessToken: string) => Promise<T>,
+  usable: () => Promise<ChatGptCredential>,
+  renew: () => Promise<ChatGptCredential>,
+  call: (credential: ChatGptCredential) => Promise<T>,
 ): Promise<T> {
   const credential = await usable()
   try {
-    return await call(credential.accessToken)
+    return await call(credential)
   } catch (error) {
     // Only an authentication refusal is worth a renewal; anything else would
     // spend a refresh token to be told the same thing again.
     if (!isCodedError(error) || (error.status !== 401 && error.status !== 403)) throw error
     const renewed = await renew()
-    return await call(renewed.accessToken)
+    return await call(renewed)
   }
 }
 
@@ -292,20 +262,25 @@ function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
     : coded(`the ChatGPT request could not be prepared: ${message}`, 'chatgpt_request_failed')
 }
 
-/** Describe a listed model in the harness's vocabulary. */
-function toHarnessResolved(provider: string, model: DescribedModel): HarnessResolvedModel {
+/** Default context budget; opting into an extended window is explicit. */
+export const DEFAULT_CONTEXT_WINDOW_LIMIT = 272_000
+
+/** Describe a model and its selected compaction budget in the host's vocabulary. */
+function toHarnessResolved(provider: string, model: DescribedModel, limit?: number): HarnessResolvedModel {
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1024)) {
+    throw new Error('contextWindowLimit must be a safe integer of at least 1024 tokens')
+  }
+  const requested = limit ?? Math.min(model.contextWindow, DEFAULT_CONTEXT_WINDOW_LIMIT)
+  const contextWindow = Math.min(requested, model.maxContextWindow ?? model.contextWindow)
   return {
     provider,
     id: model.id,
     name: model.name,
     inputModalities: model.input,
-    // The harness models one capacity per model, so it gets the largest the
-    // endpoint advertises rather than the smaller default. Measured: a request
-    // well past the advertised default context was accepted, so reporting the
-    // default would understate what the model can hold and make the harness
-    // compact sooner than it needs to.
-    context: { contextWindow: model.maxContextWindow ?? model.contextWindow },
-    ...model.maxTokens === undefined ? {} : { defaultMaxTokens: model.maxTokens },
+    // Let DSH compact against this budget; the adapter never truncates history.
+    context: { contextWindow },
+    systemPromptUpdate: 'in-history',
+    ...model.maxTokens === undefined ? {} : { defaultMaxTokens: Math.min(model.maxTokens, Math.floor(contextWindow / 2)) },
     ...model.reasoningEfforts === undefined ? {} : {
       reasoning: {
         efforts: model.reasoningEfforts,
@@ -327,6 +302,7 @@ export class ChatGptAdapter {
   private readonly baseUrl: string | undefined
   private readonly displayName: string
   private readonly includeUnlisted: boolean
+  private readonly contextWindowLimit: ChatGptAdapterOptions['contextWindowLimit']
   private readonly now: () => number
   private listing: { at: number, models: DescribedModel[] } | undefined
 
@@ -338,6 +314,7 @@ export class ChatGptAdapter {
     this.baseUrl = options.baseUrl
     this.displayName = options.displayName ?? 'ChatGPT'
     this.includeUnlisted = options.includeUnlisted ?? true
+    this.contextWindowLimit = options.contextWindowLimit
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -376,7 +353,7 @@ export class ChatGptAdapter {
       listed = await withFreshGrant(
         () => this.auth.usable(),
         () => this.auth.renew(),
-        token => listModels(token, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
+        credential => listModels(credential.accessToken, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
       )
     } catch (error) {
       throw isCodedError(error)
@@ -472,7 +449,8 @@ export class ChatGptAdapter {
     const described = listed ?? describableModels([{ slug: model }])[0]
     /* c8 ignore next -- describableModels always answers for a non-empty slug */
     if (described === undefined) throw new Error(`no model named "${model}"`)
-    return toHarnessResolved(provider, described)
+    const limit = typeof this.contextWindowLimit === 'function' ? this.contextWindowLimit() : this.contextWindowLimit
+    return toHarnessResolved(provider, described, limit)
   }
 
   /**
@@ -488,26 +466,28 @@ export class ChatGptAdapter {
    */
   async *stream(provider: string, request: HarnessRequest): AsyncGenerator<AdapterChunk, void, undefined> {
     void provider
-    const neutral = toNeutralRequest(request)
-    const translator = new BlockTranslator()
+    let translator: BlockTranslator
     let events: AsyncGenerator<ResponsesEvent, void, undefined>
     let primed: IteratorResult<ResponsesEvent>
     try {
-      ({ events, primed } = await withFreshGrant(
+      ({ events, primed, translator } = await withFreshGrant(
         () => this.auth.usable(request.signal),
         () => this.auth.renew(request.signal),
         // A generator is lazy, so a refused token would not surface until the
         // first read. Reading one step inside the retry is what lets the refusal
         // be answered here, before the caller has seen anything — and the event
         // that read produced is carried out, not discarded.
-        async (token) => {
+        async (credential) => {
+          const scope = accountScope(this.baseUrl ?? RESOURCE, credential.clientId, credential.subject)
+          const translator = new BlockTranslator({ provider: request.provider, model: request.model, scope })
+          const neutral = toNeutralRequest(request, scope)
           const started = streamTurn({
-            accessToken: token,
+            accessToken: credential.accessToken,
             request: neutral,
             ...this.baseUrl === undefined ? {} : { endpoints: { baseUrl: this.baseUrl } },
             ...request.signal === undefined ? {} : { signal: request.signal },
           })
-          return { events: started, primed: await started.next() }
+          return { events: started, primed: await started.next(), translator }
         },
       ))
     } catch (error) {

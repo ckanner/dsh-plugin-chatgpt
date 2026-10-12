@@ -72,11 +72,12 @@ function errorOf(body: string, status: number): ApiError {
 }
 
 /** Build the headers every call carries. */
-function headersFor(accessToken: string): Record<string, string> {
+function headersFor(accessToken: string, cacheKey?: string): Record<string, string> {
   return {
     authorization: `Bearer ${accessToken}`,
     'content-type': 'application/json',
     accept: 'application/json',
+    ...cacheKey === undefined ? {} : { session_id: cacheKey },
   }
 }
 
@@ -179,7 +180,7 @@ export async function* streamTurn(options: StreamTurnOptions): AsyncGenerator<Re
   const body: ResponsesBody = toResponsesBody(options.request)
   const response = await fetch(`${baseOf(options.endpoints)}/responses`, {
     method: 'POST',
-    headers: headersFor(options.accessToken),
+    headers: headersFor(options.accessToken, body.prompt_cache_key),
     body: JSON.stringify(body),
     ...options.signal === undefined ? {} : { signal: options.signal },
   })

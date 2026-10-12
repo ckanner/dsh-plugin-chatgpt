@@ -25,6 +25,8 @@ declare module '@deepseek-ai/schemastery' {
 
   /** A validated field or object schema. */
   export interface Schema<T = unknown> {
+    step(value: number): Schema<T>
+    min(value: number): Schema<T>
     /** Mark the field as required. */
     required(): Schema<T>
     /** Supply a default for an omitted field. */
@@ -44,6 +46,8 @@ declare module '@deepseek-ai/schemastery' {
   export interface Schemastery {
     /** A UTF-8 string field. */
     string(): Schema<string>
+    /** A numeric context budget. */
+    number(): Schema<number>
     /** A boolean field. */
     boolean(): Schema<boolean>
     /** An object whose declared fields compose the schema. */

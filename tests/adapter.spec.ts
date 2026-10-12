@@ -9,6 +9,7 @@ import { ChatGptAuth } from '../src/auth/manager.ts'
 import { writeDocument, emptyDocument } from '../src/auth/store.ts'
 import type { ChatGptCredential } from '../src/auth/credential.ts'
 import { startTokenServer } from './helpers.ts'
+import { toResponsesBody } from '../src/convert/request.ts'
 
 const servers: Server[] = []
 const dirs: string[] = []
@@ -147,10 +148,7 @@ describe('ChatGptAdapter', () => {
     assert.equal(resolved.reasoning?.defaultEffort, 'medium')
   })
 
-  it('reports the extended capacity the endpoint advertises, not the smaller default', async () => {
-    // The endpoint reports both a default and a maximum; the harness models one
-    // number, and reporting the default would make it compact earlier than the
-    // model requires.
+  it('uses the ordinary context budget and advertises in-history instruction updates', async () => {
     const endpointUrl = await endpoint({
       listing: {
         models: [{ slug: 'wide', visibility: 'list', context_window: 272000, max_context_window: 872000 }],
@@ -160,7 +158,32 @@ describe('ChatGptAdapter', () => {
 
     const resolved = await adapter.resolveModel('chatgpt', 'wide')
 
-    assert.equal(resolved.context.contextWindow, 872000)
+    assert.equal(resolved.context.contextWindow, 272000)
+    assert.equal(resolved.systemPromptUpdate, 'in-history')
+  })
+
+  it('reads live context limits, allows explicit expansion and clamps to the account maximum', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'wide', context_window: 272000, max_context_window: 872000 }] },
+    })
+    let limit: number | undefined
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, contextWindowLimit: () => limit,
+    })
+    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 272000)
+    limit = 512000
+    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 512000)
+    limit = 2000000
+    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 872000)
+    limit = 64000
+    const small = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
+    assert.equal(small.context.contextWindow, 64000)
+    assert.ok(small.defaultMaxTokens < small.context.contextWindow)
+    for (const invalid of [0, -1, 1.5, NaN, Infinity]) {
+      limit = invalid
+      await assert.rejects(adapter.resolveModel('chatgpt', 'wide'), /contextWindowLimit/)
+    }
   })
 
   it('falls back to the default capacity when no maximum is advertised', async () => {
@@ -222,7 +245,7 @@ describe('ChatGptAdapter', () => {
 
     const resolved = await adapter.resolveModel('chatgpt', 'gpt-6-sol')
 
-    assert.equal(resolved.context.contextWindow, 872000)
+    assert.equal(resolved.context.contextWindow, 272000)
     assert.equal(resolved.defaultMaxTokens, 128000)
   })
 
@@ -626,7 +649,7 @@ describe('toNeutralRequest', () => {
     })
 
     assert.equal(neutral.system, 'be terse')
-    assert.deepEqual(neutral.messages, [{ role: 'user', content: 'hi' }])
+    assert.deepEqual(neutral.messages, [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }])
   })
 
   it('replays an assistant tool call ahead of the result that answers it', () => {
@@ -640,12 +663,8 @@ describe('toNeutralRequest', () => {
       ],
     })
 
-    assert.deepEqual(neutral.toolTraffic, [
-      { kind: 'call', call: { callId: 'call_1', name: 'read_file', arguments: '{"path":"a"}' } },
-      { kind: 'result', result: { callId: 'call_1', output: 'contents' } },
-    ])
-    // The call is not also sent as assistant prose.
-    assert.deepEqual(neutral.messages, [{ role: 'user', content: 'read a' }])
+    assert.deepEqual(toResponsesBody(neutral).input.map(item => item.type), ['message', 'function_call', 'function_call_output'])
+    assert.deepEqual(neutral.messages.map(message => message.role), ['user', 'assistant', 'tool'])
   })
 
   it('marks a failed tool result', () => {
@@ -657,9 +676,7 @@ describe('toNeutralRequest', () => {
       ],
     })
 
-    assert.deepEqual(neutral.toolTraffic, [
-      { kind: 'result', result: { callId: 'call_1', output: 'not found', isError: true } },
-    ])
+    assert.equal(toResponsesBody(neutral).input[0].output, 'Error: not found')
   })
 
   it('drops a tool message that names no call, since it cannot be correlated', () => {
@@ -669,7 +686,7 @@ describe('toNeutralRequest', () => {
       messages: [{ role: 'tool', content: [{ type: 'text', text: 'orphan' }] }],
     })
 
-    assert.equal(neutral.toolTraffic, undefined)
+    assert.deepEqual(toResponsesBody(neutral).input, [])
   })
 
   it('carries tools and the chosen reasoning effort', () => {

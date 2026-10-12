@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { CACHE_KEY, REFUSED_FIELDS, toResponsesBody } from '../src/convert/request.ts'
+import { REFUSED_FIELDS, toResponsesBody } from '../src/convert/request.ts'
 
 /** The body's own keys, for asserting on refusals. */
 function keysOf(body: object): string[] {
@@ -15,19 +15,14 @@ describe('toResponsesBody', () => {
     assert.equal(body.store, false)
   })
 
-  it('names a cache key, which is what makes matching reliable on these models', () => {
-    // On GPT-5.6 and later the service uses "the more reliable matching" only when
-    // the request names a key; without one, hits stay best-effort. The value is
-    // stable per installation because the service combines it with the prefix hash
-    // for routing rather than treating it as the prefix itself.
-    const body = toResponsesBody({ model: 'gpt-6-astra', messages: [{ role: 'user', content: 'hi' }] })
-
-    assert.equal(body.prompt_cache_key, CACHE_KEY)
-    assert.equal(typeof CACHE_KEY, 'string')
-    assert.ok(CACHE_KEY.length > 0)
+  it('uses an optional session cache key and requests opaque reasoning', () => {
+    const request = { model: 'gpt-6-astra', messages: [{ role: 'user' as const, content: 'hi' }] }
+    assert.equal(toResponsesBody(request).prompt_cache_key, undefined)
+    assert.equal(toResponsesBody({ ...request, cacheKey: 'session-key' }).prompt_cache_key, 'session-key')
+    assert.deepEqual(toResponsesBody(request).include, ['reasoning.encrypted_content'])
   })
 
-  it('lifts a leading system message into instructions instead of forwarding it', () => {
+  it('preserves a leading system message as a developer instruction', () => {
     const body = toResponsesBody({
       model: 'm',
       messages: [
@@ -36,14 +31,14 @@ describe('toResponsesBody', () => {
       ],
     })
 
-    assert.equal(body.instructions, 'You are terse.')
     // A system-role item inside `input` is refused, so none may appear.
     assert.deepEqual(body.input, [
+      { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'You are terse.' }] },
       { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
     ])
   })
 
-  it('joins several system messages, preserving their order', () => {
+  it('keeps instruction messages separate and in order', () => {
     const body = toResponsesBody({
       model: 'm',
       messages: [
@@ -53,7 +48,8 @@ describe('toResponsesBody', () => {
       ],
     })
 
-    assert.equal(body.instructions, 'first\n\nsecond')
+    assert.deepEqual(body.input.map(item => item.role), ['developer', 'developer', 'user'])
+    assert.deepEqual(body.input.slice(0, 2).map(item => item.content[0].text), ['first', 'second'])
   })
 
   it('uses the out-of-band system prompt when the messages carry none', () => {
@@ -63,7 +59,8 @@ describe('toResponsesBody', () => {
       messages: [{ role: 'user', content: 'hi' }],
     })
 
-    assert.equal(body.instructions, 'One-shot prompt')
+    assert.equal(body.input[0].role, 'developer')
+    assert.equal(body.input[0].content[0].text, 'One-shot prompt')
   })
 
   it('prefers the messages\' system text over the out-of-band prompt', () => {
@@ -73,7 +70,8 @@ describe('toResponsesBody', () => {
       messages: [{ role: 'system', content: 'from history' }, { role: 'user', content: 'hi' }],
     })
 
-    assert.equal(body.instructions, 'from history')
+    assert.equal(body.input[0].content[0].text, 'from history')
+    assert.equal(body.input.length, 2)
   })
 
   it('omits instructions entirely when there is no system text', () => {
@@ -103,8 +101,7 @@ describe('toResponsesBody', () => {
   it('delivers tool results as top-level items correlated by call id', () => {
     const body = toResponsesBody({
       model: 'm',
-      messages: [{ role: 'user', content: 'go' }],
-      toolTraffic: [{ kind: 'result', result: { callId: 'call_1', output: 'file contents' } }],
+      messages: [{ role: 'user', content: 'go' }, { role: 'tool', toolCallId: 'call_1', content: 'file contents' }],
     })
 
     // Not a message role: the wire format correlates by call_id, not position.
@@ -118,10 +115,10 @@ describe('toResponsesBody', () => {
   it('replays a call as a function_call item, before the result answering it', () => {
     const body = toResponsesBody({
       model: 'm',
-      messages: [{ role: 'user', content: 'go' }],
-      toolTraffic: [
-        { kind: 'call', call: { callId: 'call_1', name: 'read_file', arguments: '{"path":"a"}' } },
-        { kind: 'result', result: { callId: 'call_1', output: 'hello' } },
+      messages: [
+        { role: 'user', content: 'go' },
+        { role: 'assistant', content: [{ type: 'tool-call', id: 'call_1', name: 'read_file', arguments: '{"path":"a"}' }] },
+        { role: 'tool', toolCallId: 'call_1', content: 'hello' },
       ],
     })
 
@@ -134,8 +131,7 @@ describe('toResponsesBody', () => {
   it('marks a failed tool result rather than throwing', () => {
     const body = toResponsesBody({
       model: 'm',
-      messages: [{ role: 'user', content: 'go' }],
-      toolTraffic: [{ kind: 'result', result: { callId: 'call_1', output: 'not found', isError: true } }],
+      messages: [{ role: 'user', content: 'go' }, { role: 'tool', toolCallId: 'call_1', content: 'not found', isError: true }],
     })
 
     assert.equal(body.input[1]?.output, 'Error: not found')

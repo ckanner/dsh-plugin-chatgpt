@@ -19,16 +19,19 @@
  * @module dsh-plugin-chatgpt-subscription/api/events
  */
 
+import { outputItem, outputItems, type OutputItem } from '../convert/replay.ts'
+
 /** One decoded stream event worth surfacing. */
 export type ResponsesEvent =
-  | { kind: 'text', delta: string }
-  | { kind: 'reasoning', delta: string }
+  | { kind: 'text', delta: string, index?: number }
+  | { kind: 'reasoning', delta: string, index?: number }
+  | { kind: 'itemStart' | 'itemEnd', index: number, item: OutputItem }
   | { kind: 'toolCallStart', index: number, callId: string, name: string }
   | { kind: 'toolCallDelta', index: number, delta: string }
   | { kind: 'toolCallEnd', index: number, arguments: string }
-  | { kind: 'completed', responseId?: string, usage?: ResponsesUsage }
-  | { kind: 'incomplete', reason: string }
-  | { kind: 'failed', code: string, message: string, terminal: boolean }
+  | { kind: 'completed', responseId?: string, usage?: ResponsesUsage, output?: OutputItem[] }
+  | { kind: 'incomplete', reason: string, usage?: ResponsesUsage }
+  | { kind: 'failed', code: string, message: string, terminal: boolean, usage?: ResponsesUsage }
   | { kind: 'unknown', type: string }
 
 /**
@@ -166,7 +169,6 @@ const LIFECYCLE_TYPES = new Set([
   'response.created',
   'response.queued',
   'response.in_progress',
-  'response.output_item.done',
   'response.content_part.added',
   'response.content_part.done',
   'response.output_text.done',
@@ -200,25 +202,35 @@ export function decodeEvent(payload: string): ResponsesEvent | undefined {
   if (LIFECYCLE_TYPES.has(type)) return undefined
 
   switch (type) {
-    case 'response.output_text.delta': {
+    case 'response.output_text.delta':
+    case 'response.refusal.delta': {
       const delta = str(event['delta']) ?? ''
-      return delta.length === 0 ? undefined : { kind: 'text', delta }
+      const index = num(event['output_index'])
+      return delta.length === 0 ? undefined : { kind: 'text', delta, ...index === undefined ? {} : { index } }
     }
     case 'response.reasoning_summary_text.delta':
     case 'response.reasoning_text.delta': {
       const delta = str(event['delta']) ?? ''
-      return delta.length === 0 ? undefined : { kind: 'reasoning', delta }
+      const index = num(event['output_index'])
+      return delta.length === 0 ? undefined : { kind: 'reasoning', delta, ...index === undefined ? {} : { index } }
     }
     case 'response.output_item.added': {
       const item = record(event['item'])
-      if (str(item?.['type']) !== 'function_call') return undefined
       const index = num(event['output_index']) ?? 0
+      if (str(item?.['type']) !== 'function_call') {
+        const native = outputItem(item)
+        return native === undefined ? undefined : { kind: 'itemStart', index, item: native }
+      }
       return {
         kind: 'toolCallStart',
         index,
         callId: str(item?.['call_id']) ?? str(item?.['id']) ?? `call-${index}`,
         name: str(item?.['name']) ?? '',
       }
+    }
+    case 'response.output_item.done': {
+      const item = outputItem(event['item'])
+      return item === undefined ? undefined : { kind: 'itemEnd', index: num(event['output_index']) ?? 0, item }
     }
     case 'response.function_call_arguments.delta': {
       const delta = str(event['delta']) ?? ''
@@ -235,16 +247,19 @@ export function decodeEvent(payload: string): ResponsesEvent | undefined {
       const response = record(event['response'])
       const id = str(response?.['id'])
       const usage = usageOf(response)
+      const output = outputItems(response?.['output'])
       return {
         kind: 'completed',
         ...id === undefined ? {} : { responseId: id },
         ...usage === undefined ? {} : { usage },
+        ...output === undefined ? {} : { output },
       }
     }
     case 'response.incomplete': {
       const response = record(event['response'])
       const details = record(response?.['incomplete_details'])
-      return { kind: 'incomplete', reason: str(details?.['reason']) ?? 'unknown' }
+      const usage = usageOf(response)
+      return { kind: 'incomplete', reason: str(details?.['reason']) ?? 'unknown', ...usage === undefined ? {} : { usage } }
     }
     case 'response.failed':
     case 'error': {
@@ -253,11 +268,13 @@ export function decodeEvent(payload: string): ResponsesEvent | undefined {
       const code = str(error['code']) ?? str(error['type']) ?? 'unknown_error'
       const reported = str(error['message']) ?? 'the response failed without a message'
       const hint = recoveryHint(code)
+      const usage = usageOf(source)
       return {
         kind: 'failed',
         code,
         message: hint === undefined ? reported : `${reported} ${hint}`,
         terminal: isPlanUsageCode(code) || code !== 'server_error',
+        ...usage === undefined ? {} : { usage },
       }
     }
     default:
