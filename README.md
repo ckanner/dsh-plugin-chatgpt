@@ -90,7 +90,13 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
-Model metadata comes from the account listing. By default the adapter uses the ordinary context window, capped at 272,000 tokens, so DSH can compact earlier. Set the optional `contextWindowLimit` in the plugin configuration to use a different budget; explicit expansion is clamped to the advertised maximum. Sign-in lives on that row's card.
+Model metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set the optional `contextWindowLimit` in the plugin configuration to override that budget; explicit values are used as-is. Sign-in lives on that row's card.
+
+For example, add this field to the plugin's configuration to set DSH's context budget to 1,000,000 tokens, even if the model catalog reports a maximum of 872,000. Remove the field to follow the account defaults again. The setting applies to this provider's models and is independent of Codex settings. DSH still reserves headroom for compaction; this setting does not change service-side request limits.
+
+```yaml
+contextWindowLimit: 1000000
+```
 
 ![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)
 
@@ -172,7 +178,7 @@ The adapter preserves reusable prefixes and opaque reasoning across tool turns a
 - **One installation, one host id** — the host id is scoped to the state directory. Two profiles sharing one directory are one installation to OpenAI; two directories are two, and each is consented separately.
 - **`agent_name_hint` is a constant** — it defaults to `DeepSeek Harness` and can be overridden per profile, but it is what a human reads on the consent screen and what OpenAI records as this app's identity, so changing it changes how existing grants are attributed.
 
-- **Context growth has a configurable budget** — the default is the smaller of the account's ordinary window and 272,000 tokens. `contextWindowLimit` is an integer of at least 1,024 tokens; an explicit value can opt into the extended window but never exceeds the advertised maximum. DSH's own compaction policy controls the actual trigger and headroom. This is a context budget, not a hard spending limit or a cache-hit target.
+- **Context growth has a configurable budget** — the default follows each model's account-catalog window, without a shared fixed cap. `contextWindowLimit` must be a safe integer of at least 1,024 tokens. Explicit values override both the default and catalog maximum metadata, following Pi's override behavior. Without an override, missing account metadata uses the bundled fallback. DSH's own compaction policy controls the actual trigger and headroom. This is a context budget, not a hard spending limit or a cache-hit target.
 
 - **Signing out is two things, and the card says which happened** — the renewable session is revoked at the authorization server before the credential is cleared here, because a grant deleted locally may still be live elsewhere. When the server cannot be reached the sign-out still completes locally, and the outcome says the remote revocation was not confirmed. An exhausted allowance names ChatGPT's own usage page and says that the code identifies neither the cause nor a reset time: the plan's shared usage and an app-specific limit are both possible, which is why a plan that looks well within its limits on the site and a refusal can both be true.
 

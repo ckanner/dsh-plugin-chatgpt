@@ -107,7 +107,7 @@ export interface ChatGptAdapterOptions {
    * route serves, and hiding them hides capability the account already has.
    */
   includeUnlisted?: boolean
-  /** DSH's compaction budget. Extended windows require an explicit override. */
+  /** Explicit DSH context budget takes precedence over catalog metadata; absent follows the default. */
   contextWindowLimit?: number | (() => number | undefined)
   /** Clock, so the listing cache can be tested. */
   now?: () => number
@@ -262,16 +262,14 @@ function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
     : coded(`the ChatGPT request could not be prepared: ${message}`, 'chatgpt_request_failed')
 }
 
-/** Default context budget; opting into an extended window is explicit. */
-export const DEFAULT_CONTEXT_WINDOW_LIMIT = 272_000
-
 /** Describe a model and its selected compaction budget in the host's vocabulary. */
 function toHarnessResolved(provider: string, model: DescribedModel, limit?: number): HarnessResolvedModel {
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1024)) {
     throw new Error('contextWindowLimit must be a safe integer of at least 1024 tokens')
   }
-  const requested = limit ?? Math.min(model.contextWindow, DEFAULT_CONTEXT_WINDOW_LIMIT)
-  const contextWindow = Math.min(requested, model.maxContextWindow ?? model.contextWindow)
+  // Like Pi's model override, an explicit budget is used verbatim. Catalog
+  // maxima describe the provider; they do not silently shrink the user's setting.
+  const contextWindow = limit ?? model.contextWindow
   return {
     provider,
     id: model.id,
@@ -390,11 +388,10 @@ export class ChatGptAdapter {
           .filter(entry => !entry.advertised && !present.has(entry.id))
           .map(entry => {
             const described = describeModel({ slug: entry.id })
-            // The listing says nothing about these, so both their capacity and
-            // their accepted levels come from what the route measurably serves.
+            // No account default is available. Keep the bundled default and
+            // retain the observed route maximum as descriptive metadata only.
             return {
               ...described,
-              contextWindow: ROUTE_MAX_CONTEXT_WINDOW,
               maxContextWindow: ROUTE_MAX_CONTEXT_WINDOW,
               maxTokens: described.maxTokens ?? ROUTE_MAX_OUTPUT_TOKENS,
               metadataSource: 'measured' as const,

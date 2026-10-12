@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.12 (unreleased)
+
+- Follow each model's account-catalog context window by default, including catalog
+  updates, instead of imposing a shared 272,000-token cap. Use explicit
+  `contextWindowLimit` values as-is, following Pi's override behavior without
+  clamping to catalog maxima; clearing the override restores the account default.
+- Keep bundled defaults for unlisted measured models. Document the distinction
+  between a model's total window, catalog metadata, and the effective client budget.
+- Cover per-model defaults, catalog refreshes, explicit budgets above catalog
+  maxima, missing metadata, invalid values, and clearing overrides in regression tests.
+
 ## 0.1.11
 
 - Preserve complete conversation and assistant-block order across tool turns;
