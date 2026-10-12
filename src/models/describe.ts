@@ -54,7 +54,7 @@ export interface DescribedModel {
   id: string
   name: string
   contextWindow: number
-  /** The largest context the model can be extended to, when the endpoint says. */
+  /** Maximum client context override advertised by the account catalog. */
   maxContextWindow?: number
   /** Output cap, known only from the bundled catalog. */
   maxTokens?: number

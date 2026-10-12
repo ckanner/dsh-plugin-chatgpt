@@ -43,9 +43,9 @@ discovery, Responses serialization, and its opaque replay envelope.
    addresses, and synthetic account labels are never used as replay identities.
    Sessionless calls omit cache identifiers. Missing/invalid namespaces disable
    both native replay and these identifiers until the credential is managed.
-6. Default context is the account's ordinary window, limited to 272,000 tokens.
-   `contextWindowLimit` can lower the budget or explicitly enable an extended
-   window, bounded by account metadata. It is read when a model is resolved.
+6. Default context follows each model's account-catalog window, without a shared
+   fixed cap. `contextWindowLimit` can lower the budget or explicitly enable an
+   extended window, bounded by account metadata. It is read when a model is resolved.
    Default output reservation fits within half the selected budget. DSH still
    decides when and how to compact; the adapter does not delete history.
 
@@ -91,11 +91,38 @@ tool changes, account changes, and normal cache expiry can still reduce reuse.
 The context budget does not impose a spending cap; SIWC rejects
 `max_output_tokens`. It can cause existing large sessions to compact earlier.
 
-The 272,000-token default is a configurable plugin budget chosen from the ordinary
-window observed in the route's model catalog, not an OpenAI-wide model limit.
-Without an override it is `min(account.contextWindow, 272000)`; an override is
-bounded by `maxContextWindow ?? contextWindow`. For example, an ordinary 200,000
-window stays at 200,000. Tests cover that case and explicit extended-window clamps.
+Without an override, the context budget is the model's `contextWindow`, bounded
+by `maxContextWindow` when present. No fixed 272K, 500K, or 1M cap replaces the
+account default. A catalog refresh after the 60-second listing cache expires
+updates that default on the next model resolution. Missing account capacity
+metadata falls back to the bundled catalog or conservative unknown-model default;
+an unlisted measured model keeps that default, with the measured route maximum
+used only as its expansion ceiling.
+
+An explicit `contextWindowLimit` is an integer of at least 1,024 tokens. The
+effective budget is `min(contextWindowLimit, maxContextWindow ?? contextWindow)`.
+For a model with a 500,000 default and 872,000 maximum, setting
+`contextWindowLimit: 1000000` selects 872,000. If the maximum is 1,050,000, the
+same setting selects 1,000,000. If no maximum is advertised, expansion stops at
+the described context window. Clearing the setting restores each model's own
+default. The override applies to this provider's models, independently of Codex
+configuration; DSH still computes its own compaction threshold and output headroom.
+
+The model's published total context window, catalog default, override ceiling,
+and effective client budget are separate values. The official model pages list
+a 1,050,000-token total window and 128,000 maximum output tokens for
+[GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
+[GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra).
+Codex defines `max_context_window` as the maximum allowed for configuration
+overrides and applies `min(configured, max_context_window)` when it is present:
+see its [model metadata](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/protocol/src/openai_models.rs)
+and [override resolution](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/models-manager/src/model_info.rs).
+Thus a configured one-million window does not by itself prove that one million
+is effective. The same distinction applies here. An observed 872,000 catalog
+ceiling is not evidence that a larger HTTP request was tried and rejected.
+
+Tests cover different defaults in one account, catalog updates, explicit one-million
+requests, per-model ceilings, smaller budgets, and clearing an override.
 
 ## Verification
 

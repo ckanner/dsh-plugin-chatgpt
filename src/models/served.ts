@@ -65,18 +65,17 @@ export interface ServedModel {
 }
 
 /**
- * The largest context the account's listing advertised for a model in this
- * generation, in tokens.
+ * The largest configurable context budget the account's listing advertised
+ * for this generation on the measurement date, in tokens.
  *
- * The listing is the authority on what this route will accept, and it caps every
- * model of this generation at this figure. The published model specification is
- * larger — 1,050,000 for every model in the list above — so reporting the
- * specification would let the harness build a request the route refuses.
+ * This is client configuration metadata, not an independently tested maximum
+ * request size. Codex also bounds explicit context overrides by the catalog's
+ * max_context_window. The published model window can be larger; that does not
+ * establish a different account-specific override ceiling.
  *
- * The 272,000 that appears throughout these numbers is not a context limit: the
- * model pages define it as the long-context pricing boundary, above which a
- * request is billed at twice the input rate. It is a threshold, and reading it as
- * a ceiling is what made an earlier version of this plugin compact far too early.
+ * Listed models use live metadata. This historical value is only an expansion
+ * ceiling for measured models omitted from the account catalog; their default
+ * context budget comes from the bundled model description.
  */
 export const ROUTE_MAX_CONTEXT_WINDOW = 872_000
 

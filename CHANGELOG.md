@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.12 (unreleased)
+
+- Follow each model's account-catalog context window by default, including catalog
+  updates, instead of imposing a shared 272,000-token cap. Keep explicit
+  `contextWindowLimit` overrides bounded by each model's catalog maximum;
+  clearing the override restores the account default.
+- Keep bundled defaults for unlisted measured models, using their observed route
+  capacity only as the expansion ceiling. Document the distinction between a
+  model's total window, its catalog limits, and the effective client budget.
+- Cover per-model defaults, catalog refreshes, one-million-token overrides, and
+  clearing an override in regression tests.
+
 ## 0.1.11
 
 - Preserve complete conversation and assistant-block order across tool turns;

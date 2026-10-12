@@ -148,34 +148,43 @@ describe('ChatGptAdapter', () => {
     assert.equal(resolved.reasoning?.defaultEffort, 'medium')
   })
 
-  it('uses the ordinary context budget and advertises in-history instruction updates', async () => {
+  it('follows each account model default without imposing a shared context cap', async () => {
+    const models = [
+      { slug: 'gpt-6.1-sol', context_window: 500000, max_context_window: 872000 },
+      { slug: 'gpt-6-astra', context_window: 272000, max_context_window: 872000 },
+      { slug: 'narrow', context_window: 200000, max_context_window: 400000 },
+      { slug: 'future-wide', context_window: 1000000, max_context_window: 1050000 },
+    ]
     const endpointUrl = await endpoint({
-      listing: {
-        models: [{ slug: 'wide', visibility: 'list', context_window: 272000, max_context_window: 872000 }],
-      },
+      listing: { models },
     })
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
-    const resolved = await adapter.resolveModel('chatgpt', 'wide')
-
-    assert.equal(resolved.context.contextWindow, 272000)
-    assert.equal(resolved.systemPromptUpdate, 'in-history')
+    for (const model of models) {
+      const resolved = await adapter.resolveModel('chatgpt', model.slug)
+      assert.equal(resolved.context.contextWindow, model.context_window, model.slug)
+      assert.equal(resolved.systemPromptUpdate, 'in-history')
+    }
   })
 
   it('reads live context limits, allows explicit expansion and clamps to the account maximum', async () => {
     const endpointUrl = await endpoint({
-      listing: { models: [{ slug: 'wide', context_window: 272000, max_context_window: 872000 }] },
+      listing: { models: [
+        { slug: 'wide', context_window: 500000, max_context_window: 872000 },
+        { slug: 'larger', context_window: 500000, max_context_window: 1050000 },
+      ] },
     })
     let limit: number | undefined
     const adapter = new ChatGptAdapter({
       auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
       baseUrl: endpointUrl.url, contextWindowLimit: () => limit,
     })
-    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 272000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 500000)
     limit = 512000
     assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 512000)
-    limit = 2000000
+    limit = 1000000
     assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 872000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'larger')).context.contextWindow, 1000000)
     limit = 64000
     const small = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
     assert.equal(small.context.contextWindow, 64000)
@@ -185,6 +194,38 @@ describe('ChatGptAdapter', () => {
       limit = invalid
       await assert.rejects(adapter.resolveModel('chatgpt', 'wide'), /contextWindowLimit/)
     }
+    limit = undefined
+    assert.equal((await adapter.resolveModel('chatgpt', 'wide')).context.contextWindow, 500000)
+  })
+
+  it('follows refreshed account defaults and maxima while keeping explicit overrides', async () => {
+    let contextWindow = 272000
+    let maxContextWindow = 872000
+    const endpointUrl = await endpoint({
+      onRequest: path => path.startsWith('/models') ? {
+        status: 200,
+        body: { models: [{ slug: 'gpt-6.1-sol', context_window: contextWindow, max_context_window: maxContextWindow }] },
+      } : undefined,
+    })
+    let clock = 1000
+    let limit: number | undefined
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, now: () => clock, contextWindowLimit: () => limit,
+    })
+    const resolvedWindow = async () => (await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')).context.contextWindow
+
+    assert.equal(await resolvedWindow(), 272000)
+    contextWindow = 500000
+    clock += 61000
+    assert.equal(await resolvedWindow(), 500000)
+    limit = 1000000
+    assert.equal(await resolvedWindow(), 872000)
+    maxContextWindow = 1050000
+    clock += 61000
+    assert.equal(await resolvedWindow(), 1000000)
+    limit = undefined
+    assert.equal(await resolvedWindow(), 500000)
   })
 
   it('falls back to the default capacity when no maximum is advertised', async () => {
@@ -194,6 +235,11 @@ describe('ChatGptAdapter', () => {
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
     assert.equal((await adapter.resolveModel('chatgpt', 'narrow')).context.contextWindow, 200000)
+    const expanded = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, contextWindowLimit: 1000000,
+    })
+    assert.equal((await expanded.resolveModel('chatgpt', 'narrow')).context.contextWindow, 200000)
   })
 
   it('offers the levels the model accepts, not the ones the listing advertises', async () => {
@@ -237,10 +283,7 @@ describe('ChatGptAdapter', () => {
     assert.ok(model?.reasoningEfforts?.some(effort => effort.id === 'none'))
   })
 
-  it('reports the measured route capacity for a model the listing omits', async () => {
-    // The listing describes five models; the other three come from measurement,
-    // and their capacity has to come from what the route accepts rather than from
-    // the published specification, which is larger.
+  it('keeps the bundled default and measured expansion ceiling for an unlisted model', async () => {
     const endpointUrl = await endpoint({ listing: { models: [] } })
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
@@ -248,6 +291,11 @@ describe('ChatGptAdapter', () => {
 
     assert.equal(resolved.context.contextWindow, 272000)
     assert.equal(resolved.defaultMaxTokens, 128000)
+    const expanded = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, contextWindowLimit: 1000000,
+    })
+    assert.equal((await expanded.resolveModel('chatgpt', 'gpt-6-sol')).context.contextWindow, 872000)
   })
 
   it('serves the listing from cache inside the window, then re-asks', async () => {
