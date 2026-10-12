@@ -46,6 +46,15 @@ describe('decodeEvent', () => {
     )
   })
 
+  it('rejects malformed done messages rather than inventing missing role or content', () => {
+    for (const item of [
+      { type: 'message', content: [{ type: 'output_text', text: 'Missing role' }] },
+      { type: 'message', role: 'assistant' },
+    ]) {
+      assert.equal(decodeEvent(JSON.stringify({ type: 'response.output_item.done', item })), undefined)
+    }
+  })
+
   it('accumulates tool arguments as separate deltas, never as parsed objects', () => {
     // The point of the delta contract: a consumer assembles the string itself,
     // so a half-written JSON fragment is never handed out as if it were parsed.
