@@ -19,8 +19,10 @@
   addresses into subjects; assign legacy grants fresh namespaces.
 - Keep concurrent refreshes separate by authorization and prevent a late refresh
   from restoring a signed-out grant or switching the active account back.
-- Default to the ordinary context window capped at 272,000 tokens. Add the live
-  `contextWindowLimit` setting for smaller budgets or explicit, bounded expansion.
+- Follow each model's account-catalog context window by default, including catalog
+  updates. Add the live `contextWindowLimit` override for smaller budgets or expansion
+  up to the model's maximum; clearing it restores the account default. Unlisted
+  models keep their bundled default and the measured route expansion ceiling.
   Existing large sessions may compact earlier after upgrading.
 - Add ordered-prefix, HTTP/SSE, replay/migration, and real DSH assembler checks.
   Typecheck all tests with the existing strict options; run the pinned real-host
