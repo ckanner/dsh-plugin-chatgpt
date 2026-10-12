@@ -23,6 +23,33 @@ function paramsOf(url: string): URLSearchParams {
 }
 
 describe('beginSignIn', () => {
+  for (const missing of ['id_token', 'sub', 'empty sub']) {
+    it(`rejects ${missing} through the full callback and token exchange`, async () => {
+      const token = await startTokenServer({
+        reply: () => {
+          const claims = idTokenClaims({ clientId: 'oaiapp_identity', nonce: nonce.value })
+          if (missing === 'sub') delete claims['sub']
+          if (missing === 'empty sub') claims['sub'] = '   '
+          return { body: {
+            access_token: 'test-access', refresh_token: 'test-refresh', expires_in: 3600,
+            scope: 'openid chatgpt.tokens.use.direct',
+            ...missing === 'id_token' ? {} : { id_token: jwt(claims) },
+          } }
+        },
+      })
+      closers.push(token.close)
+      const attempt = await beginSignIn({
+        agentHostId: AGENT_HOST_ID, agentNameHint: 'Test', tokenUrl: token.url, preferredPort: 0,
+      })
+      const params = paramsOf(attempt.authorizationUrl)
+      nonce.value = params.get('nonce') ?? ''
+      const rejected = assert.rejects(attempt.result, missing === 'id_token' ? /id_token/ : /sub/)
+      await attempt.submit(`${attempt.redirectUri}?code=test&state=${params.get('state')}&client_id=oaiapp_identity`)
+      await rejected
+      assert.equal(token.requests.length, 1)
+    })
+  }
+
   it('sends the documented first-registration parameters', async () => {
     const token = await startTokenServer({ body: {} })
     closers.push(token.close)

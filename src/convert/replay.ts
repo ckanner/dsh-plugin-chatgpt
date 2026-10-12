@@ -4,6 +4,7 @@
  * native replay; durable visible content remains authoritative.
  */
 import { createHash } from 'node:crypto'
+import { isReplayNamespace, type ChatGptCredential } from '../auth/credential.ts'
 
 export type OutputItem = Record<string, unknown> & { type: 'message' | 'reasoning' | 'function_call' }
 export type ReplayBlock =
@@ -13,7 +14,7 @@ export type ReplayBlock =
 export interface ReplayContext {
   provider: string
   model: string
-  /** Hash of endpoint and stable account registration, never a token. */
+  /** Hash of endpoint, client registration and local authorization namespace. */
   scope: string
 }
 
@@ -121,9 +122,16 @@ export function replayOutput(
     || typeof item['encrypted_content'] === 'string' && item['encrypted_content'].length > 0)
 }
 
-/** Stable across token renewal and isolated across account registrations/endpoints. */
-export function accountScope(endpoint: string, clientId: string, subject?: string): string {
-  return createHash('sha256').update(JSON.stringify([endpoint.replace(/\/+$/, ''), clientId, subject ?? ''])).digest('hex')
+/** Never derive native replay identity from optional or synthetic subject/email fields. */
+export function accountScope(
+  endpoint: string,
+  credential: Pick<ChatGptCredential, 'clientId' | 'replayNamespace'>,
+): string | undefined {
+  if (!isReplayNamespace(credential.replayNamespace)
+    || typeof credential.clientId !== 'string' || credential.clientId.trim().length === 0) return undefined
+  return createHash('sha256').update(JSON.stringify([
+    'authorization-v1', endpoint.replace(/\/+$/, ''), credential.clientId, credential.replayNamespace,
+  ])).digest('hex')
 }
 
 /** Sessionless calls use implicit caching without a global shared key. */

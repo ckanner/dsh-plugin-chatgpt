@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.11 (unreleased)
 
 - Preserve complete conversation and assistant-block order across tool turns;
   keep system/developer messages as developer instructions in their original positions.
@@ -9,6 +9,11 @@
   content before replay; preserve item boundaries in streaming and session restore.
 - Align session cache keys and headers, with account/endpoint isolation and stable
   identity across token renewal. Allow DSH to append system-prompt updates in history.
+- Scope replay to a random local authorization namespace, persisted across refresh
+  and restart but replaced on reauthorization. Stop promoting account keys or email
+  addresses into subjects; assign legacy grants fresh namespaces.
+- Keep concurrent refreshes separate by authorization and prevent a late refresh
+  from restoring a signed-out grant or switching the active account back.
 - Default to the ordinary context window capped at 272,000 tokens. Add the live
   `contextWindowLimit` setting for smaller budgets or explicit, bounded expansion.
   Existing large sessions may compact earlier after upgrading.

@@ -118,7 +118,7 @@ describe('cache-preserving history', () => {
     assert.deepEqual(body(translated.messages.slice()).input, native)
   })
 
-  for (const change of ['model', 'provider', 'account', 'edited-text', 'edited-arguments', 'pruned-block', 'bad-version', 'bad-item', 'missing-state']) {
+  for (const change of ['model', 'provider', 'account', 'edited-text', 'edited-arguments', 'pruned-block', 'pruned-reasoning', 'bad-version', 'bad-item', 'missing-state']) {
     it(`degrades ${change} history without replaying stale opaque state`, () => {
       const saved = assistant()
       const source = saved.source as { provider: string, model: string, replayState: ReplayEnvelope }
@@ -128,17 +128,21 @@ describe('cache-preserving history', () => {
       if (change === 'account') source.replayState.response.scope = 'another-account'
       if (change === 'edited-text') saved.content[1].text = 'Edited'
       if (change === 'edited-arguments') saved.content[2].arguments = '{}'
-      if (change === 'pruned-block') {
-        saved.content = saved.content.slice(1)
-        source.replayState.blocks = source.replayState.blocks.slice(1)
+      if (change === 'pruned-block' || change === 'pruned-reasoning') {
+        const removedIndex = change === 'pruned-block' ? 1 : 0
+        saved.content = saved.content.filter((_, index) => index !== removedIndex)
+        source.replayState.blocks = source.replayState.blocks.filter((_, index) => index !== removedIndex)
       }
       if (change === 'bad-version') source.replayState.response.version = 99 as never
       if (change === 'bad-item') source.replayState.response.output[0] = { type: 'unexpected' } as never
       if (change === 'missing-state') delete source.replayState
       const converted = body([saved, result], overrides)
-      assert.ok(converted.input.every(item => item.type !== 'reasoning'))
-      assert.ok(converted.input.some(item => item.type === 'function_call'))
-      assert.equal(converted.input.at(-1).type, 'function_call_output')
+      assert.deepEqual(converted.input, [
+        ...change === 'pruned-block' ? [] : [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: change === 'edited-text' ? 'Edited' : 'Read first.' }] }],
+        { type: 'function_call', call_id: call.id, name: call.name, arguments: change === 'edited-arguments' ? '{}' : call.arguments },
+        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Then inspect.' }] },
+        { type: 'function_call_output', call_id: call.id, output: result.content[0].text },
+      ])
     })
   }
 })
@@ -220,14 +224,15 @@ describe('indexed Responses streaming', () => {
 
 describe('session cache identity', () => {
   it('uses bounded stable keys, isolated by account, endpoint, route, session and purpose', () => {
-    const scope = accountScope('https://api.openai.com/v1', 'client', 'subject')
-    assert.equal(scope, accountScope('https://api.openai.com/v1/', 'client', 'subject'))
+    const credential = { clientId: 'client', replayNamespace: 'cf5a7f74-6069-4dfa-bd1c-df7d2e76f278' }
+    const scope = accountScope('https://api.openai.com/v1', credential)
+    assert.equal(scope, accountScope('https://api.openai.com/v1/', credential))
     const key = sessionCacheKey(scope, 'chatgpt', 's'.repeat(100))
     assert.match(key, /^[a-f0-9]{64}$/)
     assert.equal(key, sessionCacheKey(scope, 'chatgpt', 's'.repeat(100)))
     for (const other of [
-      sessionCacheKey(accountScope('https://api.openai.com/v1', 'client', 'other'), 'chatgpt', 's'.repeat(100)),
-      sessionCacheKey(accountScope('https://another.example/v1', 'client', 'subject'), 'chatgpt', 's'.repeat(100)),
+      sessionCacheKey(accountScope('https://api.openai.com/v1', { ...credential, replayNamespace: '26d2c76e-b013-4915-b3b3-9d301d532aad' }), 'chatgpt', 's'.repeat(100)),
+      sessionCacheKey(accountScope('https://another.example/v1', credential), 'chatgpt', 's'.repeat(100)),
       sessionCacheKey(scope, 'other', 's'.repeat(100)),
       sessionCacheKey(scope, 'chatgpt', 'different'),
       sessionCacheKey(scope, 'chatgpt', 's'.repeat(100), 'session-title'),

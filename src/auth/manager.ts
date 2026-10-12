@@ -2,8 +2,9 @@
  * The one place that owns this installation's ChatGPT credential state.
  *
  * Two concerns meet here and nowhere else: which account is active, and whether
- * its access token is still usable. Both are answered under a single in-flight
- * promise, because concurrent callers must never refresh the same grant twice —
+ * its access token is still usable. The active account is persisted locally;
+ * refreshes share one in-flight promise per authorization, because callers must
+ * never refresh the same grant twice —
  * a refresh rotates the refresh token, so a second refresh using the old one is
  * refused and would look like a dead credential rather than a race.
  *
@@ -14,13 +15,14 @@
  */
 
 import { dirname, join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { ensureHostId } from './host-id.ts'
 import { beginSignIn, type SignInAttempt, type SignInOptions } from './sign-in.ts'
 import { refreshCredential, RefreshRefusedError } from './refresh.ts'
 import {
   emptyDocument, readDocument, writeDocument, type ChatGptStoreDocument,
 } from './store.ts'
-import { canSpendPlan, isFresh, type ChatGptCredential } from './credential.ts'
+import { canSpendPlan, isFresh, isReplayNamespace, type ChatGptCredential } from './credential.ts'
 import type { ChatGptRegistration } from './store.ts'
 import { revokeGrant, type RevocationResult, type RevokeOptions } from './revoke.ts'
 
@@ -36,7 +38,7 @@ export interface ChatGptStatus {
   plan?: string
   /** When the active access token stops being usable, epoch milliseconds. */
   expiresAt?: number
-  /** Every authorized account's email, keyed by subject. */
+  /** Local account keys (normally ID-token subjects), never used as replay identities. */
   accounts: { subject: string, email?: string, active: boolean }[]
 }
 
@@ -67,7 +69,7 @@ export class ChatGptAuth {
   private readonly options: ChatGptAuthOptions
   private document: ChatGptStoreDocument | undefined
   private loaded = false
-  private refreshing: Promise<ChatGptCredential> | undefined
+  private readonly refreshing = new Map<string, Promise<ChatGptCredential>>()
 
   /**
    * @param options - where state lives and what to call this app.
@@ -87,6 +89,19 @@ export class ChatGptAuth {
     if (!this.loaded) {
       this.document = readDocument(this.file)
       this.loaded = true
+      if (this.document !== undefined) {
+        const accounts = { ...this.document.accounts }
+        let changed = false
+        for (const [key, credential] of Object.entries(accounts)) {
+          if (credential === null || typeof credential !== 'object') continue
+          if (isReplayNamespace(credential.replayNamespace)) continue
+          accounts[key] = { ...credential, replayNamespace: randomUUID() }
+          changed = true
+        }
+        // Old subject values may have been fabricated by adopt(). Do not use
+        // them to recover an identity: assign a fresh local authorization scope.
+        if (changed) this.save({ ...this.document, accounts })
+      }
     }
     return this.document ?? emptyDocument(this.hostId())
   }
@@ -136,10 +151,15 @@ export class ChatGptAuth {
    * than as a race.
    */
   private rotate(current: ChatGptCredential, signal?: AbortSignal): Promise<ChatGptCredential> {
-    this.refreshing ??= this.runRefresh(current, signal).finally(() => {
-      this.refreshing = undefined
+    const namespace = current.replayNamespace
+    if (!isReplayNamespace(namespace)) throw new Error('the stored credential has no replay namespace')
+    const pending = this.refreshing.get(namespace)
+    if (pending !== undefined) return pending
+    const rotation = this.runRefresh(current, signal).finally(() => {
+      this.refreshing.delete(namespace)
     })
-    return this.refreshing
+    this.refreshing.set(namespace, rotation)
+    return rotation
   }
 
   /**
@@ -160,20 +180,25 @@ export class ChatGptAuth {
     if (current === undefined) {
       throw new Error('no ChatGPT account is signed in; run a sign-in first')
     }
-    await this.refreshing?.catch(() => undefined)
     return this.rotate(current, signal)
   }
 
   /** Refresh under the single-flight promise and persist the rotation. */
   private async runRefresh(current: ChatGptCredential, signal?: AbortSignal): Promise<ChatGptCredential> {
+    const key = Object.entries(this.load().accounts)
+      .find(([, stored]) => stored.replayNamespace === current.replayNamespace)?.[0]
+    if (key === undefined) throw new Error('the authorization was removed before refresh')
     const rotated = await refreshCredential(current, {
       ...this.options.endpoints?.tokenUrl === undefined ? {} : { tokenUrl: this.options.endpoints.tokenUrl },
       ...signal === undefined ? {} : { signal },
     })
     const document = this.load()
-    const subject = current.subject ?? document.active
-    if (subject === undefined) throw new Error('the stored ChatGPT credential has no account identity')
-    this.save({ ...document, accounts: { ...document.accounts, [subject]: rotated }, active: subject })
+    if (document.accounts[key]?.replayNamespace !== current.replayNamespace) {
+      throw new Error('the authorization changed or was removed during refresh')
+    }
+    // A different account may have become active while this exchange was in
+    // flight. Update only the captured grant, without switching accounts back.
+    this.save({ ...document, accounts: { ...document.accounts, [key]: rotated } })
     return rotated
   }
 
@@ -230,25 +255,33 @@ export class ChatGptAuth {
    * Store a completed grant and make it the active account.
    *
    * @param credential - what the sign-in produced.
-   * @returns the account subject the grant was filed under.
+   * @returns the local account key the grant was filed under.
    */
   adopt(credential: ChatGptCredential): string {
     const document = this.load()
-    const subject = credential.subject ?? credential.email ?? `account-${Object.keys(document.accounts).length + 1}`
+    const { subject, replayNamespace: _suppliedNamespace, ...rest } = credential
+    const identity = typeof subject === 'string' && subject.trim().length > 0 ? subject : undefined
+    const key = identity ?? `account-${randomUUID()}`
+    const stored: ChatGptCredential = {
+      ...rest,
+      ...identity === undefined ? {} : { subject: identity },
+      // Never adopt a caller-supplied namespace or reuse one after reauthorization.
+      replayNamespace: randomUUID(),
+    }
     this.save({
       ...document,
-      accounts: { ...document.accounts, [subject]: { ...credential, subject } },
+      accounts: { ...document.accounts, [key]: stored },
       registrations: {
         ...document.registrations ?? {},
-        [subject]: {
+        [key]: {
           clientId: credential.clientId,
           at: Date.now(),
           ...credential.email === undefined ? {} : { email: credential.email },
         },
       },
-      active: subject,
+      active: key,
     })
-    return subject
+    return key
   }
 
   /** Make an already-authorized account active. */

@@ -23,8 +23,10 @@ export interface ChatGptCredential {
   clientId: string
   /** Every scope the server actually granted, space-split. */
   scopes: string[]
-  /** Validated ID-token subject: the account identity, stable across sign-ins. */
+  /** ID-token subject when supplied; never inferred from an email or local storage key. */
   subject?: string
+  /** Local UUID for this authorization, preserved across refresh and replaced on adoption. */
+  replayNamespace?: string
   /** Email from the validated ID token, for display only. */
   email?: string
   /** ChatGPT plan name from the validated ID token, for display only. */
@@ -41,4 +43,9 @@ export function canSpendPlan(credential: ChatGptCredential): boolean {
 /** Whether the access token still has useful life left. */
 export function isFresh(credential: ChatGptCredential, now = Date.now()): boolean {
   return credential.expiresAt > now
+}
+
+/** Check a local replay UUID's shape; positional account labels and emails do not qualify. */
+export function isReplayNamespace(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }

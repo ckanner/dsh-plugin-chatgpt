@@ -29,7 +29,10 @@ it('preserves the wire prefix through HTTP, streamed output, durable restore and
   await once(server, 'listening')
   const address = server.address()
   assert.ok(address && typeof address !== 'string')
-  let credential = { accessToken: 'mock-only', clientId: 'test-client', subject: 'test-subject' }
+  let credential = {
+    accessToken: 'mock-only', clientId: 'test-client', subject: 'test-subject',
+    replayNamespace: 'cf5a7f74-6069-4dfa-bd1c-df7d2e76f278',
+  }
   const auth = { usable: async () => credential, renew: async () => credential } as unknown as ChatGptAuth
   const options = { auth, baseUrl: `http://127.0.0.1:${address.port}` }
   const request: HarnessRequest = {
@@ -77,6 +80,15 @@ it('preserves the wire prefix through HTTP, streamed output, durable restore and
     assert.notEqual(requests[3].session, requests[0].session)
     assert.ok(requests[3].body.input.every(item => item.type !== 'reasoning'))
     assert.ok(requests[3].body.input.some(item => item.type === 'function_call'))
+    // A caller that bypasses the manager with a legacy credential cannot claim
+    // a reusable namespace from an optional subject alone.
+    credential = { ...credential, replayNamespace: undefined as never }
+    const legacyChunks: AdapterChunk[] = []
+    for await (const chunk of new ChatGptAdapter(options).stream('chatgpt', continued)) legacyChunks.push(chunk)
+    assert.equal(requests[4].session, undefined)
+    assert.equal(requests[4].body.prompt_cache_key, undefined)
+    assert.ok(requests[4].body.input.every(item => item.type !== 'reasoning'))
+    assert.equal(legacyChunks.findLast(chunk => chunk.type === 'finish')?.replayState, undefined)
   } finally {
     server.closeAllConnections()
     await new Promise<void>(resolve => server.close(() => resolve()))
