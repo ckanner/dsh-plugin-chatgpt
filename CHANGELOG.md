@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.11 (unreleased)
+## 0.1.11
 
 - Preserve complete conversation and assistant-block order across tool turns;
   keep system/developer messages as developer instructions in their original positions.
