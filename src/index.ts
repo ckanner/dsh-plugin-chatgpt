@@ -20,11 +20,12 @@ import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
   AdapterRegistrationHandle, DirectoryRegistrationHandle, GenerateOptions, StreamChunk,
 } from '@deepseek-ai/dsh-llm'
-import { ChatGptAdapter, isCodedError, type HarnessMessage, type HarnessRequest } from './adapter.ts'
+import { ChatGptAdapter, isCodedError } from './adapter.ts'
 import { ChatGptAuth } from './auth/manager.ts'
 import { ChatGptController } from './controller.ts'
 import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
+import { requestOf } from './convert/harness.ts'
 
 /**
  * Route and endpoint policy for one installation.
@@ -44,6 +45,8 @@ export const Config = z.object({
   stateDir: z.string().required().volatile(),
   /** API base URL override; defaults to the documented resource. */
   baseUrl: z.string().volatile(),
+  /** Context budget reported to DSH; expanded windows require an explicit value. */
+  contextWindowLimit: z.number().step(1).min(1024).volatile(),
 })
 
 /** The configuration one installation supplies, as the harness resolves it. */
@@ -52,6 +55,7 @@ export type Config = {
   displayName: Volatile<string>
   stateDir: Volatile<string>
   baseUrl: Volatile<string>
+  contextWindowLimit: Volatile<number>
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -84,51 +88,6 @@ export const AGENT_NAME_HINT = 'DeepSeek Harness'
  * the whole dependency: with no registry there is no route to own.
  */
 export const inject = ['llm']
-
-/** Translate one harness request into what the adapter reads. */
-function requestOf(options: GenerateOptions): HarnessRequest {
-  const messages: HarnessMessage[] = options.messages.map(message => {
-    const blocks = message.content.map((block) => {
-      if (block.type === 'tool-call') {
-        const call = block as { id: string, name: string, arguments: string }
-        return { type: 'tool-call', id: String(call.id), name: call.name, arguments: call.arguments }
-      }
-      // An image block carries a durable attachment reference rather than bytes.
-      // Resolving it needs the attachment service, which this adapter does not
-      // yet take; the block is surfaced as text naming the omission so a
-      // request that carried one is not silently thinner than it looks.
-      if (block.type === 'image') return { type: 'text', text: '[image omitted: not yet supported]' }
-      if (block.type === 'file') return { type: 'text', text: '[file omitted: not yet supported]' }
-      if (block.type === 'text') return { type: 'text', text: (block as { text: string }).text }
-      return { type: 'text', text: '' }
-    // An empty text block carries nothing and would only add noise to the request.
-    }).filter(block => typeof block.text !== 'string' || block.text.length > 0)
-
-    const tool = message.role === 'tool' ? message as { toolCallId?: string, isError?: boolean } : undefined
-    return {
-      role: message.role,
-      content: blocks,
-      ...tool?.toolCallId === undefined ? {} : { toolCallId: String(tool.toolCallId) },
-      ...tool?.isError === true ? { isError: true } : {},
-    }
-  })
-
-  return {
-    provider: options.provider,
-    model: options.model,
-    messages,
-    ...options.system === undefined ? {} : { system: options.system },
-    ...options.reasoningEffort === undefined ? {} : { reasoningEffort: String(options.reasoningEffort) },
-    ...options.tools === undefined ? {} : {
-      tools: options.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })),
-    },
-    ...options.signal === undefined ? {} : { signal: options.signal },
-  }
-}
 
 /**
  * Give one thrown value the harness's error taxonomy.
@@ -236,6 +195,7 @@ export function apply(ctx: Context, config: Config): void {
   const inner = new ChatGptAdapter({
     auth,
     displayName,
+    contextWindowLimit: () => config.contextWindowLimit.get(),
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 

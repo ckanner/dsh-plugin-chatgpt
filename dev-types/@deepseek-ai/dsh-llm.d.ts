@@ -60,6 +60,7 @@ declare module '@deepseek-ai/dsh-llm' {
   export interface LlmResolvedModelInfo extends LlmModelInfo {
     context?: LlmModelContext
     defaultMaxTokens?: number
+    systemPromptUpdate?: 'in-history'
     reasoning?: LlmModelReasoningInfo
   }
 

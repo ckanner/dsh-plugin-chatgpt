@@ -90,7 +90,7 @@ auth.adopt(credential)
 
 一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。
 
-模型、容量与推理级别全部来自你自己账号的列表，而该接口对自己模型的描述比公开文档所写的详细得多：它会同时给出默认上下文与更大的扩展上下文，本插件在存在扩展值时按扩展值申报。登录就在那一行的卡片上。
+模型元数据来自账号列表。适配器默认采用标准上下文窗口，并以 272,000 token 为上限，让 DSH 更早压缩。可在插件配置中设置可选的 `contextWindowLimit` 调整预算；显式扩展不会超过目录声明的最大容量。登录仍在这一行的卡片上。
 
 ![模型选择器里，账号自己的模型列在 ChatGPT 分组下](../assets/screenshot-3-model-picker.png)
 
@@ -116,6 +116,8 @@ auth.adopt(credential)
 | `src/auth/store.ts` | 原子写、仅属主可读的凭据存储。 |
 | `src/api/events.ts` | 解码 Responses 事件流及其失败形态。 |
 | `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |
+| `src/convert/harness.ts` | DSH 请求边界，含会话身份与回放元数据。 |
+| `src/convert/replay.ts` | 原生输出校验及限定账号和模型的 DSH 回放封装。 |
 | `src/convert/blocks.ts` | 线上事件转 Harness 的编号内容块。 |
 | `src/api/client.ts` | 两次 HTTP 调用：列出模型、跑一轮。 |
 | `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |
@@ -125,7 +127,7 @@ auth.adopt(credential)
 
 - 请求绝不携带 `temperature`、`max_output_tokens`、`top_p`、`truncation` 等套餐额度路由拒收的字段。它们被显式列在 `REFUSED_FIELDS` 中，因此不会被误加回来。
 - `response.completed` 是唯一成功的终态。没有它就以结束的流算作错误，因为「被截断却看起来已完成」的回答比一个可见的失败更糟。
-- **目录是运行时读取的，不是内置的。** pi-ai 带一份静态 OpenAI 目录——44 个 id、上下文固定 272,000——从不问账号自己有什么。在真实 Plus 订阅上实测，这份静态视图两个方向都错：它漏掉该路线能服务的模型，又低估了账号实际获得的上下文。本插件用账号自己的授权请求 `GET /v1/models`，因此可用性、容量与推理级别都来自账号而不是快照；内置目录只用来描述接口没有描述的模型。
+- **运行时读取账号元数据。** 插件使用当前账号的授权请求 `GET /v1/models`。内置目录补充缺失的描述，带测量日期的清单可加入未列出的模型。模型可用性、容量和报告给 DSH 的上下文预算是不同的概念。
 
 </details>
 
@@ -149,17 +151,19 @@ auth.adopt(credential)
 
 #### 模型能看到什么
 
-对于每一轮被路由到 `chatgpt` provider 的请求：对话消息、被提升到请求 `instructions` 字段的系统提示、Harness 提供的任何工具声明，以及 Harness 选定的推理级别。除此之外不添加任何内容。
+每轮发往 `chatgpt` 的请求都保留消息、助手内容块、工具调用及结果的原始顺序。system 与 developer 指令在原位置作为 developer 消息发送，并向 DSH 声明在历史中追加系统提示更新。助手的原生输出（含加密推理）通过 DSH 的 `replayState` 保存；账号、路由、模型一致且内容未变化时，完整回放这些数据。
 
 #### Token 影响
 
-可变。插件不添加超出 Harness 已经组装内容之外的 token；它只做转换与转发。
+可变。可见上下文来自 DSH；回放加密推理也可能计入输入 token，可读的思考摘要不能替代它。适配器不自行截断历史，由 DSH 按报告的上下文预算执行压缩。输出预留保持低于该预算，但这条路由不接受输出 token 上限。
 
 #### KV Cache 影响
 
-由端点自己的自动缓存决定，而它确实会返回命中：套餐额度路由拒收 `prompt_cache_retention`，也不接受 `previous_response_id`，因此本插件不自行声明任何前缀。在一个安装上实测 303 个 chatgpt 轮次，其中 79 轮报告了缓存读取，占全部计费输入的 7.4%。命中时要么是上一轮提示词的全部（对 13,624 token 的前一轮读到 13,440），要么是很长提示词中的一段。请求现在会带上 `prompt_cache_key`，这是这些模型代际要使用端点「更可靠的匹配」所必需的。可以用来延长它的手段在此是关闭的：`prompt_cache_options`（TTL）被这条路由答以「not supported on this model」，`prompt_cache_breakpoint`（显式稳定前缀）被答以「Unsupported parameter」，因此端点自动的尽力而为行为就是全部可用的手段。
+适配器在多轮工具调用和会话恢复中保留可复用前缀及不透明推理状态。账号注册、端点、provider、会话 ID 和调用用途的固定长度哈希同时用于 `prompt_cache_key` 与 `session_id` 请求头；刷新 token 不改变它，无会话 ID 的调用则省略两者。GPT-5.6 及以后由 OpenAI 自动处理缓存路由，key 不保证命中。SIWC 要求 `store: false` 并在 HTTP 请求中携带完整历史，响应存储与提示词缓存是两件事。与 Pi 的公共 SIWC 路线一样，这里继续省略缓存保留期与 options，等待按模型和路由验证。参见[官方缓存指南](https://developers.openai.com/api/docs/guides/prompt-caching)及[推理回放说明](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses)。
 
 ## 已知限制与待办
+
+- **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: "in-history"`；参见[回放设计与验证方案](cache-replay.md)。
 
 - **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。
 - **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。
@@ -168,7 +172,7 @@ auth.adopt(credential)
 - **一个安装对应一个 host id** — host id 以状态目录为作用域。两个 profile 共用一个目录，对 OpenAI 而言就是一个安装；两个目录就是两个，各自需要单独授权。
 - **`agent_name_hint` 是常量** — 默认 `DeepSeek Harness`，可按 profile 覆盖；但它是人类在授权页上读到的名字，也是 OpenAI 记录的此应用身份，因此改动它会改变既有授权凭据的归属。
 
-- **上下文受服务端目录限制，低于模型规格** — 公开模型页宣传 1,050,000 token，而账号的列表报告默认 272,000、扩展 872,000，本适配器采用后者。该更大的数值今天无法通过这条通道取到，而把自身标识为编码工具的工具会拿到 272,000 而不是 872,000。来自实测名单的模型没有列表条目，因此按目录的 272,000 报告。
+- **上下文增长受可配置预算约束** — 默认取账号标准窗口与 272,000 token 中的较小值。`contextWindowLimit` 必须是至少 1,024 的整数；显式配置可启用扩展窗口，但不超过目录声明的最大值。实际触发点与预留空间仍由 DSH 的压缩策略控制。这是上下文预算，不是消费硬上限或缓存命中目标。
 
 - **退出登录是两件事，卡片会说明发生了哪一件** — 可再生会话会先在授权服务器撤销，再清除本机凭据，因为本地删除的授权凭据可能在别处仍然有效。服务器无法送达时，本地登出仍然完成，而结果会明确说明远端撤销未被确认。额度耗尽时会指向 ChatGPT 自己的用量页面，并说明该错误码既不指明原因、也不给出重置时间：套餐的共享用量与应用级限制都可能是原因，因此网站上看起来远未接近上限的套餐与一次拒绝可以同时为真。
 
@@ -178,7 +182,7 @@ auth.adopt(credential)
 
 - **登录后会向浏览器通告新的模型清单** — 模型选择器会缓存宿主 catalog，只在宿主声明有变化时重载，因此在登录时把空清单填满的插件必须发布 `llm/adapters-updated`。否则模型确实在服务，却永远不会出现在选择器里——看起来就像 provider 坏了。账号卡片会报告该账号提供多少个模型，或说明清单为何读不到。
 
-- **缓存命中率是端点自己的数字，而在这条路由上它偏低** — composer 的百分比是 `cacheReadTokens / 计费输入`，分子只来自端点返回的 `input_tokens_details.cached_tokens`。在一个安装上实测 303 个 chatgpt 轮次，结果是 7.4%：其中 224 轮完全没有缓存读取，其余要么是上一轮提示词的全部，要么是很长提示词中的一段——这些会话的提示词从数万到四十万 token。此处的缓存是自动且尽力而为的，端点文档写明命中需要相同前缀落在同一台机器上；现在每个请求都会带上 `prompt_cache_key`，这是这些模型代际要使用更可靠匹配所必需的。读数中没有任何一个数字是本插件推算出来的。
+- **缓存统计来自实测，不作预测** — 百分比按服务端计数计算为 `cacheReadTokens / (inputTokens + cacheReadTokens + cacheWriteTokens)`。旧版本曾重排工具历史并丢弃原生推理，其低命中率不能证明 SIWC 存在固有上限。前缀保持测试不等于线上命中率测试；应固定模型与推理级别，预热后比较缓存读写、总输入、延迟和额度影响。
 
 - **每个安装各自注册一个 client** — ChatGPT 设置里每个注册对应一行应用，名称取自 `agent_name_hint`；本插件在登出后仍保留「账号 ↔ client」的映射，因此同一安装下次登录会复用原来那一行，而不是再添一行。第二个 state 目录对 OpenAI 而言就是第二个安装，会单独注册；删除某个 state 目录即等于忘记那个安装。
 
@@ -188,6 +192,7 @@ auth.adopt(credential)
 npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
+npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
 ```
 
 `dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。

@@ -90,7 +90,7 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
-Models, their capacities, and their reasoning levels all come from the account's own listing, which describes its models in more detail than the public documentation suggests: it reports a default context and a larger extended one, and asks for the extended one where it exists. Sign-in lives on that row's card.
+Model metadata comes from the account listing. By default the adapter uses the ordinary context window, capped at 272,000 tokens, so DSH can compact earlier. Set the optional `contextWindowLimit` in the plugin configuration to use a different budget; explicit expansion is clamped to the advertised maximum. Sign-in lives on that row's card.
 
 ![The model picker listing the account's own models under a ChatGPT group](assets/screenshot-3-model-picker.png)
 
@@ -116,6 +116,8 @@ The share of the plan this installation may spend is set per app, in ChatGPT set
 | `src/auth/store.ts` | Atomic, owner-only credential storage. |
 | `src/api/events.ts` | Decoding the Responses event stream and its failure modes. |
 | `src/convert/request.ts` | Harness request to Responses body, including the fields the route refuses. |
+| `src/convert/harness.ts` | DSH request boundary, including session identity and replay metadata. |
+| `src/convert/replay.ts` | Validated native output and DSH replay envelopes, scoped to an account and model. |
 | `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |
 | `src/api/client.ts` | The two HTTP calls: list models, run one turn. |
 | `src/models/describe.ts` | Availability and capacities, preferring what the account reports over the bundled catalog. |
@@ -125,7 +127,7 @@ Three rules the code enforces rather than documents:
 
 - A request never carries `temperature`, `max_output_tokens`, `top_p`, `truncation`, or the other fields the plan-usage route refuses. They are named in `REFUSED_FIELDS` so they cannot be reintroduced by accident.
 - `response.completed` is the only successful terminal. A stream that ends without one is an error, because a truncated answer that reads as finished is worse than a visible failure.
-- **The catalog is read at run time, not bundled.** pi-ai ships a static OpenAI catalog — forty-four ids at a fixed 272,000 context — and never asks the account what it has. Measured against a live Plus subscription, that static view is wrong in both directions: it omits models the route serves, and it understates the context the account is offered. This plugin asks `GET /v1/models` with the account's own grant, so entitlement, capacities, and reasoning levels come from the account rather than from a snapshot; the bundled catalog only describes a model the endpoint did not.
+- **Account metadata is read at run time.** The plugin requests `GET /v1/models` with the selected account's grant. The bundled catalog fills missing metadata, and the dated measured list can add unlisted models. Model availability and context capacity are separate from the context budget reported to DSH.
 
 </details>
 
@@ -149,17 +151,19 @@ This bundle inserts one provider row, and that row's plugin owns all of its mode
 
 #### What the model sees
 
-For every turn routed to the `chatgpt` provider: the conversation's messages, the system prompt lifted into the request's `instructions` field, any tool declarations the harness supplied, and the reasoning effort the harness selected. Nothing else is added.
+For every turn routed to `chatgpt`, the adapter preserves the order of messages, assistant blocks, tool calls, and results. System and developer instructions become developer messages at their original positions. DSH is told to append system-prompt updates in history. Native assistant output, including encrypted reasoning, is retained in DSH's `replayState` and replayed for the same account, route, and model when the saved content is unchanged.
 
 #### Token effect
 
-Variable. The plugin adds no tokens beyond what the harness already assembled; it translates and forwards.
+Variable. Visible context comes from DSH. Replaying encrypted reasoning can also contribute input tokens; a readable reasoning summary is not a substitute. The adapter does not truncate history: DSH owns compaction using the reported context budget. Output reservations are kept below that budget, but this route does not accept an output-token cap.
 
 #### KV Cache effect
 
-The endpoint's own automatic caching decides, and it does report reads: the plan-usage route refuses `prompt_cache_retention` and takes no `previous_response_id`, so this plugin declares no prefix of its own. Measured across 303 chatgpt turns on one installation, 79 of them reported a cache read, amounting to 7.4% of all billed input. A hit is either the whole of the previous prompt (a 13,440-token read against a 13,624-token predecessor) or a slice of a much longer one. Requests now name a `prompt_cache_key`, which these model generations require for the endpoint's more reliable matching. The controls that would extend that — `prompt_cache_options` for the TTL and `prompt_cache_breakpoint` for an explicit stable prefix — are closed here: this route answers "not supported on this model" to the first and "Unsupported parameter" to the second, so the endpoint's automatic best-effort behaviour is the whole of what is available.
+The adapter preserves reusable prefixes and opaque reasoning across tool turns and session restore. A bounded hash of the account registration, endpoint, provider, session ID, and call purpose supplies both `prompt_cache_key` and the `session_id` header; token refresh does not change it. Sessionless calls omit these identifiers. OpenAI handles cache routing automatically on GPT-5.6 and later; a key is not a cache-hit guarantee. The SIWC route requires `store: false` and full HTTP history; response storage and prompt caching are separate. Cache retention/options remain omitted, as in Pi's public SIWC path, pending model-and-route-specific validation. See the [official caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) and [reasoning replay guidance](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses).
 
 ## Known Limitations and Deferred Work
+
+- **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: "in-history"`; see [the replay design and validation plan](docs/cache-replay.md).
 
 - **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.
 - **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.
@@ -168,7 +172,7 @@ The endpoint's own automatic caching decides, and it does report reads: the plan
 - **One installation, one host id** — the host id is scoped to the state directory. Two profiles sharing one directory are one installation to OpenAI; two directories are two, and each is consented separately.
 - **`agent_name_hint` is a constant** — it defaults to `DeepSeek Harness` and can be overridden per profile, but it is what a human reads on the consent screen and what OpenAI records as this app's identity, so changing it changes how existing grants are attributed.
 
-- **Context is capped by the served catalog, below the model spec** — the public model pages advertise 1,050,000 tokens, and the account's listing reports a default of 272,000 with an extended 872,000, which is what this adapter uses. The larger figure is not reachable through this surface today, and a client that identifies itself as a coding tool receives 272,000 instead of 872,000. Models added from the measured list have no listing entry, so they are reported at the catalog's 272,000.
+- **Context growth has a configurable budget** — the default is the smaller of the account's ordinary window and 272,000 tokens. `contextWindowLimit` is an integer of at least 1,024 tokens; an explicit value can opt into the extended window but never exceeds the advertised maximum. DSH's own compaction policy controls the actual trigger and headroom. This is a context budget, not a hard spending limit or a cache-hit target.
 
 - **Signing out is two things, and the card says which happened** — the renewable session is revoked at the authorization server before the credential is cleared here, because a grant deleted locally may still be live elsewhere. When the server cannot be reached the sign-out still completes locally, and the outcome says the remote revocation was not confirmed. An exhausted allowance names ChatGPT's own usage page and says that the code identifies neither the cause nor a reset time: the plan's shared usage and an app-specific limit are both possible, which is why a plan that looks well within its limits on the site and a refusal can both be true.
 
@@ -178,7 +182,7 @@ The endpoint's own automatic caching decides, and it does report reads: the plan
 
 - **Signing in announces the new roster to the browser** — a model selector caches the Host catalog and reloads it only when the Host says something changed, so a plugin that fills an empty roster at sign-in time has to publish `llm/adapters-updated`. Without it the models are served and never appear in the selector, which looks exactly like a broken provider. The account card reports how many models the account offers, or why the listing could not be read.
 
-- **The cache-hit readout is the endpoint's own number, and on this route it runs low** — the percentage is `cacheReadTokens / billed input`, and the numerator is only what the endpoint reports in `input_tokens_details.cached_tokens`. Measured over 303 chatgpt turns on one installation it came to 7.4%: 224 of those turns reported no cache read at all, and the rest were either the whole previous prompt or a slice of a much longer one, since those sessions ran from tens of thousands to four hundred thousand prompt tokens. Caching here is automatic and best-effort, and the endpoint documents that a hit needs the same prefix to reach the same machine; each request now names a `prompt_cache_key`, which these model generations require for the more reliable matching. Nothing in the readout is inferred by this plugin.
+- **Cache statistics are measured, not predicted** — the percentage is `cacheReadTokens / (inputTokens + cacheReadTokens + cacheWriteTokens)` using provider-reported counters. Earlier versions reordered tool history and dropped native reasoning; their low hit rates do not establish an inherent SIWC limit. Prefix-preservation tests do not measure live cache hits. Compare fixed-model, fixed-effort runs after warm-up, recording cache reads/writes, total input, latency, and quota impact.
 
 - **Each installation registers its own client** — ChatGPT settings lists one app row per registration, named by `agent_name_hint`, and this plugin keeps the account/client mapping after signing out so the next sign-in on the same installation reuses its row instead of adding another. A second state directory is a second installation to OpenAI, and registers separately; deleting a state directory is what forgets one.
 
@@ -188,6 +192,7 @@ The endpoint's own automatic caching decides, and it does report reads: the plan
 npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
+npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
 ```
 
 `dev-types/` holds development-only declarations for the harness's LLM and Cordis seams, transcribed from the harness sources. They are not published and never shipped; the host supplies the real packages as peer dependencies. An end-to-end mount in a real harness remains the authoritative check.

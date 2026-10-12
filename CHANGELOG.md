@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Preserve complete conversation and assistant-block order across tool turns;
+  keep system/developer messages as developer instructions in their original positions.
+- Save native Responses output through DSH replay envelopes, including encrypted
+  reasoning, item IDs, phases, and raw tool arguments. Validate account/model and
+  content before replay; preserve item boundaries in streaming and session restore.
+- Align session cache keys and headers, with account/endpoint isolation and stable
+  identity across token renewal. Allow DSH to append system-prompt updates in history.
+- Default to the ordinary context window capped at 272,000 tokens. Add the live
+  `contextWindowLimit` setting for smaller budgets or explicit, bounded expansion.
+  Existing large sessions may compact earlier after upgrading.
+- Add ordered-prefix, HTTP/SSE, replay/migration, and real DSH assembler checks.
+  Handle SIWC's empty terminal output array without dropping streamed native items.
+  Correct the caching documentation and record a bounded live smoke check, without
+  promising a sustained cache-hit rate.
+
 ## 0.1.10
 
 Documentation and metadata only; no behaviour change.
