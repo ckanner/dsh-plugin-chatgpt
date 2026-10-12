@@ -262,6 +262,121 @@ describe('ChatGptAdapter', () => {
     }
   })
 
+  it('prioritizes per-model context budgets over the global budget and account defaults', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [
+      { slug: 'gpt-6-astra', context_window: 272000, max_context_window: 872000 },
+      { slug: 'gpt-6.1-sol', context_window: 500000, max_context_window: 872000 },
+      { slug: 'gpt-6-luna', context_window: 272000, max_context_window: 872000 },
+    ] } })
+    const auth = new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' })
+    const modelContextWindowLimits = { 'gpt-6-astra': 1000000, 'gpt-6.1-sol': 256000 }
+    const adapter = new ChatGptAdapter({
+      auth, baseUrl: endpointUrl.url, contextWindowLimit: 600000, modelContextWindowLimits,
+    })
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6-astra')).context.contextWindow, 1000000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')).context.contextWindow, 256000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6-luna')).context.contextWindow, 600000)
+
+    const withoutGlobal = new ChatGptAdapter({ auth, baseUrl: endpointUrl.url, modelContextWindowLimits })
+    assert.equal((await withoutGlobal.resolveModel('chatgpt', 'gpt-6-astra')).context.contextWindow, 1000000)
+    assert.equal((await withoutGlobal.resolveModel('chatgpt', 'gpt-6-luna')).context.contextWindow, 272000)
+  })
+
+  it('reads live per-model budgets and falls back through the current global and catalog values', async () => {
+    let catalogWindow = 500000
+    const endpointUrl = await endpoint({ onRequest: path => path.startsWith('/models') ? {
+      status: 200,
+      body: { models: [{ slug: 'gpt-6.1-sol', context_window: catalogWindow, max_context_window: 872000 }] },
+    } : undefined })
+    let clock = 1000
+    let globalLimit: number | undefined = 600000
+    let modelLimits: Record<string, number> | undefined = { 'gpt-6.1-sol': 1000000 }
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, now: () => clock,
+      contextWindowLimit: () => globalLimit, modelContextWindowLimits: () => modelLimits,
+    })
+    const resolvedWindow = async () => (await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')).context.contextWindow
+    assert.equal(await resolvedWindow(), 1000000)
+    catalogWindow = 700000
+    clock += 61000
+    assert.equal(await resolvedWindow(), 1000000)
+    modelLimits['gpt-6.1-sol'] = 800000
+    assert.equal(await resolvedWindow(), 800000)
+    globalLimit = 650000
+    assert.equal(await resolvedWindow(), 800000)
+    modelLimits = {}
+    assert.equal(await resolvedWindow(), 650000)
+    globalLimit = undefined
+    assert.equal(await resolvedWindow(), 700000)
+    modelLimits = undefined
+    assert.equal(await resolvedWindow(), 700000)
+  })
+
+  it('matches only own exact model IDs in per-model context budgets', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [
+      { slug: 'gpt-6-astra', context_window: 272000 },
+      { slug: 'gpt-6.1-sol', context_window: 500000 },
+      { slug: 'gpt-6-luna', context_window: 272000 },
+    ] } })
+    const modelLimits: Record<string, number> = {
+      'gpt-6': 2000000, 'GPT-6-LUNA': 2000000, 'gpt-6.1-sol': 1000000,
+    }
+    Object.setPrototypeOf(modelLimits, { 'gpt-6-astra': 2000000 })
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, contextWindowLimit: 600000, modelContextWindowLimits: modelLimits,
+    })
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')).context.contextWindow, 1000000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6-astra')).context.contextWindow, 600000)
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6-luna')).context.contextWindow, 600000)
+  })
+
+  it('honors per-model context budgets for missing maximum metadata and unlisted models', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'listed-no-max', context_window: 200000 }] },
+    })
+    const modelLimits = { 'listed-no-max': 750000, 'gpt-6-sol': 1000000, 'future-model': 1000000 }
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, modelContextWindowLimits: modelLimits,
+    })
+    for (const [model, budget] of Object.entries(modelLimits)) {
+      assert.equal((await adapter.resolveModel('chatgpt', model)).context.contextWindow, budget, model)
+    }
+  })
+
+  it('rejects an invalid selected per-model context budget without falling back to the global value', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [
+      { slug: 'gpt-6-astra', context_window: 272000 }, { slug: 'gpt-6.1-sol', context_window: 500000 },
+    ] } })
+    const modelLimits = { 'gpt-6-astra': 1024, 'gpt-6.1-sol': 1000000 }
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url, contextWindowLimit: 600000, modelContextWindowLimits: modelLimits,
+    })
+    const minimum = await adapter.resolveModel('chatgpt', 'gpt-6-astra')
+    assert.equal(minimum.context.contextWindow, 1024)
+    assert.equal(minimum.defaultMaxTokens, 512)
+    for (const invalid of [0, -1, 1023, 1024.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      modelLimits['gpt-6-astra'] = invalid
+      await assert.rejects(adapter.resolveModel('chatgpt', 'gpt-6-astra'),
+        /modelContextWindowLimits\["gpt-6-astra"\] must be a safe integer/)
+    }
+    assert.equal((await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')).context.contextWindow, 1000000)
+  })
+
+  it('rejects malformed per-model context maps supplied outside the host schema', async () => {
+    const endpointUrl = await endpoint({ listing: { models: [{ slug: 'm', context_window: 500000 }] } })
+    const auth = new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' })
+    for (const json of ['null', '[]', '42', '"invalid"']) {
+      // Deliberately exercise an unvalidated JSON boundary used by programmatic callers.
+      const modelContextWindowLimits = JSON.parse(json) as Record<string, number>
+      const adapter = new ChatGptAdapter({ auth, baseUrl: endpointUrl.url, modelContextWindowLimits })
+      await assert.rejects(adapter.resolveModel('chatgpt', 'm'), /modelContextWindowLimits must be an object/)
+    }
+  })
+
   it('offers the levels the model accepts, not the ones the listing advertises', async () => {
     // Measured on a live account: the listing advertised `ultra` for
     // gpt-6-astra and the API answered a request carrying it with
