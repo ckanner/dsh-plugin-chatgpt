@@ -27,6 +27,7 @@ try {
     import { requestOf } from ${JSON.stringify(join(plugin, 'src/convert/harness.ts'))};
     import { toNeutralRequest } from ${JSON.stringify(join(plugin, 'src/adapter.ts'))};
     import { toResponsesBody } from ${JSON.stringify(join(plugin, 'src/convert/request.ts'))};
+    import { streamCases } from ${JSON.stringify(join(plugin, 'tests/fixtures/stream-cases.ts'))};
     const context = { provider: 'chatgpt', model: 'gpt-6.1-sol', scope: 'test-account' };
     const output = [
       { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'opaque' },
@@ -54,7 +55,24 @@ try {
     const fallback = toResponsesBody(toNeutralRequest(requestOf({ ...options, messages: [pruned] }), context.scope));
     assert.ok(fallback.input.every(item => item.type !== 'function_call' && item.type !== 'reasoning'));
     assert.equal(fallback.input[0].content[0].text, 'Checking.');
-    console.log('PASS: real DSH assembly, empty encrypted reasoning, JSON restore, request boundary, and pruned-state fallback');
+    for (const fixture of streamCases) {
+      const streamTranslator = new BlockTranslator(context);
+      const actualHost = new BlockAssembler();
+      for (const payload of fixture.events) {
+        const decoded = decodeEvent(JSON.stringify(payload));
+        if (decoded) for (const chunk of streamTranslator.push(decoded)) actualHost.push(chunk);
+      }
+      assert.deepEqual(actualHost.blocks(), fixture.blocks, fixture.name);
+      assert.notEqual(actualHost.finish.kind, 'error', fixture.name);
+      assert.equal(actualHost.replayState !== undefined, fixture.replay, fixture.name);
+      const durable = JSON.parse(JSON.stringify(actualHost.message({
+        provider: context.provider, model: context.model, replayState: actualHost.replayState,
+      })));
+      const serialized = toResponsesBody(toNeutralRequest(requestOf({ ...options, messages: [durable] }), context.scope));
+      const hasModelInput = fixture.replay || fixture.blocks.some(block => block.type !== 'reasoning');
+      assert.equal(serialized.input.length > 0, hasModelInput, fixture.name);
+    }
+    console.log('PASS: real DSH assembly, JSON restore, pruning, and ' + streamCases.length + ' malformed/partial stream fixtures');
   `
   const result = await build({
     stdin: { contents: source, resolveDir: plugin, loader: 'ts' },

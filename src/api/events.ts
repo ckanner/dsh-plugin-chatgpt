@@ -21,14 +21,19 @@
 
 import { outputItem, outputItems, type OutputItem } from '../convert/replay.ts'
 
+export interface WireIdentity {
+  index?: number
+  itemId?: string
+}
+
 /** One decoded stream event worth surfacing. */
 export type ResponsesEvent =
-  | { kind: 'text', delta: string, index?: number }
-  | { kind: 'reasoning', delta: string, index?: number }
-  | { kind: 'itemStart' | 'itemEnd', index: number, item: OutputItem }
-  | { kind: 'toolCallStart', index: number, callId: string, name: string }
-  | { kind: 'toolCallDelta', index: number, delta: string }
-  | { kind: 'toolCallEnd', index: number, arguments: string }
+  | ({ kind: 'text', delta: string } & WireIdentity)
+  | ({ kind: 'reasoning', delta: string } & WireIdentity)
+  | ({ kind: 'itemStart' | 'itemEnd', item: OutputItem } & WireIdentity)
+  | ({ kind: 'toolCallStart', callId: string, name: string } & WireIdentity)
+  | ({ kind: 'toolCallDelta', delta: string } & WireIdentity)
+  | ({ kind: 'toolCallEnd', arguments: string } & WireIdentity)
   | { kind: 'completed', responseId?: string, usage?: ResponsesUsage, output?: OutputItem[] }
   | { kind: 'incomplete', reason: string, usage?: ResponsesUsage }
   | { kind: 'failed', code: string, message: string, terminal: boolean, usage?: ResponsesUsage }
@@ -123,6 +128,17 @@ function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/** Missing indexes are unknown, never an alias for item zero. */
+function identityOf(event: Record<string, unknown>): WireIdentity {
+  const value = num(event['output_index'])
+  const index = value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+  const itemId = str(record(event['item'])?.['id']) ?? str(event['item_id'])
+  return {
+    ...index === undefined ? {} : { index },
+    ...itemId === undefined || itemId.length === 0 ? {} : { itemId },
+  }
+}
+
 /** Read token usage from a response object, however much of it is present. */
 function usageOf(response: Record<string, unknown> | undefined): ResponsesUsage | undefined {
   const usage = record(response?.['usage'])
@@ -205,41 +221,41 @@ export function decodeEvent(payload: string): ResponsesEvent | undefined {
     case 'response.output_text.delta':
     case 'response.refusal.delta': {
       const delta = str(event['delta']) ?? ''
-      const index = num(event['output_index'])
-      return delta.length === 0 ? undefined : { kind: 'text', delta, ...index === undefined ? {} : { index } }
+      return delta.length === 0 ? undefined : { kind: 'text', delta, ...identityOf(event) }
     }
     case 'response.reasoning_summary_text.delta':
     case 'response.reasoning_text.delta': {
       const delta = str(event['delta']) ?? ''
-      const index = num(event['output_index'])
-      return delta.length === 0 ? undefined : { kind: 'reasoning', delta, ...index === undefined ? {} : { index } }
+      return delta.length === 0 ? undefined : { kind: 'reasoning', delta, ...identityOf(event) }
     }
     case 'response.output_item.added': {
       const item = record(event['item'])
-      const index = num(event['output_index']) ?? 0
+      const identity = identityOf(event)
       if (str(item?.['type']) !== 'function_call') {
         const native = outputItem(item)
-        return native === undefined ? undefined : { kind: 'itemStart', index, item: native }
+        return native === undefined ? undefined : { kind: 'itemStart', ...identity, item: native }
       }
+      const callId = str(item?.['call_id']) ?? str(item?.['id'])
+      if (!callId) return { kind: 'unknown', type: 'function_call_without_identity' }
       return {
         kind: 'toolCallStart',
-        index,
-        callId: str(item?.['call_id']) ?? str(item?.['id']) ?? `call-${index}`,
+        ...identity,
+        callId,
         name: str(item?.['name']) ?? '',
       }
     }
     case 'response.output_item.done': {
       const item = outputItem(event['item'])
-      return item === undefined ? undefined : { kind: 'itemEnd', index: num(event['output_index']) ?? 0, item }
+      return item === undefined ? undefined : { kind: 'itemEnd', ...identityOf(event), item }
     }
     case 'response.function_call_arguments.delta': {
       const delta = str(event['delta']) ?? ''
-      return delta.length === 0 ? undefined : { kind: 'toolCallDelta', index: num(event['output_index']) ?? 0, delta }
+      return delta.length === 0 ? undefined : { kind: 'toolCallDelta', ...identityOf(event), delta }
     }
     case 'response.function_call_arguments.done': {
       return {
         kind: 'toolCallEnd',
-        index: num(event['output_index']) ?? 0,
+        ...identityOf(event),
         arguments: str(event['arguments']) ?? '',
       }
     }

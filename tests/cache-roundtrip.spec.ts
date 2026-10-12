@@ -6,6 +6,8 @@ import { ChatGptAdapter, type HarnessMessage, type HarnessRequest } from '../src
 import type { AdapterChunk } from '../src/convert/blocks.ts'
 import type { ChatGptAuth } from '../src/auth/manager.ts'
 import type { ResponsesBody } from '../src/convert/request.ts'
+import { required } from './helpers.ts'
+import type { ChatGptCredential } from '../src/auth/credential.ts'
 
 it('preserves the wire prefix through HTTP, streamed output, durable restore and further tool turns', async () => {
   const requests: { body: ResponsesBody, session: string | undefined }[] = []
@@ -29,7 +31,7 @@ it('preserves the wire prefix through HTTP, streamed output, durable restore and
   await once(server, 'listening')
   const address = server.address()
   assert.ok(address && typeof address !== 'string')
-  let credential = {
+  let credential: Pick<ChatGptCredential, 'accessToken' | 'clientId' | 'subject' | 'replayNamespace'> = {
     accessToken: 'mock-only', clientId: 'test-client', subject: 'test-subject',
     replayNamespace: 'cf5a7f74-6069-4dfa-bd1c-df7d2e76f278',
   }
@@ -62,32 +64,33 @@ it('preserves the wire prefix through HTTP, streamed output, durable restore and
       ...continued, messages: [...continued.messages, { role: 'developer' as const, content: [{ type: 'text', text: 'New environment context.' }] }],
     }
     for await (const chunk of new ChatGptAdapter(options).stream('chatgpt', updated)) void chunk
-    assert.deepEqual(requests[1].body.input.slice(0, requests[0].body.input.length), requests[0].body.input)
-    assert.deepEqual(requests[1].body.input.slice(2, -1), output)
-    assert.deepEqual(requests[2].body.input.slice(0, requests[1].body.input.length), requests[1].body.input)
-    assert.equal(requests[2].body.input.at(-1).role, 'developer')
+    assert.deepEqual(required(requests[1]).body.input.slice(0, required(requests[0]).body.input.length), required(requests[0]).body.input)
+    assert.deepEqual(required(requests[1]).body.input.slice(2, -1), output)
+    assert.deepEqual(required(requests[2]).body.input.slice(0, required(requests[1]).body.input.length), required(requests[1]).body.input)
+    assert.equal(required(requests[2]).body.input.at(-1)?.role, 'developer')
     for (const captured of requests) {
-      assert.equal(captured.session, requests[0].session)
+      assert.equal(captured.session, required(requests[0]).session)
       assert.equal(captured.session, captured.body.prompt_cache_key)
-      assert.match(captured.session, /^[a-f0-9]{64}$/)
+      assert.match(required(captured.session), /^[a-f0-9]{64}$/)
       assert.equal(captured.body.store, false)
       assert.equal(captured.body.stream, true)
-      assert.deepEqual(captured.body.tools, requests[0].body.tools)
+      assert.deepEqual(captured.body.tools, required(requests[0]).body.tools)
     }
     // Same route and model, different authorized account registration.
     credential = { ...credential, clientId: 'other-client', subject: 'other-subject' }
     for await (const chunk of new ChatGptAdapter(options).stream('chatgpt', continued)) void chunk
-    assert.notEqual(requests[3].session, requests[0].session)
-    assert.ok(requests[3].body.input.every(item => item.type !== 'reasoning'))
-    assert.ok(requests[3].body.input.some(item => item.type === 'function_call'))
+    assert.notEqual(required(requests[3]).session, required(requests[0]).session)
+    assert.ok(required(requests[3]).body.input.every(item => item.type !== 'reasoning'))
+    assert.ok(required(requests[3]).body.input.some(item => item.type === 'function_call'))
     // A caller that bypasses the manager with a legacy credential cannot claim
     // a reusable namespace from an optional subject alone.
-    credential = { ...credential, replayNamespace: undefined as never }
+    const { replayNamespace: _removed, ...legacyCredential } = credential
+    credential = legacyCredential
     const legacyChunks: AdapterChunk[] = []
     for await (const chunk of new ChatGptAdapter(options).stream('chatgpt', continued)) legacyChunks.push(chunk)
-    assert.equal(requests[4].session, undefined)
-    assert.equal(requests[4].body.prompt_cache_key, undefined)
-    assert.ok(requests[4].body.input.every(item => item.type !== 'reasoning'))
+    assert.equal(required(requests[4]).session, undefined)
+    assert.equal(required(requests[4]).body.prompt_cache_key, undefined)
+    assert.ok(required(requests[4]).body.input.every(item => item.type !== 'reasoning'))
     assert.equal(legacyChunks.findLast(chunk => chunk.type === 'finish')?.replayState, undefined)
   } finally {
     server.closeAllConnections()

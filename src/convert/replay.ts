@@ -51,10 +51,14 @@ export function outputItem(value: unknown): OutputItem | undefined {
       })) return undefined
       break
     case 'reasoning':
-      if (!Array.isArray(item['summary']) || !item['summary'].every(part => {
+      if (item['summary'] !== undefined && (!Array.isArray(item['summary']) || !item['summary'].every(part => {
         const p = record(part)
         return p?.['type'] === 'summary_text' && typeof p['text'] === 'string'
-      })) return undefined
+      }))) return undefined
+      if (item['content'] !== undefined && (!Array.isArray(item['content']) || !item['content'].every(part => {
+        const p = record(part)
+        return p?.['type'] === 'reasoning_text' && typeof p['text'] === 'string'
+      }))) return undefined
       if (item['encrypted_content'] != null && typeof item['encrypted_content'] !== 'string') return undefined
       break
     case 'function_call':
@@ -77,8 +81,18 @@ export function outputBlock(item: OutputItem): ReplayBlock {
     return { type: 'tool-call', id: String(item['call_id']), name: String(item['name']), arguments: String(item['arguments']) }
   }
   const parts = (item[item.type === 'message' ? 'content' : 'summary'] ?? []) as Record<string, unknown>[]
-  const text = parts.map(part => String(part['text'] ?? part['refusal'] ?? '')).join(item.type === 'reasoning' ? '\n\n' : '')
+  const summary = parts.map(part => String(part['text'] ?? part['refusal'] ?? '')).join(item.type === 'reasoning' ? '\n\n' : '')
+  const reasoningContent = (item['content'] ?? []) as Record<string, unknown>[]
+  const text = summary || (item.type === 'reasoning' ? reasoningContent.map(part => String(part['text'] ?? '')).join('\n\n') : '')
   return { type: item.type === 'message' ? 'text' : 'reasoning', text }
+}
+
+/** A reasoning summary can arrive only as deltas, separately from its opaque done item. */
+export function outputMatchesBlock(item: OutputItem, block: { type: string, [key: string]: unknown }): boolean {
+  const native = outputBlock(item)
+  return item.type === 'reasoning' && native.type === 'reasoning' && native.text.length === 0
+    && block.type === 'reasoning' && typeof block['text'] === 'string'
+    || fingerprint(native) === fingerprint(block)
 }
 
 /** Ignore host-only annotations; bind replay to every visible block's content. */
@@ -89,11 +103,18 @@ function fingerprint(block: { type: string, [key: string]: unknown }): string {
   return createHash('sha256').update(JSON.stringify(content)).digest('hex')
 }
 
+/** With store:false, partial reasoning cannot accompany native items linked to its ID. */
+function hasCompleteReasoning(output: readonly OutputItem[]): boolean {
+  return output.every(item => item.type !== 'reasoning'
+    || typeof item['id'] === 'string' && item['id'].length > 0
+      && typeof item['encrypted_content'] === 'string' && item['encrypted_content'].length > 0)
+}
+
 export function createReplay(context: ReplayContext, output: OutputItem[], blocks: ReplayBlock[]): ReplayEnvelope | undefined {
-  if (output.length !== blocks.length) return undefined
+  if (output.length !== blocks.length || !hasCompleteReasoning(output)) return undefined
   // Terminal snapshots may add encryption, but cannot silently change finalized
   // text or executable arguments in the host's transcript.
-  if (output.some((item, index) => fingerprint(outputBlock(item)) !== fingerprint(blocks[index]!))) return undefined
+  if (output.some((item, index) => !outputMatchesBlock(item, blocks[index]!))) return undefined
   return {
     response: { kind: 'chatgpt-responses', version: 1, ...context, blockCount: blocks.length, output: structuredClone(output) },
     blocks: blocks.map(block => ({ fingerprint: fingerprint(block) })),
@@ -115,11 +136,9 @@ export function replayOutput(
     || !Array.isArray(metadata) || metadata.length !== blocks.length) return undefined
   if (blocks.some((block, index) => record(metadata[index])?.['fingerprint'] !== fingerprint(block))) return undefined
   const output = outputItems(response['output'])
-  if (output === undefined || output.length !== blocks.length) return undefined
-  if (output.some((item, index) => fingerprint(outputBlock(item)) !== fingerprint(blocks[index]!))) return undefined
-  // store:false cannot resolve a reasoning ID without its encrypted contents.
-  return output.filter(item => item.type !== 'reasoning'
-    || typeof item['encrypted_content'] === 'string' && item['encrypted_content'].length > 0)
+  if (output === undefined || output.length !== blocks.length || !hasCompleteReasoning(output)) return undefined
+  if (output.some((item, index) => !outputMatchesBlock(item, blocks[index]!))) return undefined
+  return output
 }
 
 /** Never derive native replay identity from optional or synthetic subject/email fields. */

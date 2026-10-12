@@ -179,6 +179,7 @@ describe('ChatGptAdapter', () => {
     limit = 64000
     const small = await adapter.resolveModel('chatgpt', 'gpt-6.1-sol')
     assert.equal(small.context.contextWindow, 64000)
+    assert.ok(small.defaultMaxTokens !== undefined)
     assert.ok(small.defaultMaxTokens < small.context.contextWindow)
     for (const invalid of [0, -1, 1.5, NaN, Infinity]) {
       limit = invalid
@@ -676,7 +677,7 @@ describe('toNeutralRequest', () => {
       ],
     })
 
-    assert.equal(toResponsesBody(neutral).input[0].output, 'Error: not found')
+    assert.equal(toResponsesBody(neutral).input[0]?.output, 'Error: not found')
   })
 
   it('drops a tool message that names no call, since it cannot be correlated', () => {

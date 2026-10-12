@@ -11,15 +11,22 @@ discovery, Responses serialization, and its opaque replay envelope.
    previously sent tool results. One ordered message/block traversal now emits
    developer instructions, assistant text, calls, and results in place.
 2. Stream parsing discarded output-item boundaries, IDs, phases, and encrypted
-   reasoning. Output indexes now identify independent durable blocks. Successful
-   item-done events supply native replay data; terminal output can backfill
-   encryption. SIWC can finish with `output: []`, which must not erase the
-   complete items already received.
+   reasoning. Native item IDs identify blocks; output indexes determine order
+   when supplied. Missing indexes never become zero. Indexed gaps are buffered
+   so an earlier item can still precede them in DSH's first-seen block order.
+   Item-done events supply native replay data. Partial/reordered terminal arrays
+   backfill metadata by ID; positions are used for new display items only after
+   agreement with all observed positions and content. Unmatched/conflicting
+   snapshots cannot overwrite a different block or throw away a completed turn.
+   SIWC's `output: []` never erases previously received complete items.
 3. DSH stores that data through the standard `finish.replayState` envelope.
    Each visible block has a fingerprint. Changed content, removed blocks, unknown
    envelope versions, different accounts/endpoints/providers/models, and foreign
    adapters fall back to visible history. Partial/failed responses do not claim
-   reusable native state. Empty reasoning summaries still retain their opaque item.
+   reusable native state. Missing reasoning summaries are accepted, with
+   `content` or streamed previews used for display. Requests supply the required
+   empty summary array when absent. Unavailable ciphertext or reasoning IDs
+   disable the entire native replay, including linked native call item IDs.
 4. System/developer messages retain their instruction role. The resolved model
    advertises `systemPromptUpdate: "in-history"`, allowing DSH to append updates
    at their original positions. Tools remain in host-provided order.
@@ -90,12 +97,16 @@ window stays at 200,000. Tests cover that case and explicit extended-window clam
 On a clean checkout, install development dependencies with `npm ci --ignore-scripts`.
 Run `npm run build` before `npm run verify:package`; packaging validation reads
 the generated `lib/` artifacts. Typechecking requires the installed `@types/node`.
+The same strict configuration now includes every test and fixture; it does not
+disable strict null checks, unchecked-index checks, or exact optional properties.
 
 `npm test` includes:
 
 - Exact previous-input prefix assertions after further tool calls and commentary.
 - Multiple text/reasoning items, empty summaries, interleaved indexed deltas,
   authoritative final arguments, refusal output, and terminal-only snapshots.
+- Missing output indexes, late earlier items, partial/reordered/conflicting
+  terminal arrays, missing reasoning summaries, and parallel calls correlated by ID.
 - Native item/ID/phase/argument preservation through JSON session restore.
 - Edited/pruned/cross-account/cross-model/malformed replay fallback.
 - A local HTTP/SSE round trip through the adapter with captured request bodies
@@ -107,6 +118,18 @@ Run `npm run verify:harness -- /path/to/deepseek-harness` against a DSH checkout
 It bundles that checkout's real BlockAssembler and verifies assembly, empty
 encrypted reasoning, JSON restore, the plugin request boundary, and DSH's
 max-token block-pruning behavior. It neither boots a profile nor calls a model.
+Both CI and release checks run it against public DSH commit
+`d743267388641bc76f17c45ce8b4c231aed1d32c`, with the same malformed-stream
+fixtures as the unit tests. This is a checked contract for that pinned host,
+not a claim about every future DSH version. Run it against a candidate checkout
+when updating the host. Block-count guards deliberately invalidate pruned
+whole-response snapshots; separate same-length mutations test fingerprints
+without relying on those count guards.
+
+The legacy `include: ["reasoning.encrypted_content"]` hint is sent only when an
+explicit reasoning effort is selected, matching Pi's request path. This is
+request compatibility discipline, not evidence that unconditional inclusion
+caused the measured cache misses.
 
 These checks establish serialization and persistence correctness. They do not
 measure the service's live cache hit rate or ChatGPT allowance deduction.
@@ -122,7 +145,7 @@ does not establish a sustained hit rate, a controlled comparison with Pi or the 
 adapter, or an exact reduction in ChatGPT plan usage.
 
 A separate live fallback check on 2026-10-12 used GPT-6 Astra / high. A short
-arithmetic prompt produced 234 reasoning tokens, one encrypted reasoning item,
+arithmetic prompt produced 207 reasoning tokens, one encrypted reasoning item,
 and one function call. Replaying the native reasoning and call completed
 successfully. Removing replay metadata then sending the same visible call and
 tool result also completed: the fallback kept `call_id` but omitted the native

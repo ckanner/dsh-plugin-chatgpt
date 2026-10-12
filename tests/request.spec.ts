@@ -8,6 +8,14 @@ function keysOf(body: object): string[] {
 }
 
 describe('toResponsesBody', () => {
+  it('normalizes an omitted reasoning summary to the required input array', () => {
+    const body = toResponsesBody({ model: 'm', messages: [{
+      role: 'assistant', content: '',
+      replay: [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' }],
+    }] })
+    assert.deepEqual(body.input, [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque', summary: [] }])
+  })
+
   it('always carries the two flags the plan-usage route requires', () => {
     const body = toResponsesBody({ model: 'gpt-6.1-sol', messages: [{ role: 'user', content: 'hi' }] })
 
@@ -16,7 +24,7 @@ describe('toResponsesBody', () => {
   })
 
   it('uses an optional session cache key and requests opaque reasoning', () => {
-    const request = { model: 'gpt-6-astra', messages: [{ role: 'user' as const, content: 'hi' }] }
+    const request = { model: 'gpt-6-astra', messages: [{ role: 'user' as const, content: 'hi' }], reasoningEffort: 'high' }
     assert.equal(toResponsesBody(request).prompt_cache_key, undefined)
     assert.equal(toResponsesBody({ ...request, cacheKey: 'session-key' }).prompt_cache_key, 'session-key')
     assert.deepEqual(toResponsesBody(request).include, ['reasoning.encrypted_content'])
@@ -49,7 +57,9 @@ describe('toResponsesBody', () => {
     })
 
     assert.deepEqual(body.input.map(item => item.role), ['developer', 'developer', 'user'])
-    assert.deepEqual(body.input.slice(0, 2).map(item => item.content[0].text), ['first', 'second'])
+    assert.deepEqual(body.input.slice(0, 2).map(item => item.content), [
+      [{ type: 'input_text', text: 'first' }], [{ type: 'input_text', text: 'second' }],
+    ])
   })
 
   it('uses the out-of-band system prompt when the messages carry none', () => {
@@ -59,8 +69,8 @@ describe('toResponsesBody', () => {
       messages: [{ role: 'user', content: 'hi' }],
     })
 
-    assert.equal(body.input[0].role, 'developer')
-    assert.equal(body.input[0].content[0].text, 'One-shot prompt')
+    assert.equal(body.input[0]?.role, 'developer')
+    assert.deepEqual(body.input[0]?.content, [{ type: 'input_text', text: 'One-shot prompt' }])
   })
 
   it('prefers the messages\' system text over the out-of-band prompt', () => {
@@ -70,7 +80,7 @@ describe('toResponsesBody', () => {
       messages: [{ role: 'system', content: 'from history' }, { role: 'user', content: 'hi' }],
     })
 
-    assert.equal(body.input[0].content[0].text, 'from history')
+    assert.deepEqual(body.input[0]?.content, [{ type: 'input_text', text: 'from history' }])
     assert.equal(body.input.length, 2)
   })
 
@@ -205,6 +215,7 @@ describe('toResponsesBody', () => {
     const body = toResponsesBody({ model: 'm', messages: [{ role: 'user', content: 'hi' }] })
 
     assert.equal('reasoning' in body, false)
+    assert.equal('include' in body, false)
   })
 
   it('drops an empty message rather than sending an empty content array', () => {

@@ -7,6 +7,11 @@
 - Save native Responses output through DSH replay envelopes, including encrypted
   reasoning, item IDs, phases, and raw tool arguments. Validate account/model and
   content before replay; preserve item boundaries in streaming and session restore.
+- Correlate streams by native item IDs without defaulting missing indexes to zero;
+  reconcile partial/reordered terminal arrays without overwriting other items.
+  Accept missing reasoning summaries and retain content-based previews.
+- Disable native replay when required reasoning state is incomplete, and request
+  encrypted output explicitly only when a reasoning effort is selected.
 - Align session cache keys and headers, with account/endpoint isolation and stable
   identity across token renewal. Allow DSH to append system-prompt updates in history.
 - Scope replay to a random local authorization namespace, persisted across refresh
@@ -18,6 +23,8 @@
   `contextWindowLimit` setting for smaller budgets or explicit, bounded expansion.
   Existing large sessions may compact earlier after upgrading.
 - Add ordered-prefix, HTTP/SSE, replay/migration, and real DSH assembler checks.
+  Typecheck all tests with the existing strict options; run the pinned real-host
+  contract fixtures in CI and release checks.
   Handle SIWC's empty terminal output array without dropping streamed native items.
   Correct the caching documentation and record a bounded live smoke check, without
   promising a sustained cache-hit rate.

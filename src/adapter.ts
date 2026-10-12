@@ -170,7 +170,7 @@ export function toNeutralRequest(request: HarnessRequest, scope?: string): Neutr
     const source = typeof message.source === 'object' && message.source !== null
       ? message.source as Record<string, unknown> : undefined
     const replay = message.role === 'assistant'
-      && source?.['provider'] === request.provider && source['model'] === request.model
+      && source?.['kind'] === 'model' && source['provider'] === request.provider && source['model'] === request.model
       ? replayOutput(source['replayState'], message.content, context) : undefined
     const content: InputPart[] = []
     for (const block of message.content) {
