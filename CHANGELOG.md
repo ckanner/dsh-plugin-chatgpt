@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.1.12 (unreleased)
+## 0.1.13 (unreleased)
+
+- Add live `modelContextWindowLimits` settings keyed by exact model ID. Each
+  model's value takes precedence over the global `contextWindowLimit`, then the
+  account catalog default. Explicit budgets remain unclamped.
+- Restore the current global or account budget when a model entry is removed;
+  identify invalid selected values by model key. Document configuration examples
+  and test precedence, live updates, fallback, exact IDs, and missing metadata.
+
+## 0.1.12
 
 - Follow each model's account-catalog context window by default, including catalog
   updates, instead of imposing a shared 272,000-token cap. Use explicit

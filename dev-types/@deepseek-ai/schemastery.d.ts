@@ -50,6 +50,8 @@ declare module '@deepseek-ai/schemastery' {
     number(): Schema<number>
     /** A boolean field. */
     boolean(): Schema<boolean>
+    /** A dictionary with string keys and a validated value schema. */
+    dict<T>(inner: Schema<T>): Schema<Record<string, T>>
     /** An object whose declared fields compose the schema. */
     object<T extends object>(fields: { [K in keyof T]: Schema<T[K]> }): Schema<T> & { toJSON(): unknown }
   }

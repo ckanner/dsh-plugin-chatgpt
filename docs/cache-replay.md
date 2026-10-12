@@ -44,8 +44,9 @@ discovery, Responses serialization, and its opaque replay envelope.
    Sessionless calls omit cache identifiers. Missing/invalid namespaces disable
    both native replay and these identifiers until the credential is managed.
 6. Default context follows each model's account-catalog window, without a shared
-   fixed cap. An explicit `contextWindowLimit` is used as-is, following Pi's
-   override behavior. It is read when a model is resolved.
+   fixed cap. An exact `modelContextWindowLimits` entry takes precedence over
+   the global `contextWindowLimit`; explicit values are used as-is, following
+   Pi's override behavior. Both are read when a model is resolved.
    Default output reservation fits within half the selected budget. DSH still
    decides when and how to compact; the adapter does not delete history.
 
@@ -101,15 +102,21 @@ metadata falls back to the bundled catalog or conservative unknown-model default
 an unlisted measured model keeps that default. Observed route maximums remain
 descriptive metadata and do not impose a separate budget ceiling.
 
-An explicit `contextWindowLimit` must be a safe integer of at least 1,024 tokens.
-The effective budget is `contextWindowLimit ?? model.contextWindow`: an explicit
-value is never clamped to the catalog default or maximum. For a model with a
+The global `contextWindowLimit` and every `modelContextWindowLimits` value must
+be safe integers of at least 1,024 tokens. Model entries match exact,
+case-sensitive IDs; display names, prefixes, and wildcard patterns do not match.
+The precedence is `modelContextWindowLimits[model.id] ?? contextWindowLimit ?? model.contextWindow`.
+An explicit value is never clamped to the catalog default or maximum. For a model with a
 500,000 default and 872,000 maximum, `contextWindowLimit: 1000000` selects
 1,000,000. The same override works when maximum metadata is missing or the model
 is unlisted. Catalog refreshes do not shrink an explicit budget. Clearing the
-setting restores each model's latest default. The override applies to this
-provider's models, independently of Codex configuration; DSH still computes its
-own compaction threshold and output headroom.
+model entry restores the current global budget, or the latest account default
+if no global budget exists. Clearing all overrides restores each model's latest
+default. Both configuration fields are live DSH settings and are read on each
+model resolution. An invalid selected model value reports its configuration key
+instead of silently falling back. The global override applies to this provider's
+models, independently of Codex configuration; DSH still computes its own
+compaction threshold and output headroom.
 
 The model's published total context window, catalog metadata, and effective
 client budget are separate values. The official model pages list
@@ -128,7 +135,8 @@ capacity test.
 
 Tests cover different defaults in one account, catalog updates, explicit one-million
 budgets above catalog maxima, missing metadata, smaller budgets, invalid values,
-and clearing an override after catalog changes.
+clearing overrides after catalog changes, per-model/global/default precedence,
+exact-ID matching, and independent budgets for models missing from the catalog.
 
 ## Verification
 

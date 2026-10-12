@@ -47,6 +47,8 @@ export const Config = z.object({
   baseUrl: z.string().volatile(),
   /** Explicit context budget used as-is; absent follows each model's account-catalog default. */
   contextWindowLimit: z.number().step(1).min(1024).volatile(),
+  /** Exact model IDs with budgets that override the global context budget. */
+  modelContextWindowLimits: z.dict(z.number().step(1).min(1024)).volatile(),
 })
 
 /** The configuration one installation supplies, as the harness resolves it. */
@@ -56,6 +58,7 @@ export type Config = {
   stateDir: Volatile<string>
   baseUrl: Volatile<string>
   contextWindowLimit: Volatile<number>
+  modelContextWindowLimits: Volatile<Record<string, number>>
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -196,6 +199,7 @@ export function apply(ctx: Context, config: Config): void {
     auth,
     displayName,
     contextWindowLimit: () => config.contextWindowLimit.get(),
+    modelContextWindowLimits: () => config.modelContextWindowLimits.get(),
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 

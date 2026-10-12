@@ -109,6 +109,8 @@ export interface ChatGptAdapterOptions {
   includeUnlisted?: boolean
   /** Explicit DSH context budget takes precedence over catalog metadata; absent follows the default. */
   contextWindowLimit?: number | (() => number | undefined)
+  /** Exact model IDs mapped to context budgets, taking precedence over the global budget. */
+  modelContextWindowLimits?: Readonly<Record<string, number>> | (() => Readonly<Record<string, number>> | undefined)
   /** Clock, so the listing cache can be tested. */
   now?: () => number
 }
@@ -263,9 +265,11 @@ function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
 }
 
 /** Describe a model and its selected compaction budget in the host's vocabulary. */
-function toHarnessResolved(provider: string, model: DescribedModel, limit?: number): HarnessResolvedModel {
+function toHarnessResolved(
+  provider: string, model: DescribedModel, limit?: number, limitSetting = 'contextWindowLimit',
+): HarnessResolvedModel {
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1024)) {
-    throw new Error('contextWindowLimit must be a safe integer of at least 1024 tokens')
+    throw new Error(`${limitSetting} must be a safe integer of at least 1024 tokens`)
   }
   // Like Pi's model override, an explicit budget is used verbatim. Catalog
   // maxima describe the provider; they do not silently shrink the user's setting.
@@ -301,6 +305,7 @@ export class ChatGptAdapter {
   private readonly displayName: string
   private readonly includeUnlisted: boolean
   private readonly contextWindowLimit: ChatGptAdapterOptions['contextWindowLimit']
+  private readonly modelContextWindowLimits: ChatGptAdapterOptions['modelContextWindowLimits']
   private readonly now: () => number
   private listing: { at: number, models: DescribedModel[] } | undefined
 
@@ -313,6 +318,7 @@ export class ChatGptAdapter {
     this.displayName = options.displayName ?? 'ChatGPT'
     this.includeUnlisted = options.includeUnlisted ?? true
     this.contextWindowLimit = options.contextWindowLimit
+    this.modelContextWindowLimits = options.modelContextWindowLimits
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -446,8 +452,16 @@ export class ChatGptAdapter {
     const described = listed ?? describableModels([{ slug: model }])[0]
     /* c8 ignore next -- describableModels always answers for a non-empty slug */
     if (described === undefined) throw new Error(`no model named "${model}"`)
-    const limit = typeof this.contextWindowLimit === 'function' ? this.contextWindowLimit() : this.contextWindowLimit
-    return toHarnessResolved(provider, described, limit)
+    const overrides = typeof this.modelContextWindowLimits === 'function'
+      ? this.modelContextWindowLimits() : this.modelContextWindowLimits
+    if (overrides !== undefined && (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides))) {
+      throw new Error('modelContextWindowLimits must be an object keyed by exact model ID')
+    }
+    const modelLimit = overrides !== undefined && Object.hasOwn(overrides, model) ? overrides[model] : undefined
+    const limit = modelLimit !== undefined ? modelLimit
+      : typeof this.contextWindowLimit === 'function' ? this.contextWindowLimit() : this.contextWindowLimit
+    return toHarnessResolved(provider, described, limit,
+      modelLimit === undefined ? 'contextWindowLimit' : `modelContextWindowLimits[${JSON.stringify(model)}]`)
   }
 
   /**
