@@ -101,11 +101,10 @@ jobs:
           fi
 
       - name: Choose the publishing credential
-        # Decided in a shell step rather than from the `env` context in a step
-        # condition: an undefined secret has to select trusted publishing, and a
-        # condition that reads the context directly selected the token path on a
-        # repository with no secrets at all — so the publish went out unauthenticated
-        # as a 404 while the OIDC step sat skipped behind it.
+        # Decided from the secret itself in a shell step. setup-node exports a
+        # placeholder `NODE_AUTH_TOKEN` (`XXXXX-XXXXX-XXXXX-XXXXX`) once `registry-url`
+        # is set, so a condition that reads the environment cannot tell a real secret
+        # from that placeholder.
         id: credential
         env:
           TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -120,14 +119,25 @@ jobs:
 
       - name: Publish with the repository's npm token
         if: steps.registry.outputs.published == 'false' && steps.credential.outputs.mode == 'token'
+        env:
+          # Stated here because setup-node's placeholder would otherwise win.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
 
       - name: Publish through npm trusted publishing
         # No secret: npm exchanges the id-token for a credential scoped to this
         # workflow. Trusted publishing has to be configured for this repository on
         # npmjs.com before the first run.
+        #
+        # npm prefers a configured token over the OIDC exchange, and setup-node's
+        # `.npmrc` points `_authToken` at the placeholder, so this step runs against
+        # an empty config: with no token to send, npm performs the exchange.
         if: steps.registry.outputs.published == 'false' && steps.credential.outputs.mode == 'trusted'
-        run: npm publish --access public --provenance
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/trusted-publishing.npmrc
+        run: |
+          : > "$NPM_CONFIG_USERCONFIG"
+          npm publish --access public --provenance
 
       - name: Record a version that was published by hand
         if: steps.registry.outputs.published == 'true'
