@@ -31,12 +31,6 @@ const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 
 /** Chinese text for each English line that carries prose, keyed exactly. */
 const LINE_TRANSLATIONS = {
-  "- **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: \"in-history\"`; see [the replay design and validation plan](docs/cache-replay.md).":
-    "- **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: \"in-history\"`；参见[回放设计与验证方案](cache-replay.md)。",
-  "| `src/convert/replay.ts` | Validated native output and DSH replay envelopes, scoped to an account and model. |":
-    "| `src/convert/replay.ts` | 原生输出校验及限定账号和模型的 DSH 回放封装。 |",
-  "| `src/convert/harness.ts` | DSH request boundary, including session identity and replay metadata. |":
-    "| `src/convert/harness.ts` | DSH 请求边界，含会话身份与回放元数据。 |",
   "English | [中文](docs/README.zh.md)":
     "[English](../README.md) | 中文",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":
@@ -125,6 +119,10 @@ const LINE_TRANSLATIONS = {
     "| `src/api/events.ts` | 解码 Responses 事件流及其失败形态。 |",
   "| `src/convert/request.ts` | Harness request to Responses body, including the fields the route refuses. |":
     "| `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |",
+  "| `src/convert/harness.ts` | DSH request boundary, including session identity and replay metadata. |":
+    "| `src/convert/harness.ts` | DSH 请求边界，含会话身份与回放元数据。 |",
+  "| `src/convert/replay.ts` | Validated native output and DSH replay envelopes, scoped to an account and model. |":
+    "| `src/convert/replay.ts` | 原生输出校验及限定账号和模型的 DSH 回放封装。 |",
   "| `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |":
     "| `src/convert/blocks.ts` | 线上事件转 Harness 的编号内容块。 |",
   "| `src/api/client.ts` | The two HTTP calls: list models, run one turn. |":
@@ -169,6 +167,8 @@ const LINE_TRANSLATIONS = {
     "适配器在多轮工具调用和会话恢复中保留可复用前缀及不透明推理状态。本地授权命名空间、client 注册、端点、provider、会话 ID 和调用用途的固定长度哈希同时用于 `prompt_cache_key` 与 `session_id` 请求头；刷新 token 不改变它。重新授权会生成新命名空间，旧凭据在首次读取时补齐；无会话 ID 的调用则省略两者。GPT-5.6 及以后由 OpenAI 自动处理缓存路由，key 不保证命中。SIWC 要求 `store: false` 并在 HTTP 请求中携带完整历史，响应存储与提示词缓存是两件事。与 Pi 的公共 SIWC 路线一样，这里继续省略缓存保留期与 options，等待按模型和路由验证。参见[官方缓存指南](https://developers.openai.com/api/docs/guides/prompt-caching)及[推理回放说明](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses)。",
   "## Known Limitations and Deferred Work":
     "## 已知限制与待办",
+  "- **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: \"in-history\"`; see [the replay design and validation plan](docs/cache-replay.md).":
+    "- **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: \"in-history\"`；参见[回放设计与验证方案](cache-replay.md)。",
   "- **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.":
     "- **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。",
   "- **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.":
@@ -199,6 +199,12 @@ const LINE_TRANSLATIONS = {
     "`dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。",
   "Regenerate the model catalog when the upstream catalog moves:":
     "当上游目录更新时，重新生成模型目录：",
+  "### Releasing":
+    "### 发版",
+  "A release is one tag: bump the version, push the tag, and the release workflow runs every check the CI lane runs, publishes only when the registry does not have that version yet, and records the GitHub Release either way.":
+    "一次发版就是一个 tag：提版本、打 tag、推送。release 流水线会跑 CI 的全部检查，只在 registry 上还没有该版本时才发布，而无论是否发布都会记录 GitHub Release。",
+  "Publishing takes either the repository's `NPM_TOKEN` secret or npm trusted publishing (workflow `release.yml`); the Release half uses the run's own token. Asking the registry first is what lets a tag for a version that was published by hand record its Release instead of failing, and what lets re-running a tag repair a missing Release. `workflow_dispatch` releases the manifest's version, creating the tag when it is absent.":
+    "发布凭据走仓库的 `NPM_TOKEN` secret 或 npm 可信发布（工作流 `release.yml`）；Release 那一半用运行自带的 token。关键在「先问 registry」：它让手工发布过的版本在打 tag 时只补 Release 而不会失败，也让重跑同一个 tag 能修复缺失的 Release。`workflow_dispatch` 会发布 manifest 里的版本，并在 tag 不存在时自动创建。",
 }
 
 /** Lines carried through unchanged: they hold no prose in either language. */

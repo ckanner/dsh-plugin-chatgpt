@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.1.13 (unreleased)
+## 0.1.14 (unreleased)
+
+Documentation only; no behaviour change.
+
+- Record how a release is made. The registry and this repository's Releases page
+  had drifted twelve published versions apart, because publishing by hand left the
+  release workflow with no tag to run on, and the readme said nothing about either
+  half. The new section names the tag that produces both, and the idempotent guard
+  that lets a tag for an already-published version record its Release.
+
+## 0.1.13
 
 - Add live `modelContextWindowLimits` settings keyed by exact model ID. Each
   model's value takes precedence over the global `contextWindowLimit`, then the

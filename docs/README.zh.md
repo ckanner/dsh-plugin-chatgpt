@@ -219,3 +219,14 @@ npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offl
 ```text
 node scripts/generate-model-catalog.mjs /path/to/@earendil-works/pi-ai
 ```
+
+### 发版
+
+一次发版就是一个 tag：提版本、打 tag、推送。release 流水线会跑 CI 的全部检查，只在 registry 上还没有该版本时才发布，而无论是否发布都会记录 GitHub Release。
+
+```text
+npm version 0.1.14
+git push --follow-tags
+```
+
+发布凭据走仓库的 `NPM_TOKEN` secret 或 npm 可信发布（工作流 `release.yml`）；Release 那一半用运行自带的 token。关键在「先问 registry」：它让手工发布过的版本在打 tag 时只补 Release 而不会失败，也让重跑同一个 tag 能修复缺失的 Release。`workflow_dispatch` 会发布 manifest 里的版本，并在 tag 不存在时自动创建。

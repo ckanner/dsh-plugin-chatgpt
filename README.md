@@ -219,3 +219,14 @@ Regenerate the model catalog when the upstream catalog moves:
 ```text
 node scripts/generate-model-catalog.mjs /path/to/@earendil-works/pi-ai
 ```
+
+### Releasing
+
+A release is one tag: bump the version, push the tag, and the release workflow runs every check the CI lane runs, publishes only when the registry does not have that version yet, and records the GitHub Release either way.
+
+```text
+npm version 0.1.14
+git push --follow-tags
+```
+
+Publishing takes either the repository's `NPM_TOKEN` secret or npm trusted publishing (workflow `release.yml`); the Release half uses the run's own token. Asking the registry first is what lets a tag for a version that was published by hand record its Release instead of failing, and what lets re-running a tag repair a missing Release. `workflow_dispatch` releases the manifest's version, creating the tag when it is absent.
