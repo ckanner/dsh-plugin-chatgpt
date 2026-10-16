@@ -100,10 +100,26 @@ function packedFiles() {
   // The pack report is the document that carries file paths; picking by shape
   // rather than by position also survives npm printing its documents in another order.
   const entry = jsonDocuments(raw)
-    .flatMap(document => Array.isArray(document) ? document : [])
+    .flatMap(packReports)
     .find(candidate => Array.isArray(candidate?.files) && candidate.files.every(file => typeof file?.path === 'string'))
   if (entry === undefined) throw new Error('npm pack printed no report carrying file paths')
   return { files: new Set(entry.files.map(file => file.path)), entry }
+}
+
+/**
+ * The per-package reports inside one `pack --json` document.
+ *
+ * npm through 11 answers with an array of reports; npm 12 answers with an object
+ * keyed by package name. Both carry the same report, so the caller reads whichever
+ * npm the host happens to ship.
+ *
+ * @param document - one parsed document from stdout.
+ * @returns its per-package reports, in order.
+ */
+function packReports(document) {
+  if (Array.isArray(document)) return document
+  if (document !== null && typeof document === 'object') return Object.values(document)
+  return []
 }
 
 const { files, entry } = packedFiles()
