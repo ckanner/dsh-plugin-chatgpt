@@ -44,6 +44,15 @@ jobs:
           node-version: '22.x'
           registry-url: https://registry.npmjs.org
 
+      - name: Use an npm that knows trusted publishing
+        # Node 22 bundles npm 10, which has no OIDC exchange at all: with no token
+        # configured it stops at ENEEDAUTH instead of asking npm for a credential.
+        # Trusted publishing needs npm 11.5 or later.
+        run: |
+          npm install --global npm@latest
+          node --version
+          npm --version
+
       - run: npm install --ignore-scripts
 
       - name: Checkout pinned DSH contract sources
