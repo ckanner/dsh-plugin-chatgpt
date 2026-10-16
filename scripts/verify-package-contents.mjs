@@ -39,6 +39,53 @@ function walk(directory) {
   return found
 }
 
+/**
+ * Every complete JSON value printed in `text`, in order.
+ *
+ * npm has printed more than one document from `pack --json` (a report plus
+ * something else), so slicing from the first bracket to the last one produced
+ * `[…][…]` and JSON.parse refused it. Scanning depth-first with string awareness
+ * yields each document intact whatever surrounds it.
+ *
+ * @param text - whatever npm wrote to stdout.
+ * @returns each parsed document, in printed order.
+ */
+function jsonDocuments(text) {
+  const documents = []
+  let index = 0
+  while (index < text.length) {
+    const start = text.slice(index).search(/[[{]/)
+    if (start < 0) break
+    let cursor = index + start
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (; cursor < text.length; cursor += 1) {
+      const character = text[cursor]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (character === '\\') escaped = true
+        else if (character === '"') inString = false
+        continue
+      }
+      if (character === '"') inString = true
+      else if (character === '[' || character === '{') depth += 1
+      else if (character === ']' || character === '}') {
+        depth -= 1
+        if (depth === 0) break
+      }
+    }
+    if (depth !== 0) break
+    try {
+      documents.push(JSON.parse(text.slice(index + start, cursor + 1)))
+    } catch {
+      // Not JSON after all; keep looking past this bracket.
+    }
+    index = cursor + 1
+  }
+  return documents
+}
+
 /** The files npm would publish, from its own dry run. */
 function packedFiles() {
   // --ignore-scripts: the report is about which files would ship, and the build
@@ -50,10 +97,12 @@ function packedFiles() {
     // npm writes its notices to stderr; only the JSON report on stdout is read.
     stdio: ['ignore', 'pipe', 'ignore'],
   })
-  // Tolerant of any notice a future npm version adds around the report.
-  const report = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1))
-  const entry = report[0]
-  if (entry === undefined) throw new Error('npm pack reported no package')
+  // The pack report is the document that carries file paths; picking by shape
+  // rather than by position also survives npm printing its documents in another order.
+  const entry = jsonDocuments(raw)
+    .flatMap(document => Array.isArray(document) ? document : [])
+    .find(candidate => Array.isArray(candidate?.files) && candidate.files.every(file => typeof file?.path === 'string'))
+  if (entry === undefined) throw new Error('npm pack printed no report carrying file paths')
   return { files: new Set(entry.files.map(file => file.path)), entry }
 }
 
