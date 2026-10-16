@@ -1,11 +1,16 @@
 # Publishing is a release, not a side effect of a push.
 #
-# The point of this workflow is that `dsh plugin add dsh-plugin-chatgpt` works
-# without a trailing URL, and that only happens when the name resolves on the
-# registry. Two ways in, and the workflow does not care which one the maintainer
-# chose: a repository `NPM_TOKEN` secret, or npm trusted publishing, where npm
-# exchanges this run's OIDC identity for a short-lived credential and no
-# long-lived token exists to leak.
+# One tag does both halves of a release, so the registry and this repository's
+# Releases page cannot drift apart again: the run publishes only when the version
+# is new, and always records the GitHub Release. Pushing a tag for a version that
+# is already on the registry therefore backfills its Release instead of failing,
+# which is how the releases skipped while publishing by hand get recorded.
+#
+# Two ways in for the publish half, and the workflow does not care which one the
+# maintainer chose: a repository `NPM_TOKEN` secret, or npm trusted publishing,
+# where npm exchanges this run's OIDC identity for a short-lived credential and no
+# long-lived token exists to leak. The Release half needs neither — it uses the
+# run's own GITHUB_TOKEN, which is why `contents` is write below.
 #
 # Every check the CI lane runs has to pass here too, because an artifact that is
 # already on the registry cannot be unpublished into a fix.
@@ -14,15 +19,17 @@ name: release
 on:
   push:
     tags: ['v*']
+  # Releasing the manifest's version by hand, creating the tag when it is absent.
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Creating the GitHub Release, and attaching the packed tarball to it.
+  contents: write
   # Trusted publishing: npm accepts this run's OIDC identity in place of a token.
   id-token: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     env:
       # Empty when the secret is absent, which is what selects the second step.
@@ -67,24 +74,65 @@ jobs:
       - name: README pair is aligned
         run: npm run check:i18n
 
-      - name: Refuse a tag that does not match the manifest
+      - name: Resolve the version, and refuse a tag that does not match it
         # A publish is not undoable, and an npm version can never be reused, so a
         # mistyped tag would burn the number permanently.
         run: |
-          tag="${GITHUB_REF_NAME#v}"
           version="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_REF_TYPE" != 'tag' ]; then
+            # A manual run releases whatever the manifest says.
+            tag="$version"
+          fi
           if [ "$tag" != "$version" ]; then
-            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            echo "tag v$tag does not match package.json version $version" >&2
             exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "Releasing dsh-plugin-chatgpt@$version"
+
+      - name: Ask the registry whether this version exists yet
+        id: registry
+        run: |
+          if npm view "dsh-plugin-chatgpt@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish with the repository's npm token
-        if: env.NODE_AUTH_TOKEN != ''
+        if: steps.registry.outputs.published == 'false' && env.NODE_AUTH_TOKEN != ''
         run: npm publish --access public --provenance
 
       - name: Publish through npm trusted publishing
         # No secret: npm exchanges the id-token for a credential scoped to this
         # workflow. Trusted publishing has to be configured for this repository on
         # npmjs.com before the first run.
-        if: env.NODE_AUTH_TOKEN == ''
+        if: steps.registry.outputs.published == 'false' && env.NODE_AUTH_TOKEN == ''
         run: npm publish --access public --provenance
+
+      - name: Record a version that was published by hand
+        if: steps.registry.outputs.published == 'true'
+        run: |
+          echo "dsh-plugin-chatgpt@$VERSION is already on the registry." >> "$GITHUB_STEP_SUMMARY"
+          echo "This run records its GitHub Release and publishes nothing." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pack the tarball the Release carries
+        # The asset keeps a version-free name so `releases/latest/download/…` is a
+        # stable address for the current build, as the install notes promise.
+        run: |
+          npm pack
+          mv dsh-plugin-chatgpt-*.tgz dsh-plugin-chatgpt.tgz
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" dsh-plugin-chatgpt.tgz --clobber
+          else
+            gh release create "v$VERSION" \
+              --title "v$VERSION" \
+              --generate-notes \
+              dsh-plugin-chatgpt.tgz
+          fi
