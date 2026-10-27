@@ -264,6 +264,23 @@ function credentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
     : coded(`the ChatGPT request could not be prepared: ${message}`, 'chatgpt_request_failed')
 }
 
+/**
+ * Map a thrown credential/listing error to the failure the harness sees.
+ *
+ * `RefreshRefusedError` carries a `code` of its own (`CHATGPT_REFRESH_REFUSED`),
+ * so a generic coded-error passthrough would let it escape before
+ * {@link credentialFailure} can translate a dead grant into
+ * `chatgpt_not_signed_in`. Genuine API refusals keep their own code.
+ *
+ * @param auth - the credential owner, asked whether any account is stored.
+ * @param error - whatever the credential step or the first read threw.
+ * @returns the coded failure to report.
+ */
+function codedCredentialFailure(auth: ChatGptAuth, error: unknown): CodedError {
+  if (error instanceof RefreshRefusedError) return credentialFailure(auth, error)
+  return isCodedError(error) ? error : credentialFailure(auth, error)
+}
+
 /** Describe a model and its selected compaction budget in the host's vocabulary. */
 function toHarnessResolved(
   provider: string, model: DescribedModel, limit?: number, limitSetting = 'contextWindowLimit',
@@ -360,9 +377,11 @@ export class ChatGptAdapter {
         credential => listModels(credential.accessToken, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
       )
     } catch (error) {
-      throw isCodedError(error)
-        ? error
-        : coded(String(error instanceof Error ? error.message : error), 'chatgpt_listing_failed')
+      // Listing shares the credential rules with a turn: a refused refresh is a
+      // dead grant, not a listing the human can retry. Mapping it through
+      // `credentialFailure` keeps the code (`chatgpt_not_signed_in`) that lets the
+      // card stop claiming a dead grant is still signed in.
+      throw codedCredentialFailure(this.auth, error)
     }
     const models = this.rosterOf(listed)
     this.listing = { at: this.now(), models }
@@ -503,7 +522,7 @@ export class ChatGptAdapter {
       ))
     } catch (error) {
       if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
-      throw isCodedError(error) ? error : credentialFailure(this.auth, error)
+      throw codedCredentialFailure(this.auth, error)
     }
     try {
       for (let step: IteratorResult<ResponsesEvent> = primed; !step.done; step = await events.next()) {

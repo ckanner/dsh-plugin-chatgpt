@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.1.14 (unreleased)
+## 0.1.15
+
+A stored grant that can no longer be refreshed is reported as needing a new
+sign-in instead of as "Signed in".
+
+- `listModels` now maps a refused refresh through the same credential rules as a
+  turn, so `invalid_grant` arrives as `chatgpt_not_signed_in` with the
+  "needs a new sign-in" text rather than a generic listing failure.
+- `ChatGptSession.status()` reports `needsSignIn` and turns `signedIn` off for
+  that case; the settings card shows a "Sign-in required" tag and the sign-in
+  action instead of a green tag and account row over a dead grant.
+- Tests cover the dead-grant status.
+
+## 0.1.14
 
 Documentation only; no behaviour change.
 

@@ -51,6 +51,8 @@ interface StatusView {
   accounts: { subject: string, email?: string, active: boolean }[]
   pending?: { url: string, redirectUri: string }
   roster?: { count: number, error?: string }
+  /** Set when the stored grant can no longer be refreshed and must be replaced. */
+  needsSignIn?: boolean
   error?: string
 }
 
@@ -249,11 +251,17 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
   // explicitly — `undefined` meaning whichever account is active — is what the
   // declared descriptor expects; omitting it fails before the call leaves the page.
   const activeSubject = status.accounts.find(entry => entry.active)?.subject
-  const state = status.signedIn
-    ? { tone: 'success' as const, text: 'Signed in' }
-    : status.planUsageDenied
-      ? { tone: 'warning' as const, text: 'Plan usage not authorized' }
-      : { tone: 'neutral' as const, text: 'Signed out' }
+  const needsSignIn = status.needsSignIn === true
+  // A dead grant is not usable plan access even though a credential is stored:
+  // show the sign-in action rather than account facts over an unusable token.
+  const showsAccount = !needsSignIn && (status.signedIn || status.planUsageDenied)
+  const state = needsSignIn
+    ? { tone: 'warning' as const, text: 'Sign-in required' }
+    : status.signedIn
+      ? { tone: 'success' as const, text: 'Signed in' }
+      : status.planUsageDenied
+        ? { tone: 'warning' as const, text: 'Plan usage not authorized' }
+        : { tone: 'neutral' as const, text: 'Signed out' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', padding: '0.75rem 0' }}>
@@ -270,7 +278,7 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
         <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-secondary, #888)' }}>{revocationNote}</div>
       )}
 
-      {status.signedIn || status.planUsageDenied ? (
+      {showsAccount ? (
         <>
           <Fact label="Account">{status.email ?? activeSubject ?? 'unknown'}</Fact>
           <Fact label="Models">
@@ -310,6 +318,12 @@ export function ChatGptCard({ ctx, mounting }: { ctx: ClientContext, mounting: P
         </>
       ) : pending === undefined ? (
         <>
+          {needsSignIn ? (
+            <div style={{ fontSize: '0.8125rem', color: 'var(--dsw-alias-text-danger, #c33)' }}>
+              The stored ChatGPT grant was refused and cannot be refreshed. Sign in again to
+              restore plan usage; the model selector will reload the account's models.
+            </div>
+          ) : null}
           <div style={{ fontSize: '0.8125rem' }}>
             Use your ChatGPT subscription instead of an API key. Signing in authorizes this
             installation to spend your plan on model calls; the token stays on this machine.

@@ -8,6 +8,7 @@ import { ChatGptAdapter, toNeutralRequest } from '../src/adapter.ts'
 import { ChatGptAuth } from '../src/auth/manager.ts'
 import { writeDocument, emptyDocument } from '../src/auth/store.ts'
 import type { ChatGptCredential } from '../src/auth/credential.ts'
+import { RefreshRefusedError } from '../src/auth/refresh.ts'
 import { startTokenServer } from './helpers.ts'
 import { toResponsesBody } from '../src/convert/request.ts'
 
@@ -820,6 +821,34 @@ describe('ChatGptAdapter', () => {
     const adapter = adapterFor(await signedIn(), endpointUrl.url)
 
     await assert.rejects(adapter.listModels())
+  })
+
+  it('reports a terminal refresh refusal as needing a new sign-in', async () => {
+    // A dead refresh token is not a transient listing failure: the harness must
+    // see chatgpt_not_signed_in so the card can offer a new sign-in instead of
+    // leaving a green tag over a grant that can never be refreshed.
+    const auth = {
+      active: () => ({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Date.now() - 1,
+        clientId: 'oaiapp_issued',
+        scopes: ['chatgpt.tokens.use.direct'],
+        subject: 'subject-1',
+        savedAt: Date.now(),
+      }),
+      usable: () => Promise.reject(
+        new RefreshRefusedError('the ChatGPT token refresh was refused (400): invalid_grant', true),
+      ),
+      renew: () => Promise.reject(new RefreshRefusedError('unused', true)),
+    } as unknown as ChatGptAuth
+    const adapter = new ChatGptAdapter({ auth })
+
+    await assert.rejects(adapter.listModels(), (error: unknown) => {
+      assert.equal((error as { code?: string }).code, 'chatgpt_not_signed_in')
+      assert.match((error as Error).message, /needs a new sign-in/)
+      return true
+    })
   })
 })
 

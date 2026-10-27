@@ -181,6 +181,43 @@ describe('ChatGptSession', () => {
     assert.equal(status.error, undefined, 'the account state still renders')
   })
 
+  it('treats a refused refresh as needing a new sign-in, not as still signed in', async () => {
+    // A stored grant whose refresh token was refused is not usable plan access:
+    // the card must offer the sign-in action, not a green tag over a dead grant.
+    const token = await startTokenServer({ body: {} })
+    tokenServers.push(token.close)
+    const dir = await mkdtemp(join(tmpdir(), 'chatgpt-session-'))
+    dirs.push(dir)
+    writeDocument(join(dir, 'chatgpt-auth.json'), {
+      ...emptyDocument('urn:uuid:x'),
+      accounts: {
+        'subject-1': {
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() - 1000,
+          clientId: 'oaiapp_issued',
+          scopes: ['chatgpt.tokens.use.direct'],
+          subject: 'subject-1',
+          savedAt: Date.now(),
+        },
+      },
+      active: 'subject-1',
+    })
+    const adapter = {
+      forgetListing: () => {},
+      listModels: () => Promise.reject(Object.assign(
+        new Error('the ChatGPT grant was refused and needs a new sign-in: invalid_grant'),
+        { code: 'chatgpt_not_signed_in' },
+      )),
+    } as unknown as ChatGptAdapter
+    const auth = new ChatGptAuth({ stateDir: dir, agentNameHint: 'DeepSeek Harness' })
+    const status = await new ChatGptSession(auth, adapter).status()
+
+    assert.equal(status.signedIn, false)
+    assert.equal(status.needsSignIn, true)
+    assert.match(status.roster?.error ?? '', /needs a new sign-in/)
+  })
+
   it('refuses to submit when no attempt is open', async () => {
     const token = await startTokenServer({ body: {} })
     tokenServers.push(token.close)

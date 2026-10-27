@@ -10,7 +10,7 @@
  * @module dsh-plugin-chatgpt/session
  */
 
-import type { ChatGptAdapter } from './adapter.ts'
+import { isCodedError, type ChatGptAdapter } from './adapter.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 import type { SignInAttempt } from './auth/sign-in.ts'
 
@@ -50,6 +50,16 @@ export interface ChatGptStatusView {
   expiresAt?: number
   /** Every authorized account, for a future account switcher. */
   accounts: { subject: string, email?: string, active: boolean }[]
+  /**
+   * Whether the stored grant can no longer be refreshed, so only a new sign-in
+   * restores plan usage.
+   *
+   * `signedIn` describes what is stored, not whether the server still honors it;
+   * a terminal refresh refusal is the one case where the two disagree, and this
+   * flag makes the card say "sign in again" rather than showing a green tag over
+   * a dead grant.
+   */
+  needsSignIn?: boolean
   /** The attempt awaiting the browser, when one is open. */
   pending?: ChatGptPendingView
   /**
@@ -110,9 +120,14 @@ export class ChatGptSession {
   async status(): Promise<ChatGptStatusView> {
     const status = this.auth.status()
     const pending = this.pending
+    const roster = await this.roster()
+    const needsSignIn = roster.needsSignIn === true
     return {
       ...status,
-      roster: await this.roster(),
+      // A stored grant with dead refresh rights is not usable plan access; the
+      // card must offer a new sign-in instead of a green "Signed in" tag.
+      ...needsSignIn ? { signedIn: false, needsSignIn: true } : {},
+      roster,
       ...pending === undefined ? {} : {
         pending: { url: pending.authorizationUrl, redirectUri: pending.redirectUri },
       },
@@ -128,13 +143,19 @@ export class ChatGptSession {
    * the human needs to see. The listing is cached by the adapter, so asking often
    * costs nothing.
    *
-   * @returns the count, or the failure in place of it.
+   * @returns the count, or the failure in place of it, plus whether the failure
+   * means the stored grant must be replaced by a new sign-in.
    */
-  private async roster(): Promise<{ count: number, error?: string }> {
+  private async roster(): Promise<{ count: number, error?: string, needsSignIn?: boolean }> {
     try {
       return { count: (await this.adapter.listModels()).length }
     } catch (error) {
-      return { count: 0, error: error instanceof Error ? error.message : String(error) }
+      const needsSignIn = isCodedError(error) && error.code === 'chatgpt_not_signed_in'
+      return {
+        count: 0,
+        error: error instanceof Error ? error.message : String(error),
+        ...needsSignIn ? { needsSignIn: true } : {},
+      }
     }
   }
 
