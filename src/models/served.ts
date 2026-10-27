@@ -8,7 +8,7 @@
  * answered under the requested id with `response.completed`, while the listing
  * mentioned none of them.
  *
- * The bundled catalog is not a roster source either. It carries forty-four
+ * The bundled catalog is not a roster source either. It carries forty-five
  * OpenAI model ids drawn from the API-key surface, and thirty-six of them are
  * refused on this route — every `gpt-4*`, every `o1`/`o3`/`o4`, the coding and
  * realtime variants, and `gpt-5` through `gpt-5.4`. Offering them would populate
@@ -22,7 +22,8 @@
  */
 
 /**
- * The day these ids were measured against a live subscription. Re-measure with
+ * The day the original list was measured against a live subscription. Entries
+ * added later carry their own {@link ServedModel.measuredOn}; re-measure with
  * `scripts/probe-served-models.mjs` when the roster looks stale.
  */
 export const SERVED_MEASURED_ON = '2026-10-04'
@@ -39,6 +40,14 @@ export const SERVED_MODELS: readonly ServedModel[] = [
   { id: 'gpt-6-sol', advertised: false, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-6-luna', advertised: false, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-6.1-sol', advertised: false, reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+  {
+    id: 'gpt-6.1-terra',
+    advertised: true,
+    measuredOn: '2026-10-27',
+    // The listing advertises `ultra`; a real turn is refused with
+    // 400 invalid_value, and `minimal` is refused with 400 unsupported_value.
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+  },
   { id: 'gpt-5.6-sol', advertised: true, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-5.6-terra', advertised: true, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-5.6-luna', advertised: true, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
@@ -51,6 +60,14 @@ export interface ServedModel {
   id: string
   /** Whether the account's listing advertises it; `false` means this list is the only source. */
   advertised: boolean
+  /**
+   * The day this entry was measured, when it differs from
+   * {@link SERVED_MEASURED_ON}.
+   *
+   * The roster is measurement, so a model added after the original sweep records
+   * when its effort set was observed instead of borrowing an old date.
+   */
+  measuredOn?: string
   /**
    * The `reasoning.effort` spellings the model actually accepts.
    *

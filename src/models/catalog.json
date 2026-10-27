@@ -562,6 +562,25 @@
       "image"
     ]
   },
+  "gpt-6.1-terra": {
+    "name": "GPT-6.1 Terra",
+    "contextWindow": 500000,
+    "maxTokens": 128000,
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": "max"
+    },
+    "input": [
+      "text",
+      "image"
+    ]
+  },
   "gpt-daybreak-blue-latest": {
     "name": "Daybreak Blue",
     "contextWindow": 1050000,

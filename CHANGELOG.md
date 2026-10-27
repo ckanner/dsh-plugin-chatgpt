@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.16
+
+GPT-6.1 Terra is measured on the plan route, and the selector no longer offers
+the reasoning levels the route refuses.
+
+The account listing advertises `ultra` for `gpt-6.1-terra` (it also does for
+`gpt-6.1-sol` and `gpt-6-astra`), but a real turn with `ultra` is refused with
+`400 invalid_value`; `minimal` is refused with `400 unsupported_value`. Measured
+accepted levels: `none`, `low`, `medium`, `high`, `xhigh`, `max`. The measured
+entry overrides the listing's effort list, so choosing Ultra can no longer fail
+the turn. The bundled catalog also describes Terra now, so the roster keeps its
+name and capacities when the listing omits it.
+
+- `SERVED_MODELS`: added `gpt-6.1-terra` with its measured effort set
+  (measured 2026-10-27; entries added after the original sweep carry their own
+  `measuredOn`).
+- `catalog.json`: added `gpt-6.1-terra` (500k context, 128k output, text+image).
+
 ## 0.1.15
 
 A stored grant that can no longer be refreshed is reported as needing a new
