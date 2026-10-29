@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.17
+
+A listing that recovers from a failure refreshes the model selector.
+
+DSH 0.2.1-rc.3 caches the host catalog as `ready` even when one provider reports
+a failure, and the model selector's Retry re-reads that cache instead of asking
+the provider again; a transient `fetch failed` therefore stayed on screen until
+the window reloaded. When `listModels` now succeeds after a failure it calls
+`onListingRecovered`, which the plugin turns into `llm/adapters-updated`; the
+selector invalidates its catalog and the recovered roster appears without a
+retry or restart.
+
+- `ChatGptAdapterOptions.onListingRecovered` (optional; the callback is contained
+  so a listener cannot turn a good listing into a failure).
+- Test: failure → success announces once; a cached success does not.
+
 ## 0.1.16
 
 GPT-6.1 Terra is measured on the plan route, and the selector no longer offers

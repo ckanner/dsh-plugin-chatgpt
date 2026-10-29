@@ -113,6 +113,16 @@ export interface ChatGptAdapterOptions {
   modelContextWindowLimits?: Readonly<Record<string, number>> | (() => Readonly<Record<string, number>> | undefined)
   /** Clock, so the listing cache can be tested. */
   now?: () => number
+  /**
+   * Called when a listing succeeds after one or more failures.
+   *
+   * The harness's model selector caches its own catalog; when a provider failure
+   * is cached, its in-menu Retry can re-read that cache instead of asking the
+   * provider again. The plugin turns this callback into
+   * `llm/adapters-updated`, so a roster that recovers replaces the stale failure
+   * without a window reload.
+   */
+  onListingRecovered?: () => void
 }
 
 /** One model as the harness reads a listing. */
@@ -324,7 +334,10 @@ export class ChatGptAdapter {
   private readonly contextWindowLimit: ChatGptAdapterOptions['contextWindowLimit']
   private readonly modelContextWindowLimits: ChatGptAdapterOptions['modelContextWindowLimits']
   private readonly now: () => number
+  private readonly onListingRecovered: (() => void) | undefined
   private listing: { at: number, models: DescribedModel[] } | undefined
+  /** Whether the most recent listing attempt failed, so the next success can announce it. */
+  private listingFailed = false
 
   /**
    * @param options - the credential owner and endpoint policy.
@@ -337,6 +350,7 @@ export class ChatGptAdapter {
     this.contextWindowLimit = options.contextWindowLimit
     this.modelContextWindowLimits = options.modelContextWindowLimits
     this.now = options.now ?? (() => Date.now())
+    this.onListingRecovered = options.onListingRecovered
   }
 
   /** The provider row this adapter describes. */
@@ -377,6 +391,7 @@ export class ChatGptAdapter {
         credential => listModels(credential.accessToken, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
       )
     } catch (error) {
+      this.listingFailed = true
       // Listing shares the credential rules with a turn: a refused refresh is a
       // dead grant, not a listing the human can retry. Mapping it through
       // `credentialFailure` keeps the code (`chatgpt_not_signed_in`) that lets the
@@ -385,6 +400,17 @@ export class ChatGptAdapter {
     }
     const models = this.rosterOf(listed)
     this.listing = { at: this.now(), models }
+    if (this.listingFailed) {
+      this.listingFailed = false
+      // The model selector can cache a provider failure, and its Retry may read
+      // that cache instead of asking again. A recovered listing therefore has to
+      // announce itself; a listener failure cannot make a good roster unusable.
+      try {
+        this.onListingRecovered?.()
+      } catch {
+        // The models are already resolved and cached.
+      }
+    }
     return models
   }
 

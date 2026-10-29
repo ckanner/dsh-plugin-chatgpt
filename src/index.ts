@@ -200,6 +200,9 @@ export function apply(ctx: Context, config: Config): void {
     displayName,
     contextWindowLimit: () => config.contextWindowLimit.get(),
     modelContextWindowLimits: () => config.modelContextWindowLimits.get(),
+    // A listing that recovers must clear a cached provider failure in the
+    // browser's model selector; see the callback's documentation.
+    onListingRecovered: () => { ctx.emit('llm/adapters-updated') },
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 

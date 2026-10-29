@@ -118,6 +118,36 @@ describe('ChatGptAdapter', () => {
     assert.deepEqual(await adapter.listModels(), [])
   })
 
+  it('announces a listing that recovers from a failure', async () => {
+    // The model selector caches a provider failure; a listing that succeeds
+    // afterwards must be announced so the cached failure can be replaced.
+    let requests = 0
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },
+      onRequest: (path) => {
+        if (!path.startsWith('/models')) return undefined
+        requests += 1
+        return requests === 1 ? { status: 500, body: { error: { code: 'server_error' } } } : undefined
+      },
+    })
+    const recovered: number[] = []
+    const adapter = new ChatGptAdapter({
+      auth: new ChatGptAuth({ stateDir: await signedIn(), agentNameHint: 'DeepSeek Harness' }),
+      baseUrl: endpointUrl.url,
+      onListingRecovered: () => { recovered.push(1) },
+    })
+
+    await assert.rejects(adapter.listModels())
+    assert.deepEqual(recovered, [])
+
+    const models = await adapter.listModels()
+    assert.ok(models.length > 0)
+    assert.deepEqual(recovered, [1], 'the recovery is announced once')
+
+    await adapter.listModels()
+    assert.deepEqual(recovered, [1], 'a cached listing is not a recovery')
+  })
+
   it('describes the account\'s models with capacities and reasoning levels', async () => {
     const endpointUrl = await endpoint({
       listing: {
