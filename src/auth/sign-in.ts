@@ -50,6 +50,8 @@ export interface SignInAttempt {
 
 /** Hooks the host uses to narrate one attempt. */
 export interface SignInOptions {
+  /** HTTP transport for the token exchange. */
+  fetch?: typeof fetch
   /** A stable, per-installation host identifier, sent as `ext_agent_host_id`. */
   agentHostId: string
   /** The app's name as the human will see it on the consent screen. Sent only on a first-time registration. */
@@ -276,7 +278,7 @@ export async function beginSignIn(options: SignInOptions): Promise<SignInAttempt
         + ' and the dynamic entry point is not a registration',
       )
     }
-    const response = await fetch(options.tokenUrl ?? TOKEN_URL, {
+    const response = await (options.fetch ?? fetch)(options.tokenUrl ?? TOKEN_URL, {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

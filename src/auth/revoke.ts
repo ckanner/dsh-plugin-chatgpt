@@ -41,6 +41,8 @@ export interface RevocationResult {
 
 /** Options for {@link revokeGrant}. */
 export interface RevokeOptions {
+  /** HTTP transport for discovery and revocation. */
+  fetch?: typeof fetch
   /** Override the discovery document (tests). */
   discoveryUrl?: string
   /** Override the revocation endpoint (tests). */
@@ -62,7 +64,7 @@ async function revocationEndpoint(options: RevokeOptions): Promise<string> {
   if (options.revocationEndpoint !== undefined) return options.revocationEndpoint
   if (discovered !== undefined) return discovered
   try {
-    const response = await fetch(options.discoveryUrl ?? DISCOVERY_URL, {
+    const response = await (options.fetch ?? fetch)(options.discoveryUrl ?? DISCOVERY_URL, {
       headers: { accept: 'application/json' },
       ...options.signal === undefined ? {} : { signal: options.signal },
     })
@@ -118,7 +120,7 @@ export async function revokeGrant(
       }
     }
     try {
-      const response = await fetch(endpoint, {
+      const response = await (options.fetch ?? fetch)(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
         body: new URLSearchParams({

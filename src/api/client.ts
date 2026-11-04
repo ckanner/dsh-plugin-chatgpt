@@ -21,6 +21,8 @@ import type { ListedModel } from '../models/describe.ts'
 
 /** Endpoints this client talks to. */
 export interface ClientEndpoints {
+  /** HTTP transport for this plugin's API calls. */
+  fetch?: typeof fetch
   /** Base URL of the API; defaults to the documented resource. */
   baseUrl?: string
 }
@@ -103,7 +105,7 @@ export async function listModels(
   endpoints?: ClientEndpoints,
   signal?: AbortSignal,
 ): Promise<ListedModel[]> {
-  const response = await fetch(`${baseOf(endpoints)}/models`, {
+  const response = await (endpoints?.fetch ?? fetch)(`${baseOf(endpoints)}/models`, {
     headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' },
     ...signal === undefined ? {} : { signal },
   })
@@ -178,7 +180,7 @@ export interface StreamTurnOptions {
  */
 export async function* streamTurn(options: StreamTurnOptions): AsyncGenerator<ResponsesEvent, void, undefined> {
   const body: ResponsesBody = toResponsesBody(options.request)
-  const response = await fetch(`${baseOf(options.endpoints)}/responses`, {
+  const response = await (options.endpoints?.fetch ?? fetch)(`${baseOf(options.endpoints)}/responses`, {
     method: 'POST',
     headers: headersFor(options.accessToken, body.prompt_cache_key),
     body: JSON.stringify(body),

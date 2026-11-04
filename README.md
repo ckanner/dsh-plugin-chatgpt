@@ -57,6 +57,8 @@ Open **Settings → Models**. The plugin owns a **ChatGPT** row, and the card on
 
 Signing out revokes the renewable session at the authorization server before clearing it locally, and says so when the server did not confirm.
 
+To proxy this plugin's server-side requests, set `DSH_CHATGPT_PROXY_URL=http://127.0.0.1:7897` in the DSH process environment, or set `proxyUrl` in this plugin's profile configuration, then restart DSH. The URL must name an HTTP or HTTPS proxy. This covers the OAuth token exchange, refresh, discovery/revocation, model listing, and inference. It does not change DSH's global network settings or the browser's connection to the authorization page. The proxy must be reachable from the machine running DSH; `127.0.0.1` refers to that machine. Leave the setting empty for direct requests. A `403 unsupported_country_region_territory` is a server refusal, so proxy connectivity alone does not establish that sign-in is permitted.
+
 ![The ChatGPT row on the Models page, where the account signs in](assets/screenshot-2-models-page.png)
 
 A headless harness drives the same session object with no browser at all:

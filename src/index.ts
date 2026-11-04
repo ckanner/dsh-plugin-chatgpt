@@ -26,6 +26,7 @@ import { ChatGptController } from './controller.ts'
 import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 import { requestOf } from './convert/harness.ts'
+import { createScopedFetch } from './http.ts'
 
 /**
  * Route and endpoint policy for one installation.
@@ -45,6 +46,8 @@ export const Config = z.object({
   stateDir: z.string().required().volatile(),
   /** API base URL override; defaults to the documented resource. */
   baseUrl: z.string().volatile(),
+  /** Optional HTTP(S) proxy for this plugin's server-side OpenAI requests. */
+  proxyUrl: z.string().volatile(),
   /** Explicit context budget used as-is; absent follows each model's account-catalog default. */
   contextWindowLimit: z.number().step(1).min(1024).volatile(),
   /** Exact model IDs with budgets that override the global context budget. */
@@ -57,6 +60,7 @@ export type Config = {
   displayName: Volatile<string>
   stateDir: Volatile<string>
   baseUrl: Volatile<string>
+  proxyUrl: Volatile<string>
   contextWindowLimit: Volatile<number>
   modelContextWindowLimits: Volatile<Record<string, number>>
 }
@@ -188,7 +192,10 @@ export function apply(ctx: Context, config: Config): void {
   }
   const displayName = config.displayName.get() ?? 'ChatGPT'
   const baseUrl = config.baseUrl.get() ?? ''
+  const transport = createScopedFetch(config.proxyUrl.get())
+  ctx.effect(() => () => { void transport.close() })
   const auth = new ChatGptAuth({
+    fetch: transport.fetch,
     stateDir,
     // Deliberately not the display name: this is the name a human reads on the
     // consent screen and the identity OpenAI records for the app, so renaming
@@ -196,6 +203,7 @@ export function apply(ctx: Context, config: Config): void {
     agentNameHint: AGENT_NAME_HINT,
   })
   const inner = new ChatGptAdapter({
+    fetch: transport.fetch,
     auth,
     displayName,
     contextWindowLimit: () => config.contextWindowLimit.get(),
