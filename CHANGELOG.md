@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.18
+
+A plugin-scoped HTTP proxy can carry the ChatGPT adapter's server-side traffic.
+
+Set `proxyUrl` on this plugin's profile row or `DSH_CHATGPT_PROXY_URL` in the
+DSH process environment to route OAuth token exchange/refresh, discovery,
+revocation, model listing, and Responses inference through one HTTP(S) proxy.
+An explicit profile value takes precedence; a blank value selects direct
+requests. The proxy is private to this plugin instance and does not change
+DSH's global network settings or the browser's authorization-page connection.
+
+- `src/http.ts`: validate the proxy URL, build a private `ProxyAgent`, inject
+  its fetch into every server-side adapter/authentication call, and destroy it
+  on plugin disposal so an active SSE response cannot hold shutdown open.
+- Use undici's own `fetch` for proxied calls; mixing an external undici 6
+  dispatcher with Node 26's global fetch fails with `invalid onError method`.
+- Tests cover HTTP and HTTPS tunnels, token, discovery, revocation, sign-in,
+  inference cancellation, disposal, and confirm proxied calls do not rely on
+  the global fetch.
+
 ## 0.1.17
 
 A listing that recovers from a failure refreshes the model selector.
