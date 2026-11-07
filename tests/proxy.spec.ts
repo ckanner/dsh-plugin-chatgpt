@@ -111,6 +111,25 @@ describe('scoped proxy transport', () => {
     await empty.close()
   })
 
+  it('does not route proxied requests through the global fetch', async () => {
+    const endpoint = await listen(createServer((_request, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ models: [{ slug: 'scoped' }] }))
+    }))
+    const { url: proxyUrl } = await startProxy()
+    const transport = transportFor(proxyUrl)
+    const original = globalThis.fetch
+    try {
+      globalThis.fetch = (() => {
+        throw new Error('global fetch must not handle proxied requests')
+      }) as typeof fetch
+      const models = await listModels('token', { baseUrl: endpoint, fetch: transport.fetch })
+      assert.deepEqual(models.map(model => model.slug), ['scoped'])
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
   it('tunnels an HTTPS target and verifies its certificate', async () => {
     const endpoint = await listen(createHttpsServer({
       key: await readFile(privateKey), cert: await readFile(certificate),
