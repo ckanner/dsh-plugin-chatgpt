@@ -193,7 +193,13 @@ export function apply(ctx: Context, config: Config): void {
   const displayName = config.displayName.get() ?? 'ChatGPT'
   const baseUrl = config.baseUrl.get() ?? ''
   const transport = createScopedFetch(config.proxyUrl.get())
-  ctx.effect(() => () => { void transport.close() })
+  ctx.effect(() => () => {
+    // Cordis disposers are synchronous; observe the asynchronous shutdown so
+    // failures are reported instead of becoming unhandled rejections.
+    void transport.close().catch(error => {
+      console.error('chatgpt: failed to close proxy transport', error)
+    })
+  })
   const auth = new ChatGptAuth({
     fetch: transport.fetch,
     stateDir,

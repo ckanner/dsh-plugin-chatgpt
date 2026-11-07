@@ -59,6 +59,8 @@ dsh --profile <name> --dump-config   # shows a "# == dsh-plugin-chatgpt" layer
 
 如需只代理本插件在 DSH 进程中发出的请求，可在 DSH 进程环境中设置 `DSH_CHATGPT_PROXY_URL=http://127.0.0.1:7897`，或在本插件的 profile 配置中设置 `proxyUrl`，然后重启 DSH。代理 URL 须为 HTTP 或 HTTPS。它覆盖 OAuth 换取/刷新 token、发现与撤销、模型列表和推理请求，不修改 DSH 全局网络设置，也不改变浏览器访问授权页的连接。代理必须能从运行 DSH 的机器访问；`127.0.0.1` 指的是那台机器。留空则直连。`403 unsupported_country_region_territory` 是服务端拒绝；代理能连通并不代表登录获得许可。
 
+显式配置的 profile `proxyUrl` 优先于 `DSH_CHATGPT_PROXY_URL`；将其设为空字符串会选择直连。
+
 ![模型页上的 ChatGPT 行，账号从这里登录](../assets/screenshot-2-models-page.png)
 
 无头 harness 不需要浏览器，可以直接驱动同一个会话对象：

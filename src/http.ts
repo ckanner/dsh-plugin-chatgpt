@@ -25,5 +25,7 @@ export function createScopedFetch(proxyUrl: string | undefined): {
     ...init,
     dispatcher: agent,
   } as RequestInit)
-  return { fetch: scopedFetch, close: () => agent.close() }
+  // Plugin disposal must not wait indefinitely for an active SSE response.
+  // Destroying the private dispatcher interrupts only this plugin's requests.
+  return { fetch: scopedFetch, close: () => agent.destroy(new Error('ChatGPT plugin disposed')) }
 }
