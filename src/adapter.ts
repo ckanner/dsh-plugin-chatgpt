@@ -95,6 +95,8 @@ const LISTING_TTL_MS = 60_000
 
 /** What the adapter needs from the world around it. */
 export interface ChatGptAdapterOptions {
+  /** HTTP transport for model listing and inference. */
+  fetch?: typeof fetch
   /** The credential owner this adapter asks for a usable grant. */
   auth: ChatGptAuth
   /** API base URL override (tests, gateways). */
@@ -329,6 +331,7 @@ function toHarnessResolved(
 export class ChatGptAdapter {
   private readonly auth: ChatGptAuth
   private readonly baseUrl: string | undefined
+  private readonly fetch: typeof fetch | undefined
   private readonly displayName: string
   private readonly includeUnlisted: boolean
   private readonly contextWindowLimit: ChatGptAdapterOptions['contextWindowLimit']
@@ -345,6 +348,7 @@ export class ChatGptAdapter {
   constructor(options: ChatGptAdapterOptions) {
     this.auth = options.auth
     this.baseUrl = options.baseUrl
+    this.fetch = options.fetch
     this.displayName = options.displayName ?? 'ChatGPT'
     this.includeUnlisted = options.includeUnlisted ?? true
     this.contextWindowLimit = options.contextWindowLimit
@@ -388,7 +392,10 @@ export class ChatGptAdapter {
       listed = await withFreshGrant(
         () => this.auth.usable(),
         () => this.auth.renew(),
-        credential => listModels(credential.accessToken, ...this.baseUrl === undefined ? [] : [{ baseUrl: this.baseUrl }]),
+        credential => listModels(credential.accessToken, {
+          ...this.baseUrl === undefined ? {} : { baseUrl: this.baseUrl },
+          ...this.fetch === undefined ? {} : { fetch: this.fetch },
+        }),
       )
     } catch (error) {
       this.listingFailed = true
@@ -540,7 +547,10 @@ export class ChatGptAdapter {
           const started = streamTurn({
             accessToken: credential.accessToken,
             request: neutral,
-            ...this.baseUrl === undefined ? {} : { endpoints: { baseUrl: this.baseUrl } },
+            endpoints: {
+              ...this.baseUrl === undefined ? {} : { baseUrl: this.baseUrl },
+              ...this.fetch === undefined ? {} : { fetch: this.fetch },
+            },
             ...request.signal === undefined ? {} : { signal: request.signal },
           })
           return { events: started, primed: await started.next(), translator }

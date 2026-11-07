@@ -65,6 +65,10 @@ const LINE_TRANSLATIONS = {
     "改从仓库地址安装则会从源码构建，而 pnpm 在构建脚本被允许之前会拒绝 git 依赖：`add https://github.com/ckanner/dsh-plugin-chatgpt` 会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 失败，直到在 profile 的 `pnpm-workspace.yaml` 里把 `dsh-plugin-chatgpt` 加进 `onlyBuiltDependencies`。",
   "The package declares `dsh.bundle`, so adding it appends the bundle to the profile's `dsh.profile.bundles` and inserts its row into the composition. Verify the layer without booting:":
     "本包声明了 `dsh.bundle`，因此添加它会把该 bundle 追加到 profile 的 `dsh.profile.bundles`，并把它的行插入到组合中。可以不启动就检查这一层：",
+  "To proxy this plugin's server-side requests, set `DSH_CHATGPT_PROXY_URL=http://127.0.0.1:7897` in the DSH process environment, or set `proxyUrl` in this plugin's profile configuration, then restart DSH. The URL must name an HTTP or HTTPS proxy. This covers the OAuth token exchange, refresh, discovery/revocation, model listing, and inference. It does not change DSH's global network settings or the browser's connection to the authorization page. The proxy must be reachable from the machine running DSH; `127.0.0.1` refers to that machine. Leave the setting empty for direct requests. A `403 unsupported_country_region_territory` is a server refusal, so proxy connectivity alone does not establish that sign-in is permitted.":
+    "如需只代理本插件在 DSH 进程中发出的请求，可在 DSH 进程环境中设置 `DSH_CHATGPT_PROXY_URL=http://127.0.0.1:7897`，或在本插件的 profile 配置中设置 `proxyUrl`，然后重启 DSH。代理 URL 须为 HTTP 或 HTTPS。它覆盖 OAuth 换取/刷新 token、发现与撤销、模型列表和推理请求，不修改 DSH 全局网络设置，也不改变浏览器访问授权页的连接。代理必须能从运行 DSH 的机器访问；`127.0.0.1` 指的是那台机器。留空则直连。`403 unsupported_country_region_territory` 是服务端拒绝；代理能连通并不代表登录获得许可。",
+  "An explicit profile `proxyUrl` takes precedence over `DSH_CHATGPT_PROXY_URL`; setting it to an empty string selects direct requests.":
+    "显式配置的 profile `proxyUrl` 优先于 `DSH_CHATGPT_PROXY_URL`；将其设为空字符串会选择直连。",
   "A package installing without a `dsh.bundle` declaration activates no layer; `dsh plugin` warns instead.":
     "没有声明 `dsh.bundle` 的包不会激活任何层，`dsh plugin` 只会给出警告。",
   "### Sign in":

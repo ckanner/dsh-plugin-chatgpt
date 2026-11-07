@@ -44,6 +44,8 @@ export interface ChatGptStatus {
 
 /** Options for {@link ChatGptAuth}. */
 export interface ChatGptAuthOptions {
+  /** HTTP transport for all authorization-server requests. */
+  fetch?: typeof fetch
   /** The directory this installation's state lives in. */
   stateDir: string
   /** The app name the human sees on the consent screen. */
@@ -189,6 +191,7 @@ export class ChatGptAuth {
       .find(([, stored]) => stored.replayNamespace === current.replayNamespace)?.[0]
     if (key === undefined) throw new Error('the authorization was removed before refresh')
     const rotated = await refreshCredential(current, {
+      ...this.options.fetch === undefined ? {} : { fetch: this.options.fetch },
       ...this.options.endpoints?.tokenUrl === undefined ? {} : { tokenUrl: this.options.endpoints.tokenUrl },
       ...signal === undefined ? {} : { signal },
     })
@@ -234,6 +237,7 @@ export class ChatGptAuth {
       email: retained.email,
     })
     const attemptOptions: SignInOptions = {
+      ...this.options.fetch === undefined ? {} : { fetch: this.options.fetch },
       agentHostId: this.hostId(),
       agentNameHint: this.options.agentNameHint,
       ...this.options.endpoints?.authorizeUrl === undefined ? {} : { authorizeUrl: this.options.endpoints.authorizeUrl },
@@ -316,6 +320,7 @@ export class ChatGptAuth {
       return { confirmed: false, reason: `no stored ChatGPT account is filed under ${target}` }
     }
     const result = await revokeGrant(credential, {
+      ...this.options.fetch === undefined ? {} : { fetch: this.options.fetch },
       ...this.options.endpoints?.revocationEndpoint === undefined
         ? {}
         : { revocationEndpoint: this.options.endpoints.revocationEndpoint },

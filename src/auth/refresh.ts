@@ -51,6 +51,8 @@ export class RefreshRefusedError extends Error {
 
 /** Options for {@link refreshCredential}. */
 export interface RefreshOptions {
+  /** HTTP transport for the token exchange. */
+  fetch?: typeof fetch
   /** Override the token endpoint (tests). */
   tokenUrl?: string
   /** Cancellation. */
@@ -69,7 +71,7 @@ export async function refreshCredential(
   credential: ChatGptCredential,
   options: RefreshOptions = {},
 ): Promise<ChatGptCredential> {
-  const response = await fetch(options.tokenUrl ?? TOKEN_URL, {
+  const response = await (options.fetch ?? fetch)(options.tokenUrl ?? TOKEN_URL, {
     method: 'POST',
     headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
