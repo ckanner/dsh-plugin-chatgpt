@@ -108,7 +108,7 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     model: request.model, input, stream: STREAM, store: STORE,
     ...request.cacheKey === undefined ? {} : { prompt_cache_key: request.cacheKey },
     ...request.tools?.length ? {
-      tools: request.tools.map(tool => ({ type: 'function' as const, name: tool.name, description: tool.description, parameters: tool.parameters })),
+      tools: request.tools.map(tool => ({ type: 'function' as const, name: tool.name, description: tool.description, parameters: tool.parameters, strict: false })),
     } : {},
     ...request.reasoningEffort === undefined ? {} : {
       reasoning: { effort: request.reasoningEffort, summary: 'concise' }, include: ['reasoning.encrypted_content'],
