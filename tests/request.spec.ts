@@ -155,7 +155,7 @@ describe('toResponsesBody', () => {
     })
 
     assert.deepEqual(body.tools, [
-      { type: 'function', name: 'read_file', description: 'Read a file', parameters: { type: 'object' } },
+      { type: 'function', name: 'read_file', description: 'Read a file', parameters: { type: 'object' }, strict: false },
     ])
   })
 
