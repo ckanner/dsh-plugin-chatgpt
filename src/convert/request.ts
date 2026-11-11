@@ -55,7 +55,7 @@ export interface ResponsesBody {
   store: typeof STORE
   prompt_cache_key?: string
   include?: ['reasoning.encrypted_content']
-  tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown> }[]
+  tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown>, strict?: boolean }[]
   reasoning?: { effort: string, summary: 'concise' }
 }
 
