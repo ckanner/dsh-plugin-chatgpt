@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.19
+
+Send `strict: false` on Responses tool definitions.
+
+The Responses API converts tool schemas to strict mode when `strict` is
+omitted, making every declared parameter required. A tool with an optional
+parameter that its own validation rejects when present then traps the model in
+a structural contradiction: the API forces the model to fill the field, the tool
+refuses it — observed as an endless loop of identical failing calls.
+Explicit `strict: false` keeps optional parameters optional, matching the schema
+exactly as the harness declared it.
+
+- `src/convert/request.ts`: declare and send `strict: false` for every function
+  tool.
+- `tests/request.spec.ts`: pin the emitted tool shape.
+
 ## 0.1.18
 
 A plugin-scoped HTTP proxy can carry the ChatGPT adapter's server-side traffic.
