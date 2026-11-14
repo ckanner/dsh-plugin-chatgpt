@@ -2,7 +2,6 @@
 
 ## 0.1.19
 
-<<<<<<< HEAD
 Send `strict: false` on Responses tool definitions.
 
 The Responses API converts tool schemas to strict mode when `strict` is
@@ -16,8 +15,7 @@ exactly as the harness declared it.
 - `src/convert/request.ts`: declare and send `strict: false` for every function
   tool.
 - `tests/request.spec.ts`: pin the emitted tool shape.
-||||||| parent of 6b61f58 (fix: preserve durable image and tool output content on current DSH)
-=======
+
 Correct optional peer ranges to the host's real Cordis 4.x, Schemastery 3.19
 and DSH 0.2.1-rc.5/0.2.2 prerelease packages; generic 0.x ranges incorrectly
 rejected a real DSH consumer installation. Verify the packed candidate through
@@ -41,7 +39,7 @@ terminal chunk batch. Incomplete reasons other than `max_output_tokens` retain
 their error identity instead of being mislabeled token exhaustion. Tests cover
 the real request conversion/client path with local HTTP and attachment fixtures;
 no live subscription/vision or desktop check is claimed by these fixtures.
->>>>>>> 6b61f58 (fix: preserve durable image and tool output content on current DSH)
+ (fix: preserve durable image and tool output content on current DSH)
 
 ## 0.1.18
 
