@@ -1,5 +1,5 @@
 /** Install the exact candidate with real host peers; no peer-resolution bypass. */
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, rm, writeFile, readFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -8,10 +8,21 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('../', import.meta.url))
 const temporary = await mkdtemp(join(tmpdir(), 'chatgpt-consumer-'))
 try {
-  const packed = process.argv[2] === undefined
-    ? JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', temporary], { cwd: root, encoding: 'utf8' }))[0]
-    : undefined
-  const candidate = packed === undefined ? resolve(process.argv[2]) : join(temporary, packed.filename)
+  let candidate
+  if (process.argv[2] === undefined) {
+    const packed = join(temporary, 'packed')
+    await mkdir(packed)
+    // npm 10 can run prepare even with --ignore-scripts and mix its output
+    // into --json. Run the real pack lifecycle with ordinary build logs, then
+    // identify the single artifact in its initially empty destination. No
+    // lifecycle stdout is interpreted as a machine-readable pack report.
+    execFileSync('npm', ['pack', '--pack-destination', packed], { cwd: root, stdio: 'inherit' })
+    const files = await readdir(packed, { withFileTypes: true })
+    if (files.length !== 1 || !files[0].isFile() || !files[0].name.endsWith('.tgz')) {
+      throw new Error('npm pack did not produce exactly one candidate tarball')
+    }
+    candidate = join(packed, files[0].name)
+  } else candidate = resolve(process.argv[2])
   const dependencies = {
     'dsh-plugin-chatgpt': `file:${candidate}`,
     '@deepseek-ai/cordis': '4.1.0',
