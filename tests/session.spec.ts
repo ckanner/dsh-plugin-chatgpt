@@ -7,7 +7,7 @@ import { ChatGptSession } from '../src/session.ts'
 import { ChatGptAuth } from '../src/auth/manager.ts'
 import { emptyDocument, writeDocument } from '../src/auth/store.ts'
 import type { ChatGptAdapter } from '../src/adapter.ts'
-import { idTokenClaims, jwt, startTokenServer, type TokenServer } from './helpers.ts'
+import { idTokenClaims, jwt, startTokenServer, waitFor, type TokenServer } from './helpers.ts'
 
 const dirs: string[] = []
 const tokenServers: (() => Promise<void>)[] = []
@@ -119,19 +119,22 @@ describe('ChatGptSession', () => {
     await session.cancel()
   })
 
-  it('announces the new roster once a sign-in completes', async () => {
+  it('announces the new roster once a sign-in completes', async (t) => {
     // A model selector caches the Host catalog and reloads it only on this
     // announcement. Without it the models are served and never shown.
     const nonce = { value: '' }
     const token = await grantedTokenServer(nonce)
     const { session, announced } = await sessionWith(token)
+    t.after(() => session.cancel())
 
     const opened = await session.begin()
     const url = new URL(opened.pending?.url ?? '')
     nonce.value = url.searchParams.get('nonce') ?? ''
     const state = url.searchParams.get('state') ?? ''
     await fetch(`${opened.pending?.redirectUri ?? ''}?code=auth-code&state=${state}&client_id=oaiapp_x`)
-    await new Promise(resolve => setTimeout(resolve, 50))
+    // The browser response precedes token exchange and credential adoption.
+    // Await the observable roster event within the shared fixture deadline.
+    await waitFor(() => announced() > 0)
 
     assert.equal((await session.status()).signedIn, true)
     assert.equal(announced(), 1)

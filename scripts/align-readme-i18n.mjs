@@ -125,6 +125,8 @@ const LINE_TRANSLATIONS = {
     "| `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |",
   "| `src/convert/harness.ts` | DSH request boundary, including session identity and replay metadata. |":
     "| `src/convert/harness.ts` | DSH 请求边界，含会话身份与回放元数据。 |",
+  "| `src/convert/images.ts` | Resolve durable user/tool images, retain host offloads, reject unsupported content before inference. |":
+    "| `src/convert/images.ts` | 解析用户/工具持久图片、保留宿主 offload 决策，在推理前拒绝不支持的内容。 |",
   "| `src/convert/replay.ts` | Validated native output and DSH replay envelopes, scoped to an account and model. |":
     "| `src/convert/replay.ts` | 原生输出校验及限定账号和模型的 DSH 回放封装。 |",
   "| `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |":
@@ -175,8 +177,8 @@ const LINE_TRANSLATIONS = {
     "- **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: \"in-history\"`；参见[回放设计与验证方案](cache-replay.md)。",
   "- **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.":
     "- **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。",
-  "- **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.":
-    "- **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。",
+  "- **Images require the host attachment service and a vision model** — user attachments and tool-result images, including PTC/LCU screenshots, are resolved to request-local bytes and sent as Responses image content. Tool results preserve their call ID, text/JSON, image order and error status. Explicit host image offloads remain text; unreadable attachments, unsupported roles/models and raw file blocks fail before inference. See the [content contract and local verification](docs/multimodal-content.md). Local request tests do not certify live image acceptance for a particular subscription account.":
+    "- **图片需要宿主附件服务与视觉模型** — 用户附件及工具结果图片（包括 PTC/LCU 截图）会被解析为本次请求的字节，并作为 Responses 图片内容发送。工具结果保留 call ID、文本/JSON、图片顺序及错误状态。宿主明确 offload 的图片仍表示为文本；不可读取的附件、不支持的角色/模型及原始文件块会在推理请求前失败。参见[内容契约与本地验证](multimodal-content.md)。本地请求测试不认证某个订阅账号的在线图片接收能力。",
   "- **The plan-usage route is in preview** — computer use, Code Interpreter, file search, hosted MCP, image generation, and `tool_search` are refused upstream regardless of what this plugin sends, and `multi_agent`, `temperature`, and `max_output_tokens` are among fifteen fields that must be omitted.":
     "- **套餐额度路由仍处于 preview** — computer use、Code Interpreter、file search、hosted MCP、图像生成与 `tool_search` 无论本插件发送什么都会被上游拒绝；而 `multi_agent`、`temperature` 和 `max_output_tokens` 属于必须省略的十五个字段之列。",
   "- **The roster mixes two sources with different authority** — the account's listing supplies advertised models with the endpoint's own metadata; the models this route measurably serves but the listing omits are added from `src/models/served.ts`, dated by when they were measured. A listing that changes under a stale measurement will show extras that no longer answer, and `includeUnlisted: false` narrows the roster to the account's own answer.":

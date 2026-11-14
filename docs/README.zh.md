@@ -138,6 +138,7 @@ modelContextWindowLimits:
 | `src/api/events.ts` | 解码 Responses 事件流及其失败形态。 |
 | `src/convert/request.ts` | Harness 请求转 Responses 请求体，含该路由拒收的字段。 |
 | `src/convert/harness.ts` | DSH 请求边界，含会话身份与回放元数据。 |
+| `src/convert/images.ts` | 解析用户/工具持久图片、保留宿主 offload 决策，在推理前拒绝不支持的内容。 |
 | `src/convert/replay.ts` | 原生输出校验及限定账号和模型的 DSH 回放封装。 |
 | `src/convert/blocks.ts` | 线上事件转 Harness 的编号内容块。 |
 | `src/api/client.ts` | 两次 HTTP 调用：列出模型、跑一轮。 |
@@ -187,7 +188,7 @@ modelContextWindowLimits:
 - **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: "in-history"`；参见[回放设计与验证方案](cache-replay.md)。
 
 - **UI 一次只展示一个账号** — 宿主为每个已授权账号分别保存，并可按 subject 退出其中任一个，但卡片只显示与切换当前账号，因此添加第二个账号需要先退出当前账号。
-- **图片与文件不会被发送** — 图片或文件块携带的是持久化的附件引用，本适配器尚未解析它，因此到达模型时是占位文本 `[image omitted: not yet supported]`。该省略是可见的而非静默的，但内容确实丢失了。
+- **图片需要宿主附件服务与视觉模型** — 用户附件及工具结果图片（包括 PTC/LCU 截图）会被解析为本次请求的字节，并作为 Responses 图片内容发送。工具结果保留 call ID、文本/JSON、图片顺序及错误状态。宿主明确 offload 的图片仍表示为文本；不可读取的附件、不支持的角色/模型及原始文件块会在推理请求前失败。参见[内容契约与本地验证](multimodal-content.md)。本地请求测试不认证某个订阅账号的在线图片接收能力。
 - **套餐额度路由仍处于 preview** — computer use、Code Interpreter、file search、hosted MCP、图像生成与 `tool_search` 无论本插件发送什么都会被上游拒绝；而 `multi_agent`、`temperature` 和 `max_output_tokens` 属于必须省略的十五个字段之列。
 - **名单混合了两个权威性不同的来源** — 账号的列表提供「被宣传的」模型，并附带接口自己的元数据；实测可用但列表未提及的模型来自 `src/models/served.ts`，并记录测量日期。若列表在测量过期后发生变化，会显示出已经不再应答的额外模型；`includeUnlisted: false` 可把名单收窄为账号自己的回答。
 - **一个安装对应一个 host id** — host id 以状态目录为作用域。两个 profile 共用一个目录，对 OpenAI 而言就是一个安装；两个目录就是两个，各自需要单独授权。
@@ -214,6 +215,7 @@ npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 
 `dev-types/` 存放 Harness 的 LLM 与 Cordis 接缝的开发期声明，转录自 Harness 源码。它们不发布、也从不随包分发；宿主以 peer dependency 的形式提供真实包。在真实 Harness 中做端到端挂载仍然是权威的验证方式。

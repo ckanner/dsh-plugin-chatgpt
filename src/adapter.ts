@@ -35,6 +35,8 @@ import { describableModels, describeModel, effortLabel, type DescribedModel, typ
 import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord } from './models/served.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 import { RefreshRefusedError } from './auth/refresh.ts'
+import { prepareImages } from './convert/images.ts'
+import { assertNotAborted } from './abort.ts'
 
 /**
  * A failure that already carries a machine-readable code.
@@ -125,6 +127,8 @@ export interface ChatGptAdapterOptions {
    * without a window reload.
    */
   onListingRecovered?: () => void
+  /** Optional host attachment service; required only when a request has images. */
+  resolveAttachments?: () => unknown
 }
 
 /** One model as the harness reads a listing. */
@@ -193,6 +197,13 @@ export function toNeutralRequest(request: HarnessRequest, scope?: string): Neutr
       } else if (block.type === 'tool-call') {
         const call = block as { id: string, name: string, arguments: string }
         content.push({ type: 'tool-call', id: call.id, name: call.name, arguments: call.arguments })
+      } else if (block.type === 'image') {
+        if (typeof block['url'] !== 'string' || !block['url']) {
+          throw coded('Image attachment bytes have not been prepared', 'UNSUPPORTED_CONTENT')
+        }
+        content.push({ type: 'image', url: block['url'] })
+      } else if (block.type === 'file') {
+        throw coded('ChatGPT file attachments are not supported by this adapter', 'UNSUPPORTED_CONTENT')
       }
       // Old/foreign reasoning summaries are for display, not a replacement for
       // opaque provider reasoning. Missing native state cannot be reconstructed.
@@ -338,6 +349,7 @@ export class ChatGptAdapter {
   private readonly modelContextWindowLimits: ChatGptAdapterOptions['modelContextWindowLimits']
   private readonly now: () => number
   private readonly onListingRecovered: (() => void) | undefined
+  private readonly resolveAttachments: (() => unknown) | undefined
   private listing: { at: number, models: DescribedModel[] } | undefined
   /** Whether the most recent listing attempt failed, so the next success can announce it. */
   private listingFailed = false
@@ -355,6 +367,7 @@ export class ChatGptAdapter {
     this.modelContextWindowLimits = options.modelContextWindowLimits
     this.now = options.now ?? (() => Date.now())
     this.onListingRecovered = options.onListingRecovered
+    this.resolveAttachments = options.resolveAttachments
   }
 
   /** The provider row this adapter describes. */
@@ -533,7 +546,12 @@ export class ChatGptAdapter {
     let events: AsyncGenerator<ResponsesEvent, void, undefined>
     let primed: IteratorResult<ResponsesEvent>
     try {
-      ({ events, primed, translator } = await withFreshGrant(
+      request = await prepareImages(request, {
+        resolveModel: () => this.resolveModel(provider, request.model),
+        ...this.resolveAttachments === undefined ? {} : { resolveAttachments: this.resolveAttachments },
+      })
+      assertNotAborted(request.signal)
+      ;({ events, primed, translator } = await withFreshGrant(
         () => this.auth.usable(request.signal),
         () => this.auth.renew(request.signal),
         // A generator is lazy, so a refused token would not surface until the
@@ -541,6 +559,7 @@ export class ChatGptAdapter {
         // be answered here, before the caller has seen anything — and the event
         // that read produced is carried out, not discarded.
         async (credential) => {
+          assertNotAborted(request.signal)
           const scope = accountScope(this.baseUrl ?? RESOURCE, credential)
           const translator = new BlockTranslator(scope === undefined ? undefined : { provider: request.provider, model: request.model, scope })
           const neutral = toNeutralRequest(request, scope)
@@ -557,12 +576,23 @@ export class ChatGptAdapter {
         },
       ))
     } catch (error) {
+      assertNotAborted(request.signal)
       if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
       throw codedCredentialFailure(this.auth, error)
     }
+    const openBlocks = new Set<number>()
+    let buffered: AdapterChunk[] = []
     try {
       for (let step: IteratorResult<ResponsesEvent> = primed; !step.done; step = await events.next()) {
-        for (const chunk of translator.push(step.value)) yield chunk
+        assertNotAborted(request.signal)
+        buffered = translator.push(step.value)
+        while (buffered.length > 0) {
+          assertNotAborted(request.signal)
+          const chunk = buffered.shift() as AdapterChunk
+          if (chunk.type === 'block-start') openBlocks.add(chunk.index)
+          if (chunk.type === 'block-end') openBlocks.delete(chunk.index)
+          yield chunk
+        }
       }
     } catch (error) {
       // A refused grant means this credential is finished; the next request
@@ -570,7 +600,14 @@ export class ChatGptAdapter {
       if (isCodedError(error) && (error.status === 401 || error.status === 403)) this.forgetListing()
       // Whatever went wrong, the blocks this turn opened still have to close, or
       // the harness holds a block that never ends.
-      for (const chunk of translator.endAll()) yield chunk
+      // A cancellation can land between chunks from one terminal event. Close
+      // only blocks actually exposed, and keep any usage the provider already
+      // reported; do not emit its buffered success finish after cancellation.
+      for (const chunk of [...buffered, ...translator.endAll()]) {
+        if (chunk.type === 'block-end' && openBlocks.delete(chunk.index)) yield chunk
+        else if (chunk.type === 'usage') yield chunk
+      }
+      assertNotAborted(request.signal)
       // Already coded when it came from the client; otherwise name it here so the
       // host has something better than an unknown failure to report.
       if (isCodedError(error)) throw error
@@ -580,6 +617,10 @@ export class ChatGptAdapter {
       throw isTransportFailure(message)
         ? coded(`the ChatGPT response was cut short: ${message}`, 'TRANSPORT')
         : coded(message, 'chatgpt_request_failed')
+    } finally {
+      // A consumer can stop between yielded chunks. Close the nested generator
+      // so its reader/HTTP body does not keep running after the owning call ends.
+      await events.return(undefined)
     }
   }
 }

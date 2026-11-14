@@ -16,6 +16,31 @@ exactly as the harness declared it.
   tool.
 - `tests/request.spec.ts`: pin the emitted tool shape.
 
+Correct optional peer ranges to the host's real Cordis 4.x, Schemastery 3.19
+and DSH 0.2.1-rc.5/0.2.2 prerelease packages; generic 0.x ranges incorrectly
+rejected a real DSH consumer installation. Verify the packed candidate through
+normal npm resolution against the exact rc.3 host peers, without peer bypasses.
+
+Send durable user images and tool-result screenshots through the complete DSH
+→ adapter → Responses conversion. Resolve image references using the optional
+host attachment service, verify returned identity and byte length, and send
+image-bearing tool results as ordered content arrays correlated by call ID.
+Text-only and structured JSON tool output keep their existing wire shape.
+
+Host image offloads remain offloaded. Missing/corrupt attachments, unsupported
+models/roles, raw file blocks and orphaned tool results fail explicitly instead
+of silently disappearing. `dsh-plugin-chatgpt/capabilities` exposes the static
+content contract without loading host services or credentials.
+
+Cancellation settles during image preparation and streaming, closes the HTTP
+reader on early return, and reports `ABORTED` without inventing usage or success.
+Provider-reported usage remains available even if cancellation interrupts a
+terminal chunk batch. Incomplete reasons other than `max_output_tokens` retain
+their error identity instead of being mislabeled token exhaustion. Tests cover
+the real request conversion/client path with local HTTP and attachment fixtures;
+no live subscription/vision or desktop check is claimed by these fixtures.
+ (fix: preserve durable image and tool output content on current DSH)
+
 ## 0.1.18
 
 A plugin-scoped HTTP proxy can carry the ChatGPT adapter's server-side traffic.

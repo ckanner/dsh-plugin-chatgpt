@@ -63,6 +63,28 @@ function textOf(content: NeutralMessage['content']): string {
   return typeof content === 'string' ? content : content.filter(part => part.type === 'text').map(part => part.text).join('')
 }
 
+function unsupported(message: string): never {
+  throw Object.assign(new Error(message), { code: 'UNSUPPORTED_CONTENT' })
+}
+
+/** Text-only results keep their wire shape; images retain position and call id. */
+function toolOutput(message: NeutralMessage): string | Record<string, unknown>[] {
+  if (Array.isArray(message.content) && message.content.some(part => part.type === 'tool-call')) {
+    unsupported('A tool result cannot contain another tool call')
+  }
+  if (typeof message.content === 'string' || !message.content.some(part => part.type === 'image')) {
+    const output = textOf(message.content)
+    return message.isError ? `Error: ${output}` : output
+  }
+  const output: Record<string, unknown>[] = message.isError ? [{ type: 'input_text', text: 'Error: ' }] : []
+  for (const part of message.content) {
+    if (part.type === 'text') output.push({ type: 'input_text', text: part.text })
+    else if (part.type === 'image') output.push({ type: 'input_image', image_url: part.url })
+    else unsupported('A tool result cannot contain another tool call')
+  }
+  return output
+}
+
 /** Preserve message and assistant-block order; instruction roles stay in place. */
 export function toResponsesBody(request: NeutralRequest): ResponsesBody {
   const input: InputItem[] = []
@@ -71,6 +93,10 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     input.push({ type: 'message', role: 'developer', content: [{ type: 'input_text', text: request.system }] })
   }
   for (const message of request.messages) {
+    if (Array.isArray(message.content) && message.content.some(part => part.type === 'image')
+      && message.role !== 'user' && message.role !== 'tool') {
+      unsupported('ChatGPT supports images only in user messages and tool results')
+    }
     if (message.role === 'assistant' && message.replay !== undefined) {
       // Stream fragments may omit summary; the Responses input shape requires
       // the array even when reasoning is carried solely by encrypted_content.
@@ -79,9 +105,8 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
       continue
     }
     if (message.role === 'tool') {
-      if (message.toolCallId === undefined) continue
-      const output = textOf(message.content)
-      input.push({ type: 'function_call_output', call_id: message.toolCallId, output: message.isError ? `Error: ${output}` : output })
+      if (!message.toolCallId) unsupported('A tool result requires the originating tool call id')
+      input.push({ type: 'function_call_output', call_id: message.toolCallId, output: toolOutput(message) })
       continue
     }
     const role = message.role === 'system' ? 'developer' : message.role
