@@ -186,6 +186,18 @@ describe('BlockTranslator', () => {
     assert.deepEqual(chunks.at(-1), { type: 'finish', reason: { kind: 'max-tokens' } })
   })
 
+  it('keeps an unknown or content-filter incomplete reason distinct from token exhaustion', () => {
+    for (const reason of ['content_filter', 'unknown']) {
+      const { chunks } = run([{ kind: 'incomplete', reason, usage: { inputTokens: 3 } }])
+      assert.deepEqual(chunks, [
+        { type: 'usage', usage: { inputTokens: 3 } },
+        { type: 'finish', reason: { kind: 'error', failure: {
+          message: `The ChatGPT response was incomplete: ${reason}`, code: 'response_incomplete',
+        } } },
+      ])
+    }
+  })
+
   it('ends an open tool call when the stream is cut off mid-call', () => {
     const translator = new BlockTranslator()
     translator.push({ kind: 'toolCallStart', index: 0, callId: 'c', name: 't' })

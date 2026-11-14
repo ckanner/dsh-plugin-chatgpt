@@ -86,7 +86,7 @@ declare module '@deepseek-ai/dsh-llm' {
   export type ContentBlock =
     | { type: 'text', text: string }
     | { type: 'reasoning', text: string }
-    | { type: 'image', attachment: unknown }
+    | { type: 'image', attachment: unknown, offloaded?: true }
     | { type: 'file', attachment: unknown }
     | { type: 'tool-call', id: Branded<'ToolCallId'>, name: string, arguments: string }
     | { type: 'tool-addition', toolName: string }

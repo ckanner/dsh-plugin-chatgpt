@@ -262,7 +262,10 @@ export class BlockTranslator {
         return [
           ...this.endAll(),
           ...event.usage === undefined ? [] : [{ type: 'usage' as const, usage: event.usage }],
-          { type: 'finish', reason: event.kind === 'incomplete' ? { kind: 'max-tokens' } : { kind: 'error', failure: { message: event.message, code: event.code } } },
+          { type: 'finish', reason: event.kind === 'incomplete'
+            ? event.reason === 'max_output_tokens' ? { kind: 'max-tokens' }
+              : { kind: 'error', failure: { message: `The ChatGPT response was incomplete: ${event.reason}`, code: 'response_incomplete' } }
+            : { kind: 'error', failure: { message: event.message, code: event.code } } },
         ]
       }
       default: break

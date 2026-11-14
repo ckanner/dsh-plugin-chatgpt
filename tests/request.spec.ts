@@ -199,16 +199,14 @@ describe('toResponsesBody', () => {
     assert.deepEqual(roles, ['input_text', 'output_text', 'input_text'])
   })
 
-  it('keeps an image out of an assistant turn, which cannot carry one', () => {
-    const body = toResponsesBody({
+  it('rejects an image in an unsupported role instead of dropping it', () => {
+    assert.throws(() => toResponsesBody({
       model: 'm',
       messages: [{
         role: 'assistant',
         content: [{ type: 'text', text: 'seen' }, { type: 'image', url: 'https://example.test/a.png' }],
       }],
-    })
-
-    assert.deepEqual(body.input[0]?.['content'], [{ type: 'output_text', text: 'seen' }])
+    }), { code: 'UNSUPPORTED_CONTENT' })
   })
 
   it('omits reasoning when no effort was chosen', () => {

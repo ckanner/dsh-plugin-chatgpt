@@ -27,6 +27,7 @@ import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 import { requestOf } from './convert/harness.ts'
 import { createScopedFetch } from './http.ts'
+export { contentCapabilities } from './capabilities.ts'
 
 /**
  * Route and endpoint policy for one installation.
@@ -217,6 +218,7 @@ export function apply(ctx: Context, config: Config): void {
     // A listing that recovers must clear a cached provider failure in the
     // browser's model selector; see the callback's documentation.
     onListingRecovered: () => { ctx.emit('llm/adapters-updated') },
+    resolveAttachments: () => ctx.get('attachments'),
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 

@@ -80,6 +80,8 @@ jobs:
         run: npm run verify:client
       - name: Published package would load
         run: npm run verify:package
+      - name: Verify installation with actual host peers
+        run: npm run verify:install
       - name: README pair is aligned
         run: npm run check:i18n
 

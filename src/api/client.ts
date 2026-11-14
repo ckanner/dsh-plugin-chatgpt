@@ -18,6 +18,7 @@ import { RESOURCE } from '../auth/protocol.ts'
 import { createSseDecoder, decodeEvent, isPlanUsageCode, type ResponsesEvent } from './events.ts'
 import { toResponsesBody, type NeutralRequest, type ResponsesBody } from '../convert/request.ts'
 import type { ListedModel } from '../models/describe.ts'
+import { abortable, assertNotAborted } from '../abort.ts'
 
 /** Endpoints this client talks to. */
 export interface ClientEndpoints {
@@ -179,6 +180,7 @@ export interface StreamTurnOptions {
  * @returns the decoded events, in order, ending with a terminal one.
  */
 export async function* streamTurn(options: StreamTurnOptions): AsyncGenerator<ResponsesEvent, void, undefined> {
+  assertNotAborted(options.signal)
   const body: ResponsesBody = toResponsesBody(options.request)
   const response = await (options.endpoints?.fetch ?? fetch)(`${baseOf(options.endpoints)}/responses`, {
     method: 'POST',
@@ -186,6 +188,10 @@ export async function* streamTurn(options: StreamTurnOptions): AsyncGenerator<Re
     body: JSON.stringify(body),
     ...options.signal === undefined ? {} : { signal: options.signal },
   })
+  if (options.signal?.aborted) {
+    await response.body?.cancel().catch(() => undefined)
+    assertNotAborted(options.signal)
+  }
   if (!response.ok) {
     throw errorOf(await response.text().catch(() => ''), response.status)
   }
@@ -199,11 +205,12 @@ export async function* streamTurn(options: StreamTurnOptions): AsyncGenerator<Re
   let terminal = false
   try {
     while (!terminal) {
-      const { done, value } = await reader.read()
+      const { done, value } = await abortable(reader.read(), options.signal)
       const payloads = done === true
         ? decoder.flush()
         : decoder.push(text.decode(value, { stream: true }))
       for (const payload of payloads) {
+        assertNotAborted(options.signal)
         const event = decodeEvent(payload)
         if (event === undefined) continue
         yield event

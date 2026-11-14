@@ -922,14 +922,14 @@ describe('toNeutralRequest', () => {
     assert.equal(toResponsesBody(neutral).input[0]?.output, 'Error: not found')
   })
 
-  it('drops a tool message that names no call, since it cannot be correlated', () => {
+  it('refuses a tool message that names no call instead of dropping its result', () => {
     const neutral = toNeutralRequest({
       provider: 'chatgpt',
       model: 'm',
       messages: [{ role: 'tool', content: [{ type: 'text', text: 'orphan' }] }],
     })
 
-    assert.deepEqual(toResponsesBody(neutral).input, [])
+    assert.throws(() => toResponsesBody(neutral), { code: 'UNSUPPORTED_CONTENT' })
   })
 
   it('carries tools and the chosen reasoning effort', () => {

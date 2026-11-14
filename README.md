@@ -138,6 +138,7 @@ The share of the plan this installation may spend is set per app, in ChatGPT set
 | `src/api/events.ts` | Decoding the Responses event stream and its failure modes. |
 | `src/convert/request.ts` | Harness request to Responses body, including the fields the route refuses. |
 | `src/convert/harness.ts` | DSH request boundary, including session identity and replay metadata. |
+| `src/convert/images.ts` | Resolve durable user/tool images, retain host offloads, reject unsupported content before inference. |
 | `src/convert/replay.ts` | Validated native output and DSH replay envelopes, scoped to an account and model. |
 | `src/convert/blocks.ts` | Wire events to the harness's numbered content blocks. |
 | `src/api/client.ts` | The two HTTP calls: list models, run one turn. |
@@ -187,7 +188,7 @@ The adapter preserves reusable prefixes and opaque reasoning across tool turns a
 - **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: "in-history"`; see [the replay design and validation plan](docs/cache-replay.md).
 
 - **One account at a time in the UI** — the host keeps every authorized account separate and can sign one out by subject, but the card shows and switches only the active account, so adding a second one means signing out first.
-- **Images and files are not sent** — an image or file block carries a durable attachment reference that this adapter does not resolve, so it reaches the model as the placeholder text `[image omitted: not yet supported]`. The omission is visible rather than silent, but the content is genuinely lost.
+- **Images require the host attachment service and a vision model** — user attachments and tool-result images, including PTC/LCU screenshots, are resolved to request-local bytes and sent as Responses image content. Tool results preserve their call ID, text/JSON, image order and error status. Explicit host image offloads remain text; unreadable attachments, unsupported roles/models and raw file blocks fail before inference. See the [content contract and local verification](docs/multimodal-content.md). Local request tests do not certify live image acceptance for a particular subscription account.
 - **The plan-usage route is in preview** — computer use, Code Interpreter, file search, hosted MCP, image generation, and `tool_search` are refused upstream regardless of what this plugin sends, and `multi_agent`, `temperature`, and `max_output_tokens` are among fifteen fields that must be omitted.
 - **The roster mixes two sources with different authority** — the account's listing supplies advertised models with the endpoint's own metadata; the models this route measurably serves but the listing omits are added from `src/models/served.ts`, dated by when they were measured. A listing that changes under a stale measurement will show extras that no longer answer, and `includeUnlisted: false` narrows the roster to the account's own answer.
 - **One installation, one host id** — the host id is scoped to the state directory. Two profiles sharing one directory are one installation to OpenAI; two directories are two, and each is consented separately.
@@ -214,6 +215,7 @@ npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 
 `dev-types/` holds development-only declarations for the harness's LLM and Cordis seams, transcribed from the harness sources. They are not published and never shipped; the host supplies the real packages as peer dependencies. An end-to-end mount in a real harness remains the authoritative check.

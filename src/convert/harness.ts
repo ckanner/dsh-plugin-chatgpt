@@ -9,12 +9,14 @@ export function requestOf(options: GenerateOptions): HarnessRequest {
         const call = block as { id: string, name: string, arguments: string }
         return { type: 'tool-call', id: String(call.id), name: call.name, arguments: call.arguments }
       }
-      // An image block carries a durable attachment reference rather than bytes.
-      // Resolving it needs the attachment service, which this adapter does not
-      // yet take; the block is surfaced as text naming the omission so a
-      // request that carried one is not silently thinner than it looks.
-      if (block.type === 'image') return { type: 'text', text: '[image omitted: not yet supported]' }
-      if (block.type === 'file') return { type: 'text', text: '[file omitted: not yet supported]' }
+      // Preserve durable references until the adapter can check the selected
+      // model and resolve the host's attachment service. Never invent an output
+      // placeholder for an image or an unsupported file.
+      if (block.type === 'image') return {
+        type: 'image', attachment: block.attachment,
+        ...block.offloaded === true ? { offloaded: true } : {},
+      }
+      if (block.type === 'file') return { type: 'file', attachment: block.attachment }
       if (block.type === 'text' || block.type === 'reasoning') return { type: block.type, text: block.text }
       return { type: 'text', text: '' }
     })
