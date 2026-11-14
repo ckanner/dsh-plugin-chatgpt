@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.20
+
+Preserve durable images and tool output content on current DSH.
+
+- Resolve user and tool-result images through the host attachment service and send
+  request-local Responses image content while retaining original durable history.
+- Preserve tool call identity, text/JSON order and error status alongside images;
+  keep explicit host offloads as text and reject unsupported files, roles, models
+  or invalid attachment references before inference.
+- Propagate cancellation through image preparation and streaming; retain usage
+  without emitting buffered success after cancellation.
+- Accept the real Cordis 4.1 / Schemastery 3.19 / DSH 0.2.2 prerelease peers and
+  export static content capabilities for SDK consumers.
+
+
 ## 0.1.19
 
 Send `strict: false` on Responses tool definitions.
