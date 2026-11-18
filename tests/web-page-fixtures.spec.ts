@@ -183,3 +183,55 @@ test('managed prepare drives real DOM admission and rejects a moved composer bef
   await assert.rejects(() => page.submit(request.prompt), /Owned conversation changed/)
   assert.equal(submits, 0, 'a new managed project must remain bound before its first prompt, including text-only calls')
 })
+
+test('text submission rechecks the prepared account, model and hosted controls without changing the selection', async (t) => {
+  for (const change of ['none', 'account', 'model', 'effort', 'generation', 'hosted-tool'] as const) {
+    await t.test(change, async () => {
+      const f = dom('')
+      let active: HTMLTextAreaElement | undefined
+      let email = 'fixture@example.invalid'
+      let model = 'GPT-6'
+      let effort = 'Pro'
+      let submits = 0, inputs = 0, selectionChanges = 0
+      Object.defineProperty(f.document, 'readyState', { configurable: true, value: 'complete' })
+      Object.defineProperty(f.window.HTMLElement.prototype, 'focus', { configurable: true, value(this: HTMLTextAreaElement) { active = this } })
+      const append = (html: string) => { const holder = f.document.createElement('div'); holder.innerHTML = html; const element = holder.firstElementChild!; f.document.body.append(element); return element }
+      const render = () => {
+        f.document.body.innerHTML = '<button data-testid="accounts-profile-button">Account</button><button data-codex-intelligence-trigger="true" aria-expanded="false">Model</button><form data-chatgpt-composer><textarea id="prompt-textarea"></textarea><button type="button" data-testid="send-button">Send</button></form>'
+        f.document.querySelector('[data-testid="accounts-profile-button"]')!.addEventListener('click', () => append(`<div role="menu">${email}</div>`))
+        f.document.querySelector('[data-codex-intelligence-trigger]')!.addEventListener('click', (event) => {
+          (event.currentTarget as Element).setAttribute('aria-expanded', 'true')
+          const menu = append(`<div role="menu"><button role="menuitemradio" aria-checked="${model === 'GPT-6'}">GPT-6</button><button role="menuitemradio" aria-checked="${model !== 'GPT-6'}">GPT-5.6 Sol</button><button role="menuitemradio" aria-checked="${effort === 'Pro'}">Pro</button><button role="menuitemradio" aria-checked="${effort !== 'Pro'}">High</button></div>`)
+          for (const button of menu.querySelectorAll('button')) button.addEventListener('click', () => { selectionChanges++ })
+        })
+        f.document.querySelector('[data-testid="send-button"]')!.addEventListener('click', () => { submits++ })
+      }
+      const raw = {
+        targetId: 'text-page', cdp: { beginCleanup() {} },
+        async evaluate<T>(expression: string) { return f.evaluate<T>(expression) },
+        async navigate(url: string) { f.location.href = url; render() },
+        async insertText(text: string) { assert.ok(active); inputs++; active.value = text },
+        async escape() { for (const element of f.document.querySelectorAll('[role="menu"],[role="dialog"]')) element.remove(); f.document.querySelector('[data-codex-intelligence-trigger]')?.setAttribute('aria-expanded', 'false') },
+        async close() {},
+      } as unknown as CdpPage
+      const connection: WebConnection = { id: 'fixture', browserPath: '/unused', profilePath: '/unused/profile', stateDir: '/unused/state', accountFingerprint: digest(email) }
+      const request: WebTurnRequest = { requestId: `text-${change}`, executionDomainId: 'domain', sessionId: 'session', generation: 0, bindingDigest: digest('binding'), prompt: 'private local task', title: 'Review', deadlineMs: Date.now() + 5000, contextPolicy: 'personalized', maxPromptBytes: 1000, maxResponseBytes: 1000 }
+      const page = new ChatGptPage(raw, connection, request)
+      await page.prepare(request)
+      if (change === 'account') email = 'other@example.invalid'
+      if (change === 'model') model = 'GPT-5.6 Sol'
+      if (change === 'effort') effort = 'High'
+      if (change === 'generation') append('<button data-testid="stop-button">Stop</button>')
+      if (change === 'hosted-tool') f.document.querySelector('form')!.append(append('<button data-testid="composer-agent-mode" aria-pressed="true">Agent mode</button>'))
+      if (change === 'model' || change === 'effort') request.deadlineMs = Date.now() + 350
+      if (change === 'none') {
+        await page.submit(request.prompt)
+        assert.equal(submits, 1); assert.equal(inputs, 1)
+      } else {
+        await assert.rejects(() => page.submit(request.prompt), /account|ownership|deadline|hosted/i)
+        assert.equal(submits, 0); assert.equal(inputs, 0, 'unverified content must not enter a changed account or model composer')
+      }
+      assert.equal(selectionChanges, 0, 'submission must verify the prepared selection without silently restoring it')
+    })
+  }
+})

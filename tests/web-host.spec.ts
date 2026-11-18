@@ -125,6 +125,54 @@ it('materializes the exact resolved Pro effort, waits for durable host ACK, and 
   } finally { await f.dispose() }
 })
 
+for (const child of [false, true]) {
+  it(`retains every actual workspace touched by ${child ? 'an inherited child' : 'a managed root'} before non-Web tool dispatch`, async () => {
+    const f = await fixture()
+    try {
+      const host = f.create()
+      const identity = { sessionId: 'root', executionDomainId: 'moving-domain', hostInvocationId: 'moving-invocation' }
+      await host.beginInvocation({ ...identity, workspace: f.dir })
+      const sessionId = child ? 'child' : 'root'
+      const owner = { sessionId, rootSessionId: 'root', ...(child ? { parentSessionId: 'root' } : {}) }
+      await host.inheritOwner({ ...owner, workspace: f.dir })
+      const moved = join(f.dir, 'moved-worktree')
+      await host.inheritOwner({ ...owner, workspace: moved })
+      const occurrence = await host.toolStarted(sessionId, 'non-web-write', 'non-web-write', 10)
+      assert.ok(occurrence)
+      await host.toolObserved(occurrence, true)
+      const restarted = f.create()
+      for (const workspace of [f.dir, moved]) {
+        assert.equal(await restarted.isManagedSession('fresh-session', workspace), true)
+        await assert.rejects(() => restarted.guardSession('fresh-session', workspace), /needs recovery/)
+      }
+      assert.ok(f.stopped.some(event => event.workspaces.includes(f.dir) && event.workspaces.includes(moved)), 'cancellation must include both recorded execution workspaces')
+      await assert.rejects(() => restarted.inheritOwner({ ...owner, workspace: join(f.dir, 'another-worktree') }), /needs recovery/)
+      assert.equal((await restarted.invocationFacts(identity)).outcome, 'unknown')
+      assert.deepEqual(f.counts(), { opens: 0, submits: 0 })
+    } finally { await f.dispose() }
+  })
+}
+
+it('lets stable workspace ownership settle its durable tool result after restart before applying the execution guard', async () => {
+  const f = await fixture()
+  try {
+    const host = f.create()
+    const owner = { sessionId: 'root', rootSessionId: 'root', workspace: f.dir }
+    await host.beginInvocation({ sessionId: 'root', executionDomainId: 'stable-domain', hostInvocationId: 'stable-invocation', workspace: f.dir })
+    const occurrence = await host.toolStarted('root', 'completed-local-write', 'completed-local-write', 10)
+    assert.ok(occurrence)
+    await host.toolObserved(occurrence, false)
+    const restarted = f.create()
+    // The integration reads the original Session's durable result after this
+    // no-op ownership step and only then authorizes another provider request.
+    await restarted.inheritOwner(owner)
+    await assert.rejects(() => restarted.guardSession('root', f.dir), /needs recovery/)
+    await restarted.toolCommitted({ sessionId: 'root', rootCallId: 'completed-local-write', rootCallSeq: 10, resultEventSeq: 11 }, true, false)
+    await restarted.guardSession('root', f.dir)
+    assert.deepEqual(f.counts(), { opens: 0, submits: 0 })
+  } finally { await f.dispose() }
+})
+
 it('does not turn an idle invocation with no response into a successful business outcome', async () => {
   const f = await fixture()
   try {

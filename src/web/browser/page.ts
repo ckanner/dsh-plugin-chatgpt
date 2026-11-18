@@ -65,7 +65,7 @@ export function modelSelectionAction(action: 'open' | 'select' | 'verify', trigg
 
 export function snapshotPage(): {
   url: string; projectUrl: string | null; messages: Array<{ role: string; id: string; text: string; finished: boolean; thinking: boolean }>
-  stopVisible: boolean; thinkingVisible: boolean; phase: string; composerReady: boolean; errorText: string
+  stopVisible: boolean; thinkingVisible: boolean; activeTools: boolean; phase: string; composerReady: boolean; errorText: string
 } {
   const visible = (element: Element): boolean => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true'
   const messages: Array<{ role: string; id: string; text: string; finished: boolean; thinking: boolean }> = []
@@ -83,11 +83,12 @@ export function snapshotPage(): {
   }
   const stopVisible = [...document.querySelectorAll('[data-testid="stop-button"],[data-testid="composer-stop-button"]')].some(visible)
   const thinkingVisible = [...document.querySelectorAll('[data-testid="thinking-indicator"],[data-thinking-status="active"],[data-is-streaming="true"]')].some(visible)
+  const activeTools = [...document.querySelectorAll('form [data-testid*="connector"][data-state="active"],form [data-testid*="app"][aria-pressed="true"],form [data-testid*="agent-mode"][aria-pressed="true"]')].some(visible)
   const status = [...document.querySelectorAll<HTMLElement>('form[data-chatgpt-composer] [role="status"],[data-testid="thinking-indicator"]')].filter(visible).map((node) => node.innerText.trim()).join(' ')
   // Error evidence comes from UI alert controls outside the answer, never from answer prose.
   const alerts = [...document.querySelectorAll<HTMLElement>('[role="alert"],[data-testid="conversation-error"]')].filter((node) => visible(node) && !node.closest('[data-message-author-role]')).map((node) => node.innerText).join(' ')
   const project = [...document.querySelectorAll<HTMLAnchorElement>('header a[href],nav a[aria-current="page"][href]')].find((node) => /\/g\/g-p-[a-zA-Z0-9-]+\/project$/.test(node.getAttribute('href') ?? ''))
-  return { url: location.href, projectUrl: project?.href ?? null, messages, stopVisible, thinkingVisible, phase: status.slice(0,256), composerReady: Boolean(document.querySelector('#prompt-textarea,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"]')), errorText: alerts.slice(0,2048) }
+  return { url: location.href, projectUrl: project?.href ?? null, messages, stopVisible, thinkingVisible, activeTools, phase: status.slice(0,256), composerReady: Boolean(document.querySelector('#prompt-textarea,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"]')), errorText: alerts.slice(0,2048) }
 }
 
 /** Read only controls in the project settings dialog, never model-generated text. */
@@ -280,12 +281,7 @@ export class ChatGptPage implements WebPage {
   }
 
   private async verifyContext(): Promise<void> {
-    const facts = await this.page.evaluate<{ projectUrl: string | null; activeTools: boolean }>(`(() => {
-      const visible = n=>n.getClientRects().length>0;
-      const project = [...document.querySelectorAll('header a[href],nav a[aria-current="page"][href]')].find(n=>/\\/g\\/g-p-[a-zA-Z0-9-]+\\/project$/.test(n.getAttribute('href')||''));
-      const activeTools = [...document.querySelectorAll('form [data-testid*="connector"][data-state="active"],form [data-testid*="app"][aria-pressed="true"],form [data-testid*="agent-mode"][aria-pressed="true"]')].some(visible);
-      return {projectUrl:project?.href||null,activeTools};
-    })()`)
+    const facts = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
     if (facts.activeTools) throw new Error('Hosted apps or agent mode must be disabled for the local tool bridge')
     if (this.request.contextPolicy === 'personalized') return
     const current = await this.page.evaluate<string>('location.href')
@@ -353,6 +349,17 @@ export class ChatGptPage implements WebPage {
   private evidence(url: string, accountFingerprint: string): WebEvidence {
     return { adapter: 'chatgpt-dom/1', model: 'GPT-6', effort: 'Pro', accountFingerprint, contextPolicy: this.request.contextPolicy, conversationUrl: url, ...(this.projectUrl ? { projectUrl: this.projectUrl } : {}), capturedAt: Date.now(), bindingDigest: this.request.bindingDigest }
   }
+  private async verifySubmissionIdentity(expectedUrl: string): Promise<void> {
+    checkDeadline(this.request.deadlineMs, this.request.signal)
+    if (await this.account() !== this.connection.accountFingerprint) throw new Error('Signed-in account changed before submission')
+    // Preparation may precede persisted submit-intent or a lengthy upload.
+    // Observe the same model and effort again; never silently change them.
+    await this.selectModel(false)
+    const snapshot = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
+    if (snapshot.activeTools) throw new Error('Hosted apps or agent mode must be disabled before submission')
+    if (snapshot.url !== expectedUrl || snapshot.stopVisible || snapshot.thinkingVisible || snapshot.messages.some(message => message.thinking)
+      || (this.request.contextPolicy === 'project-only' && snapshot.url !== this.projectUrl && snapshot.projectUrl !== this.projectUrl)) throw new Error('Conversation ownership changed before submission')
+  }
   async submit(prompt: string): Promise<void> {
     checkDeadline(this.request.deadlineMs, this.request.signal)
     const media = this.request.media ?? []
@@ -361,6 +368,9 @@ export class ChatGptPage implements WebPage {
     if (before.cards.length || before.busy || before.error) throw new Error('Composer contains unexpected or unresolved attachments')
     const expectedUrl = await this.page.evaluate<string>('location.href')
     if (new URL(expectedUrl).origin !== 'https://chatgpt.com' || expectedUrl !== this.preparedConversationUrl || (this.boundConversationUrl && expectedUrl !== this.boundConversationUrl)) throw new Error('Owned conversation changed before upload')
+    // Both text and image content must stay local until the prepared account,
+    // model, effort and idle conversation have been re-observed.
+    await this.verifySubmissionIdentity(expectedUrl)
     const focused = await this.page.evaluate<boolean>(`(() => { const e = document.querySelector(${JSON.stringify(COMPOSER)}); if (!e || (e.innerText || e.value || '').trim()) return false; e.focus(); return true; })()`)
     if (!focused) throw new Error('Composer is unavailable or contains unexpected unsent content')
     if (media.length) {
@@ -384,11 +394,7 @@ export class ChatGptPage implements WebPage {
       }
       // Recheck the bound account/model after a potentially long upload without
       // navigating away from the composer or recreating a hosted project.
-      if (await this.account() !== this.connection.accountFingerprint) throw new Error('Signed-in account changed during image upload')
-      await this.selectModel(false)
-      const snapshot = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
-      if (snapshot.url !== expectedUrl || snapshot.stopVisible || snapshot.thinkingVisible
-        || (this.request.contextPolicy === 'project-only' && snapshot.url !== this.projectUrl && snapshot.projectUrl !== this.projectUrl)) throw new Error('Conversation ownership changed during image upload')
+      await this.verifySubmissionIdentity(expectedUrl)
       for (const item of media) await readWebMediaArtifact(item, join(this.connection.stateDir, 'images'))
       const refocused = await this.page.evaluate<boolean>(`(() => { const e = document.querySelector(${JSON.stringify(COMPOSER)}); if (!e || (e.innerText || e.value || '').trim()) return false; e.focus(); return true; })()`)
       if (!refocused) throw new Error('Composer changed during image upload')

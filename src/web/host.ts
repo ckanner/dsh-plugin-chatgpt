@@ -243,18 +243,32 @@ export class ChatGptWebHost {
     })
   }
 
-  /** Called for every child provider/tool, including children that never use Web. */
+  /** Bind the current execution directory for every managed provider/tool, including non-Web children. */
   async inheritOwner(owner: WebSessionOwner): Promise<void> {
     await this.queue
     const registry = await this.registry()
     const parentId = (owner.parentSessionId ? registry.sessions[owner.parentSessionId] : undefined) ?? (owner.rootSessionId !== owner.sessionId ? registry.sessions[owner.rootSessionId] : undefined)
-    if (!parentId || registry.sessions[owner.sessionId] === parentId) return
-    const parent = registry.invocations[parentId]
+    const invocationId = parentId ?? registry.sessions[owner.sessionId]
+    if (!invocationId) return
+    const parent = registry.invocations[invocationId]
     if (!parent) throw new WebPolicyError('subagent execution owner is missing')
     const workspace = await this.physicalWorkspace(owner.workspace)
+    // Keep stable ownership a no-op; the caller first settles durable tool
+    // results and then applies its normal execution-domain guard.
+    if (registry.sessions[owner.sessionId] === invocationId && registry.workspaceDomains?.[workspace]?.includes(parent.executionDomainId)) return
     await this.guardSession(owner.sessionId, workspace)
     await this.assertDomain(parent.executionDomainId)
-    await this.change(state => { state.sessions[owner.sessionId] = parentId; this.bindWorkspace(state, workspace, parent.executionDomainId) })
+    // A host move or child worktree must add its physical directory before any
+    // tool starts. Retain earlier directories: changing cwd never releases an
+    // unresolved execution domain or moves its previous effects elsewhere.
+    await this.change(state => {
+      const current = (owner.parentSessionId ? state.sessions[owner.parentSessionId] : undefined)
+        ?? (owner.rootSessionId !== owner.sessionId ? state.sessions[owner.rootSessionId] : undefined)
+        ?? state.sessions[owner.sessionId]
+      if (current !== invocationId) throw new WebPolicyError('execution owner changed before workspace binding')
+      state.sessions[owner.sessionId] = invocationId
+      this.bindWorkspace(state, workspace, parent.executionDomainId)
+    })
   }
 
   async callContext(options: GenerateOptions, kind: WebCallContext['kind'], owner: WebSessionOwner): Promise<WebCallContext> {

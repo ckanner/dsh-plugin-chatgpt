@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { realpath } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import * as DshLlm from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { ChatGptWebHost, replayReference } from './host.ts'
@@ -25,6 +25,7 @@ interface Agent {
   model: { current(): { provider: string; model: string; reasoningEffort?: string } | undefined }
 }
 interface Agents { currentInitiator(): Agent | undefined; get(id: string): Agent | undefined; list(): Agent[] }
+interface WorkingDirectory { get(session: Agent['session']): string }
 interface Sessions { flush(session: Agent['session']): Promise<boolean> }
 interface AgentLoop { hostPolicyCapabilities?: Record<string, number>; adoptRecoveredResponse?(agent: Agent, input: unknown): Promise<unknown> }
 interface Compaction { hostPolicyCapabilities?: Record<string, number>; adoptRecoveredSummary?(agent: Agent, input: unknown, signal: AbortSignal): Promise<unknown> }
@@ -111,8 +112,14 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
       if (seen.has(parent.id)) throw new WebPolicyError('cyclic subagent ownership')
       seen.add(parent.id); root = parent
     }
+    const workingDirectory = ctx.get('workingDirectory') as WorkingDirectory | undefined
+    // The immutable header names the original project, not a later host-selected
+    // worktree. A child keeps its parent's domain but executes in its own current
+    // directory. Do not fall back to the old header when a present service fails.
+    const workspace = workingDirectory ? workingDirectory.get(agent.session) : resolve(agent.session.header.cwd ?? stateDir)
+    if (typeof workspace !== 'string' || !isAbsolute(workspace) || workspace.includes('\0')) throw new WebPolicyError('the current Agent workspace is unavailable')
     return {
-      sessionId: String(agent.id), rootSessionId: String(root.id), workspace: root.session.header.cwd ?? stateDir,
+      sessionId: String(agent.id), rootSessionId: String(root.id), workspace,
       ...(agent.session.header.origin === 'subagent' && agent.session.header.parentSession ? { parentSessionId: String(agent.session.header.parentSession) } : {}),
     }
   }

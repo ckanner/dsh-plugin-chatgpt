@@ -7,6 +7,12 @@ ownership, validated local tools, durable recovery, image uploads and the single
 DSH compaction engine. This candidate requires the bundled DSH compatibility
 patch; it has not been published or accepted on a signed-in user's Desktop.
 
+- Recheck the account, model/effort, conversation and active hosted controls
+  before text entry or image upload, and again after upload. Same-URL changes
+  cannot send the prepared request through another identity or running turn.
+- Bind workspace fences to the current Agent's public working-directory
+  service. Record moved root and child worktrees before managed work while
+  retaining earlier directory associations and unresolved execution domains.
 - Preserve an explicitly configured summary provider/model in automatic and
   manual compaction. Summary-route capability v2 distinguishes that choice from
   historical and proposed main routes; explicit Web summaries retain Pro and

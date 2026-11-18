@@ -165,6 +165,58 @@ try {
       } catch (error) { await ctx.fiber.dispose(); throw error; }
     }
 
+    for (const child of [false, true]) {
+      const name = child ? 'child-workspace' : 'moved-workspace';
+      const movedPages = pages(() => ({ kind: 'final', text: 'not delivered', submitFailure: true }));
+      const moved = await fixture(name, movedPages, false, false, {}, true);
+      let fresh, childAgent;
+      try {
+        const actualWorkspace = join(moved.directory, 'actual-worktree');
+        await mkdir(actualWorkspace);
+        if (child) {
+          await moved.host.beginInvocation({ sessionId: moved.agent.id, hostInvocationId: 'child-workspace-invocation', executionDomainId: 'child-workspace-domain', workspace: moved.directory });
+          childAgent = (await moved.ctx.agents.create({
+            sessionId: 'child-current-workspace',
+            meta: { cwd: moved.directory, parentSession: moved.agent.id, origin: 'subagent' },
+            agentOptions: { provider: 'chatgpt-test', model: WEB_MODEL_ID, reasoningEffort: WEB_EFFORT },
+          })).agent;
+        }
+        const initiator = childAgent ?? moved.agent;
+        await moved.ctx.workingDirectory.set(initiator, actualWorkspace);
+        assert.equal(initiator.session.header.cwd, moved.directory, 'the immutable header still names the original project');
+        assert.equal(moved.ctx.workingDirectory.get(initiator.session), actualWorkspace);
+        initiator.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Perform this task in the current worktree once.' }] }));
+        await initiator.whenIdle();
+        assert.equal(movedPages.counts.submits, 1);
+        assert.equal((await moved.host.status()).pending.length, 1);
+        const reopened = new ChatGptWebHost(join(moved.directory, 'private-plugin-state'), 'chatgpt-test', { capabilities: () => ({}), activity() {} }, () => moved.settings);
+        await assert.rejects(reopened.guardSession('fresh-worktree-session', actualWorkspace), /needs recovery/,
+          'interrupted Web work must fence the current workspace after a host directory move');
+        if (child) {
+          assert.equal(movedPages.requests[0].executionDomainId, 'child-workspace-domain', 'a different child workspace must not replace its inherited parent domain');
+          await assert.rejects(reopened.guardSession('fresh-parent-session', moved.directory), /needs recovery/, 'the parent workspace keeps the original unresolved domain');
+        }
+        let nonWebRequests = 0;
+        moved.ctx.llm.registerAdapter(['moved-non-web'], new class extends LlmAdapter {
+          async resolveModel(provider, model) { return { provider, id: model, name: model }; }
+          async *stream() {
+            nonWebRequests++;
+            yield { type: 'block-start', index: 0, blockType: 'text' };
+            yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Unreachable while the workspace is fenced.' } };
+            yield { type: 'finish', reason: { kind: 'stop' } };
+          }
+        });
+        fresh = await moved.ctx.agentLoop.create('fresh-current-workspace', { provider: 'moved-non-web', model: 'fixture' }, { cwd: actualWorkspace });
+        fresh.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'A fresh session cannot bypass the unresolved task.' }] }));
+        await fresh.whenIdle();
+        assert.equal(nonWebRequests, 0, 'a fresh non-Web Agent in the actual worktree must stop before provider dispatch');
+        assert.equal(movedPages.counts.submits, 1);
+        console.log(child
+          ? 'PASS real child workspace: own current directory + inherited parent domain -> both workspaces fenced across restart'
+          : 'PASS real workspace move: host projection -> current execution domain -> restart and fresh non-Web admission stay fenced');
+      } finally { if (fresh) await fresh.whenIdle(); if (childAgent) await childAgent.whenIdle(); await moved.dispose(); }
+    }
+
     const toolPages = pages((_request, index) => index === 1
       ? { kind: 'tool_calls', calls: [{ id: 'read1', name: 'read_file', arguments: { path: 'main.ts' } }] }
       : { kind: 'final', text: 'Reviewed main.ts successfully.' });
