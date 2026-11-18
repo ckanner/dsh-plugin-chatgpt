@@ -217,8 +217,8 @@ const LINE_TRANSLATIONS = {
     "默认 Web 上下文为每个会话代次独立的私有 `project-only` 项目。DSH 负责本地工具和权限，在执行工具前验证完整结构化响应，并让唯一压缩引擎使用 Web 压力与摘要策略。兼容轮次发送增量历史，代次迁移依据 DSH 的权威历史。模型可按调用方的权限用于规划、review 和执行角色。",
   "Interrupted Web work keeps separate dispatch, outcome, local cleanup, and remote-generation facts. Inspecting recovery sends no prompt and executes no tool. Explicitly adopting a captured response may execute its validated tools, but does not automatically request another model answer. Unknown remote or tool outcomes fence the execution domain; unknown website usage remains unknown.":
     "被中断的 Web 工作分别保留派发、结果、本地清理和远端生成事实。检查恢复不发送 prompt，也不执行工具。显式采纳已捕获响应可能执行其中已验证的工具，但不会自动请求下一次模型回答。远端或工具结果未知时阻断执行域；网页用量未知就保持 unknown。",
-  "Real macOS, a signed-in ChatGPT account, and the current website layout have not completed acceptance. Media upload and automatic format repair are unavailable; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.":
-    "真实 macOS、已登录 ChatGPT 账号和当前网页布局尚未完成验收。未提供媒体上传和自动格式修复；网页上下文已满或项目创建存在歧义时保守阻断。启用候选版本前，请阅读完整的 [Web Pro 设置、预算、恢复与验收边界](web-pro.zh.md)。",
+  "Signed-in macOS Desktop use against the current ChatGPT website still needs end-to-end acceptance. Durable image uploads, bounded syntax correction, and explicit discard of terminal rejected responses are implemented and covered by offline fixtures. Image consumption by the model is unverified; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.":
+    "macOS Desktop 使用已登录账号访问当前 ChatGPT 网页的端到端验收仍未完成。已实现持久图片上传、有界语法修正及完整拒绝响应的显式丢弃，并覆盖离线 fixture。模型是否实际消费图片仍未验证；网页上下文已满或项目创建存在歧义时保守阻断。启用候选版本前，请阅读完整的 [Web Pro 设置、预算、恢复与验收边界](web-pro.zh.md)。",
   "For the existing SIWC models, metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Web Pro has a separate local byte policy described above. Sign-in lives on that row's card.":
     "现有 SIWC 模型的元数据来自账号目录。适配器默认跟随各模型声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算，显式值按填写内容采用。Web Pro 使用上文所述的独立本地字节策略。登录仍在该行的卡片上。",
   "| `src/web/host.ts` and `src/web/integration.ts` | Web binding, execution-domain ownership, public DSH hooks, and recovery adoption. |":
@@ -231,8 +231,8 @@ const LINE_TRANSLATIONS = {
     "代码实际强制的三条 SIWC 规则：",
   "The context and cache behavior in this section describes the existing SIWC models. This bundle inserts one provider row, and that row's plugin owns its model-facing behavior; the layer itself contributes no prompt, tool, or context. Web Pro uses the separate browser and structured-tool contract documented in its guide.":
     "本节的上下文与缓存行为描述现有 SIWC 模型。这个 bundle 插入一个 Provider 行，由该行的插件负责模型行为；配置层自身不增加 prompt、工具或上下文。Web Pro 使用独立的浏览器与结构化工具契约，详见其使用说明。",
-  "- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, text-only input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.":
-    "- **Web Pro 是实验性的独立连接模型** — 其候选版本、宿主补丁要求、未知用量、纯文本输入、恢复阻断与未完成的真实验收均记录在 [Web Pro 使用说明](web-pro.zh.md)。SIWC 的上下文覆盖、图片支持、代理设置和缓存计数不能证明 Web 通道具备相同能力。",
+  "- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, bounded image input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.":
+    "- **Web Pro 是实验性的独立连接模型** — 其候选版本、宿主补丁要求、未知用量、有界图片输入、恢复阻断与未完成的真实验收均记录在 [Web Pro 使用说明](web-pro.zh.md)。SIWC 的上下文覆盖、图片支持、代理设置和缓存计数不能证明 Web 通道具备相同能力。",
 }
 
 /** Lines carried through unchanged: they hold no prose in either language. */

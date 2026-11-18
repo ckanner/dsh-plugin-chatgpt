@@ -1,6 +1,6 @@
 # Durable image and tool-output contract
 
-The adapter sends images from user attachments and tool results, including a
+The SIWC adapter sends images from user attachments and tool results, including a
 PTC program's projected LCU screenshot, through the same Responses request.
 It does not evaluate PTC programs or infer an image from a printed handle. PTC
 and LCU must actually supply a DSH `image` content block alongside their text.
@@ -82,3 +82,21 @@ and stream boundaries, actual reported usage and early reader disposal.
 The existing replay suite and `verify:harness` additionally check serialization
 against the actual DSH BlockAssembler. These are local contract checks; they do
 not run the user's desktop or spend a real subscription allowance.
+
+## Separately connected Web model
+
+`gpt-6-pro-web` uses the same durable DSH `image` references but a separate
+browser upload path, not Responses content arrays. Its user/tool image support
+is declared by `webHostCapabilities.media === 'images'` and versioned
+`imageCapabilities` from `dsh-plugin-chatgpt/web-host`. Plain files are rejected.
+The plugin persists verified private image artifacts, associates each filename
+with its original message and tool call, requires positive upload completion,
+and checks the same attachment names in the accepted user message. The receipt
+retains `modelConsumption: 'unverified'`; UI acceptance is not proof of vision.
+
+The Web provider card exposes image count, per-image and total byte limits under
+`web.imagePolicy`. Limits apply to the actual bootstrap or incremental batch,
+so old accepted prefix images are not read or sent again on continuation.
+Read-only recovery reuses the original artifacts and never repeats an uncertain
+upload. See the [Web image policy and acceptance boundary](web-pro.md#image-input-and-upload-receipts)
+or [中文说明](web-pro.zh.md#图片输入与上传回执) for defaults and live validation requirements.

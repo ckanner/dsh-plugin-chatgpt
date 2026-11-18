@@ -153,6 +153,7 @@ describe('the client Remote table', () => {
       'chatgpt/webConnect',
       'chatgpt/webRecover',
       'chatgpt/webAdopt',
+      'chatgpt/webDiscard',
     ])
   })
 })

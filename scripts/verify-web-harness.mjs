@@ -5,7 +5,7 @@
  * Usage: node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness [/path/to/flywheel]
  */
 import { build } from 'esbuild'
-import { access, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -24,9 +24,15 @@ try {
   // module. Preserve that relationship with the actual checkout manifest.
   await copyFile(join(dsh, 'packages/llm/llm/package.json'), join(root, 'package.json'))
   await mkdir(join(root, 'lib'))
+  // The source attachment backend lazy-loads its actual native image decoder.
+  // Keep its installed dependency beside the bundled verifier without changing
+  // either checkout's dependency directory.
+  await mkdir(join(root, 'lib', 'node_modules'))
+  await symlink(await realpath(join(dsh, 'packages/attachment/attachment-local/node_modules/sharp')), join(root, 'lib', 'node_modules', 'sharp'), 'junction')
   const source = `
     import assert from 'node:assert/strict';
-    import { mkdir, readFile } from 'node:fs/promises';
+    import { createHash } from 'node:crypto';
+    import { mkdir, readFile, writeFile } from 'node:fs/promises';
     import { join } from 'node:path';
     import { Context } from '@deepseek-ai/cordis';
     import AgentRegistry from '@deepseek-ai/dsh-agent';
@@ -42,6 +48,7 @@ try {
     import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native';
     import TokenMeter from '@deepseek-ai/dsh-token-meter';
     import BasicCompaction from '@deepseek-ai/dsh-compaction-basic';
+    import { LocalAttachmentStore } from '@deepseek-ai/dsh-attachment-local';
     import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit';
     import { HarnessAdapter } from ${JSON.stringify(join(plugin, 'src/index.ts'))};
     import * as ChatGPTPlugin from ${JSON.stringify(join(plugin, 'src/index.ts'))};
@@ -80,13 +87,13 @@ try {
             const conversation = request.conversation ?? { id: 'chat-' + index, url: 'https://chatgpt.com/c/chat-' + index, title: request.title };
             const evidence = { adapter: 'chatgpt-dom/1', model: 'GPT-6', effort: 'Pro', accountFingerprint: connection.accountFingerprint, contextPolicy: request.contextPolicy, conversationUrl: conversation.url, capturedAt: Date.now(), bindingDigest: request.bindingDigest };
             const response = await answer(request, index);
-            const text = JSON.stringify({ protocol: WEB_PROTOCOL, requestId: request.requestId, generation: request.generation, ...response });
+            const text = response.rawText ?? JSON.stringify({ protocol: WEB_PROTOCOL, requestId: request.requestId, generation: request.generation, ...response });
             return {
               targetId: 'fixture-tab-' + index,
               async prepare(_request, beforeMutation) { await beforeMutation?.(); return { conversation, evidence }; },
               async inspect() { return { conversation, evidence }; },
               async submit(prompt) { counts.submits++; assert.equal(prompt, request.prompt); if (response.submitFailure) throw new Error('observer lost after submit click'); },
-              async sample() { return { conversation, userMessageId: 'user-' + index, acceptedPrompt: request.prompt, responseId: 'answer-' + index, text, stopVisible: false, thinking: false, finishedActions: true }; },
+              async sample() { return { conversation, userMessageId: 'user-' + index, acceptedPrompt: request.prompt, acceptedMedia: request.media?.map(item => item.uploadName) ?? [], responseId: 'answer-' + index, text, stopVisible: false, thinking: false, finishedActions: true }; },
               async stop() { counts.stops++; return false; },
               async close() { counts.closes++; },
             };
@@ -158,6 +165,92 @@ try {
       await tools.host.guardSession(tools.agent.id, tools.directory);
       console.log('PASS real AgentLoop: captured response -> durable ACK -> one tool -> result -> final');
     } finally { await tools.dispose(); }
+
+    const imagePages = pages(async (request, index) => {
+      assert.equal(request.media.length, 1, 'each delta uploads only its newly owned image');
+      const image = request.media[0];
+      const data = await readFile(image.artifact.path);
+      assert.equal(data.length, image.artifact.bytes);
+      assert.equal(createHash('sha256').update(data).digest('hex'), image.artifact.sha256);
+      assert.equal(image.role, index === 1 ? 'user' : 'tool');
+      assert.ok(request.prompt.includes(image.uploadName), 'the protocol must retain the upload association');
+      if (index === 1) return { kind: 'tool_calls', calls: [{ id: 'capture', name: 'capture_image', arguments: {} }] };
+      assert.equal(typeof image.toolCallId, 'string');
+      assert.equal(JSON.parse(request.prompt).history, 'append-only-delta');
+      return { kind: 'final', text: 'Both owned image occurrences were received by the fixture.' };
+    });
+    const images = await fixture('durable-images', imagePages);
+    try {
+      await images.ctx.plugin(LocalAttachmentStore, { dshHome: join(images.directory, 'attachment-home') });
+      images.settings.imagePolicy.maxImages = 1;
+      const ref = await images.ctx.attachments.saveImage({ mediaType: 'image/png', data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC', 'base64') });
+      let captures = 0;
+      images.ctx.tools.register(defineContentToolFixture({
+        name: 'capture_image', description: 'Return a durable screenshot fixture', parameters: {},
+        async execute() { captures++; return [{ type: 'image', attachment: ref }]; },
+      }));
+      images.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Inspect this image and then obtain the screenshot.' }, { type: 'image', attachment: ref }] }));
+      await images.agent.whenIdle();
+      assert.equal(imagePages.counts.submits, 2);
+      assert.equal(captures, 1);
+      assert.equal(imagePages.requests[0].media[0].attachmentId, ref.attachmentId);
+      assert.equal(imagePages.requests[1].media[0].attachmentId, ref.attachmentId);
+      assert.notEqual(imagePages.requests[0].media[0].uploadName, imagePages.requests[1].media[0].uploadName);
+      assert.equal((await images.host.status()).pending.length, 0);
+      assert.ok((await images.durableEvents()).some(event => event.type === 'assistant/message' && event.data.message.content.some(block => block.type === 'text' && block.text.includes('Both owned image'))));
+      console.log('PASS real attachments: stored user image -> model -> tool image -> delta, original history and associations retained');
+    } finally { await images.dispose(); }
+
+    let correctedRoot;
+    const formatPages = pages((request, index) => {
+      const answer = { protocol: WEB_PROTOCOL, requestId: correctedRoot ?? request.requestId, generation: request.generation, kind: 'final', text: 'Exact completed answer, including punctuation.' };
+      if (index === 1) {
+        correctedRoot = request.requestId;
+        assert.equal(request.media.length, 1);
+        return { rawText: '\\x60\\x60\\x60json\\n' + JSON.stringify(answer) + '\\n\\x60\\x60\\x60' };
+      }
+      assert.equal(request.repairOf.requestId, correctedRoot);
+      assert.equal(JSON.parse(request.prompt).purpose, 'format-repair');
+      assert.equal(request.media, undefined);
+      return answer;
+    });
+    const format = await fixture('format-correction', formatPages);
+    try {
+      await format.ctx.plugin(LocalAttachmentStore, { dshHome: join(format.directory, 'attachment-home') });
+      const ref = await format.ctx.attachments.saveImage({ mediaType: 'image/png', data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC', 'base64') });
+      format.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Return the completed answer in the required response format.' }, { type: 'image', attachment: ref }] }));
+      await format.agent.whenIdle();
+      assert.equal(formatPages.counts.submits, 2);
+      assert.equal((await format.host.status()).pending.length, 0);
+      const answer = (await format.durableEvents()).filter(event => event.type === 'assistant/message');
+      assert.equal(answer.length, 1, 'only the validated correction becomes an authoritative assistant message');
+      assert.equal(answer[0].data.message.content[0].text, 'Exact completed answer, including punctuation.');
+      assert.equal(answer[0].data.message.source.replayState.response.requestId, correctedRoot);
+      await format.host.recover(correctedRoot, false);
+      const artifact = formatPages.requests[0].media[0].artifact;
+      await writeFile(artifact.path, Buffer.from('changed image bytes'));
+      await assert.rejects(format.host.recover(correctedRoot, false), /artifact|digest|image/i);
+      console.log('PASS real image + format correction: original media receipt -> child without re-upload -> one durable host response, changed media rejected on recovery');
+    } finally { await format.dispose(); }
+
+    const rejectedPages = pages(() => ({ kind: 'tool_calls', calls: [{ id: 'invalid', name: 'unregistered_tool', arguments: {} }] }));
+    const rejected = await fixture('explicit-discard', rejectedPages);
+    try {
+      await rejected.send('Use only the tools admitted by this host.');
+      const pending = (await rejected.host.status()).pending;
+      assert.equal(pending.length, 1);
+      const requestId = pending[0].requestIds[0];
+      const inspected = await rejected.host.recover(requestId, false);
+      assert.ok(inspected.rejection);
+      const discarded = await rejected.host.retire(requestId, inspected.rejection.responseDigest, 'discard-rejected-response');
+      assert.equal(discarded.outcome, 'failed');
+      assert.equal(discarded.usage, 'unknown');
+      assert.equal((await rejected.host.status()).pending.length, 0);
+      await assert.rejects(rejected.host.recover(requestId, true), /discarded/);
+      assert.equal(rejectedPages.counts.submits, 1, 'inspection and discard cannot send another prompt');
+      assert.equal((await rejected.durableEvents()).filter(event => event.type === 'assistant/message').length, 0);
+      console.log('PASS real rejected response: inspect -> explicit failed disposition, no fabricated assistant commit or tool execution');
+    } finally { await rejected.dispose(); }
 
     const recoveryPages = pages(() => ({ kind: 'tool_calls', calls: [{ id: 'recover-read1', name: 'read_file', arguments: { path: 'captured.ts' } }] }));
     const recovered = await fixture('recovery', recoveryPages);

@@ -35,6 +35,8 @@ export interface WebTurnRequest {
   generation: number
   bindingDigest: string
   prompt: string
+  /** Verified private image artifacts for this exact prompt delta, never remote URLs. */
+  media?: WebMediaAttachment[]
   title: string
   /** Absolute deadline; queuing, reconnect and cleanup never reset it. */
   deadlineMs: number
@@ -44,6 +46,7 @@ export interface WebTurnRequest {
   maxPromptBytes: number
   maxResponseBytes: number
   onActivity?: (activity: WebActivity) => void
+  repairOf?: { requestId: string; responseDigest: string }
 }
 
 export interface WebEvidence {
@@ -70,6 +73,30 @@ export interface WebFacts {
 
 export interface WebArtifact { path: string; bytes: number; sha256: string }
 
+/** The original authoritative message/block occurrence survives upload and recovery. */
+export interface WebMediaAttachment {
+  version: 1
+  attachmentId: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  messageIndex: number
+  blockIndex: number
+  role: 'user' | 'tool'
+  toolCallId?: string
+  width: number
+  height: number
+  uploadName: string
+  artifact: WebArtifact
+}
+
+/** UI observation proves attachment acceptance for this user message, not model attention. */
+export interface WebMediaReceipt {
+  version: 1
+  userMessageId: string
+  attachments: WebMediaAttachment[]
+  acceptedUploadNames: string[]
+  modelConsumption: 'unverified'
+}
+
 export interface WebTurnResult {
   requestId: string
   text: string
@@ -78,6 +105,7 @@ export interface WebTurnResult {
   artifact: WebArtifact
   facts: WebFacts
   evidence: WebEvidence
+  media?: WebMediaReceipt
 }
 
 export type WebErrorCode = 'AUTH' | 'QUOTA' | 'RATE_LIMIT' | 'CONTEXT_WINDOW_EXCEEDED' |
@@ -102,6 +130,8 @@ export interface WebPageSample {
   /** Stable UI message identity; position or text alone is insufficient. */
   userMessageId?: string
   acceptedPrompt?: string
+  /** Exact filenames positively observed on the same accepted user message. */
+  acceptedMedia?: string[]
   responseId?: string
   text: string
   stopVisible: boolean
@@ -136,7 +166,7 @@ export interface WebJournal {
   request: Omit<WebTurnRequest, 'signal' | 'onActivity'>
   connectionId: string
   accountFingerprint: string
-  phase: 'prepared' | 'container-intent' | 'submit-intent' | 'submitted' | 'captured' | 'acknowledged' | 'failed'
+  phase: 'prepared' | 'container-intent' | 'submit-intent' | 'submitted' | 'captured' | 'acknowledged' | 'failed' | 'format-repair' | 'retired'
   updatedAt: number
   targetId?: string
   conversation?: WebConversation
@@ -144,8 +174,11 @@ export interface WebJournal {
   userMessageId?: string
   responseId?: string
   artifact?: WebArtifact
+  media?: WebMediaReceipt
   facts: WebFacts
   hostCommitId?: string
+  /** Terminal disposition is separate from a successful durable host ACK. */
+  disposition?: { kind: 'format-repair'; nextRequestId: string; responseDigest: string } | { kind: 'retired'; responseDigest: string; at: number; reason: 'user-discarded-invalid-response' }
 }
 
 export const initialWebFacts = (): WebFacts => ({

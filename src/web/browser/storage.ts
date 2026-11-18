@@ -194,12 +194,12 @@ export class BrowserStore {
     await this.assertConversationAvailable(conversationId, requestId)
     await atomicPrivateWrite(join(this.coordinationDir, `conversation-${digest(conversationId)}.json`), JSON.stringify({ version: 1, requestId, journalPath: this.journalPath(requestId) }))
   }
-  async releaseConversation(conversationId: string, requestId: string): Promise<void> {
+  async releaseConversation(conversationId: string, requestId: string, onlyIfOwned = false): Promise<void> {
     const path = join(this.coordinationDir, `conversation-${digest(conversationId)}.json`)
     let existing: { requestId: string }
     try { existing = JSON.parse(await privateRead(path,8192)) as typeof existing }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error }
-    if (existing.requestId !== requestId) throw new Error('Host ACK cannot release another invocation')
+    if (existing.requestId !== requestId) { if (onlyIfOwned) return; throw new Error('Host ACK cannot release another invocation') }
     await rm(path)
     await syncDirectory(this.coordinationDir)
   }

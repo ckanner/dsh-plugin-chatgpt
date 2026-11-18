@@ -1,5 +1,8 @@
 import { CdpPage, openBrowser } from './cdp.ts'
 import { checkDeadline, digest, wait } from './storage.ts'
+import { join } from 'node:path'
+import { assertAcceptedWebMedia, readWebMediaArtifact, validateWebMedia } from '../media.ts'
+import { imageUploadEvidence } from './media-dom.ts'
 import type { WebConnection, WebConversation, WebEvidence, WebPage, WebPageFactory, WebPageSample, WebTurnRequest } from './types.ts'
 
 // Layout reference: steipete/oracle 0a064e7b, modelSelection/thinkingTime/constants.
@@ -293,13 +296,49 @@ export class ChatGptPage implements WebPage {
   }
   async submit(prompt: string): Promise<void> {
     checkDeadline(this.request.deadlineMs, this.request.signal)
+    const media = this.request.media ?? []
+    validateWebMedia(this.request.media)
+    const before = await this.evaluate<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence)
+    if (before.cards.length || before.busy || before.error) throw new Error('Composer contains unexpected or unresolved attachments')
+    const expectedUrl = await this.page.evaluate<string>('location.href')
+    if (new URL(expectedUrl).origin !== 'https://chatgpt.com' || (this.boundConversationUrl && expectedUrl !== this.boundConversationUrl)) throw new Error('Owned conversation changed before upload')
     const focused = await this.page.evaluate<boolean>(`(() => { const e = document.querySelector(${JSON.stringify(COMPOSER)}); if (!e || (e.innerText || e.value || '').trim()) return false; e.focus(); return true; })()`)
     if (!focused) throw new Error('Composer is unavailable or contains unexpected unsent content')
+    if (media.length) {
+      if (!before.scopeReady) throw new Error('The supported composer attachment scope is unavailable')
+      for (const item of media) await readWebMediaArtifact(item, join(this.connection.stateDir, 'images'))
+      checkDeadline(this.request.deadlineMs, this.request.signal)
+      await this.page.setFileInputFiles(media.map(item => item.artifact.path), expectedUrl)
+      const uploadDeadline = Math.min(this.request.deadlineMs, Date.now() + 60_000)
+      let confirmations = 0
+      for (;;) {
+        checkDeadline(uploadDeadline, this.request.signal)
+        if (await this.page.evaluate<string>('location.href') !== expectedUrl) throw new Error('Owned conversation changed during image upload')
+        const uploaded = await this.evaluate<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence)
+        if (!uploaded.scopeReady || uploaded.error || uploaded.cards.some(card => card.failed)) throw new Error('Image upload failed or its composer scope disappeared')
+        const names = uploaded.cards.map(card => card.name)
+        if (uploaded.cards.length > media.length || names.some(name => name && !media.some(item => item.uploadName === name))) throw new Error('Composer received an unexpected image attachment')
+        const complete = !uploaded.busy && uploaded.cards.length === media.length && uploaded.cards.every(card => card.ready && card.name)
+        if (complete) { assertAcceptedWebMedia(media, names); if (++confirmations >= 2) break }
+        else confirmations = 0
+        await wait(150, uploadDeadline, this.request.signal)
+      }
+      // Recheck the bound account/model after a potentially long upload without
+      // navigating away from the composer or recreating a hosted project.
+      if (await this.account() !== this.connection.accountFingerprint) throw new Error('Signed-in account changed during image upload')
+      await this.selectModel(false)
+      const snapshot = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
+      if (snapshot.url !== expectedUrl || snapshot.stopVisible || snapshot.thinkingVisible
+        || (this.request.contextPolicy === 'project-only' && snapshot.url !== this.projectUrl && snapshot.projectUrl !== this.projectUrl)) throw new Error('Conversation ownership changed during image upload')
+      for (const item of media) await readWebMediaArtifact(item, join(this.connection.stateDir, 'images'))
+      const refocused = await this.page.evaluate<boolean>(`(() => { const e = document.querySelector(${JSON.stringify(COMPOSER)}); if (!e || (e.innerText || e.value || '').trim()) return false; e.focus(); return true; })()`)
+      if (!refocused) throw new Error('Composer changed during image upload')
+    }
     await this.page.insertText(prompt)
     const correct = await this.page.evaluate<boolean>(`(() => { const e=document.querySelector(${JSON.stringify(COMPOSER)}); return (e?.value ?? e?.innerText ?? '').replace(/\\r\\n/g,'\\n') === ${JSON.stringify(prompt.replace(/\r\n/g,'\n'))}; })()`)
     if (!correct) throw new Error('Composer did not preserve the full request')
     checkDeadline(this.request.deadlineMs, this.request.signal)
-    const submitted = await this.page.evaluate<boolean>(`(() => { const b=document.querySelector('button[data-testid="send-button"],button[data-testid="composer-send-button"]'); if (!b || b.disabled || b.getAttribute('aria-disabled')==='true') return false; b.click(); return true; })()`)
+    const submitted = await this.page.evaluate<boolean>(`(() => { if(location.href!==${JSON.stringify(expectedUrl)})return false; const uploads=(${imageUploadEvidence.toString()})(); const expected=${JSON.stringify(media.map(item => item.uploadName).sort())}; if(uploads.busy||uploads.error||uploads.cards.some(n=>!n.ready)||JSON.stringify(uploads.cards.map(n=>n.name).sort())!==JSON.stringify(expected))return false; const e=document.querySelector(${JSON.stringify(COMPOSER)}); if((e?.value??e?.innerText??'').replace(/\\r\\n/g,'\\n')!==${JSON.stringify(prompt.replace(/\r\n/g,'\n'))})return false; const b=(e?.closest('form')??document).querySelector('button[data-testid="send-button"],button[data-testid="composer-send-button"]'); if (!b || b.disabled || b.getAttribute('aria-disabled')==='true') return false; b.click(); return true; })()`)
     if (!submitted) throw new Error('Submit control is unavailable')
     this.prompt = prompt
   }
@@ -307,11 +346,25 @@ export class ChatGptPage implements WebPage {
     const snapshot = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
     if (this.request.contextPolicy === 'project-only' && snapshot.url !== this.projectUrl && snapshot.projectUrl !== this.projectUrl) throw new Error('Owned conversation moved outside its bound project')
     if (this.boundConversationUrl && snapshot.url !== this.boundConversationUrl) throw new Error('Owned conversation URL changed during the invocation')
+    const media = this.request.media ?? []
+    const userMedia = new Map<string, ReturnType<typeof imageUploadEvidence>>()
+    for (const message of snapshot.messages.filter(message => message.role === 'user' && !this.baselineIds.has(message.id))) {
+      const observed = await this.evaluate<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence, message.id)
+      userMedia.set(message.id, observed)
+      if (observed.messageText !== undefined && (media.length || observed.cards.length)) message.text = observed.messageText
+    }
     const users = snapshot.messages.filter((message) => message.role === 'user' && !this.baselineIds.has(message.id) && message.text.replace(/\r\n/g,'\n').trim() === this.prompt?.replace(/\r\n/g,'\n').trim())
     if (users.length > 1) throw new Error('Prompt appears more than once in the original conversation')
     // New chats obtain their durable URL asynchronously. Wait for that identity
     // before confirming dispatch, otherwise a crash could bind to a project page.
     const user = /\/c\/[a-zA-Z0-9-]+$/.test(new URL(snapshot.url).pathname) ? users[0] : undefined
+    let acceptedMedia: string[] | undefined
+    if (user) {
+      const observed = userMedia.get(user.id)
+      if (!observed?.scopeReady || observed.busy || observed.error || observed.cards.some(card => !card.ready)) throw new Error('Accepted user message has unresolved image attachments')
+      acceptedMedia = observed.cards.map(card => card.name)
+      assertAcceptedWebMedia(this.request.media, acceptedMedia)
+    }
     if(user&&!this.boundConversationUrl)this.boundConversationUrl=snapshot.url
     const userIndex = user ? snapshot.messages.indexOf(user) : -1
     const following = userIndex < 0 ? [] : snapshot.messages.slice(userIndex + 1)
@@ -322,6 +375,7 @@ export class ChatGptPage implements WebPage {
     return {
       conversation: conversationFromUrl(snapshot.url, this.projectUrl, this.title),
       ...(user ? { userMessageId: user.id, acceptedPrompt: user.text } : {}),
+      ...(acceptedMedia?.length ? { acceptedMedia } : {}),
       ...(answer ? { responseId: answer.id } : {}), text: assistants.map((message) => message.text).join('\n'),
       stopVisible: snapshot.stopVisible, thinking: snapshot.thinkingVisible || following.some((message) => message.thinking),
       finishedActions: Boolean(answer?.finished), ...(snapshot.phase ? { phase: snapshot.phase } : {}), ...(error ? { error } : {}),

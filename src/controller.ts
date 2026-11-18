@@ -110,4 +110,10 @@ export class ChatGptController extends TypertRemoteService {
     if (!this.web) throw new Error('Web host is unavailable')
     return await this.web.recover(requestId, true)
   }
+
+  @Remote
+  async webDiscard(requestId: string, responseDigest: string, confirmation: string): Promise<unknown> {
+    if (!this.web) throw new Error('Web host is unavailable')
+    return await this.web.retire(requestId, responseDigest, confirmation)
+  }
 }

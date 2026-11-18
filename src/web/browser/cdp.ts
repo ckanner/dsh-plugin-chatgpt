@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { atomicPrivateWrite, BrowserStore, checkDeadline, privateRead, processExited, wait } from './storage.ts'
 import { withOwnerLock } from '../store.ts'
 import type { WebConnection } from './types.ts'
+import { composerImageInput } from './media-dom.ts'
 
 interface Pending {
   resolve: (value: Record<string, unknown>) => void
@@ -203,6 +204,22 @@ export class CdpPage {
     await this.cdp.command('Page.navigate', { url }, this.sessionId)
   }
   async insertText(text: string): Promise<void> { await this.cdp.command('Input.insertText', { text }, this.sessionId) }
+  /** Resolve one actual composer input in the bound document; never set a guessed node id. */
+  async setFileInputFiles(files: readonly string[], expectedUrl: string): Promise<void> {
+    const result = await this.cdp.command<{ result: { objectId?: string; subtype?: string }; exceptionDetails?: unknown }>('Runtime.evaluate', {
+      expression: `(() => { if(location.href!==${JSON.stringify(expectedUrl)}) throw new Error('Upload document changed'); const input=(${composerImageInput.toString()})(); if(${files.length}>1&&!input.multiple) throw new Error('Composer does not accept this image batch'); return input; })()`,
+      returnByValue: false,
+    }, this.sessionId)
+    const objectId = result.result.objectId
+    if (result.exceptionDetails || result.result.subtype === 'error' || !objectId) throw new Error('The supported composer image upload input is unavailable')
+    try { await this.cdp.command('DOM.setFileInputFiles', { files: [...files], objectId }, this.sessionId) }
+    finally { await this.cdp.command('Runtime.releaseObject', { objectId }, this.sessionId).catch(() => {}) }
+    const selected = await this.evaluate<{ url: string; files: Array<{ name: string; size: number }> }>(`(() => { const input=(${composerImageInput.toString()})(); return {url:location.href,files:[...input.files??[]].map(f=>({name:f.name,size:f.size}))}; })()`)
+    // A React uploader may immediately clear FileList. Upload completion is
+    // proved separately from composer tiles, never from this setter returning.
+    if (selected.url !== expectedUrl) throw new Error('Upload document changed after file selection')
+    if (selected.files.length && (selected.files.length !== files.length || selected.files.some((file, index) => file.name !== files[index]!.split(/[\\/]/).at(-1)))) throw new Error('Browser selected different image files')
+  }
   async escape(): Promise<void> {
     await this.cdp.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, this.sessionId)
     await this.cdp.command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, this.sessionId)

@@ -27,6 +27,7 @@ declare module '@deepseek-ai/schemastery' {
   export interface Schema<T = unknown> {
     step(value: number): Schema<T>
     min(value: number): Schema<T>
+    max(value: number): Schema<T>
     /** Mark the field as required. */
     required(): Schema<T>
     /** Supply a default for an omitted field. */

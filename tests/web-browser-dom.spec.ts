@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { CdpConnection, CdpPage } from '../src/web/browser/cdp.ts'
 import { modelSelectionAction, snapshotPage, projectSettingsEvidence, projectSourcesEvidence, projectSharingEvidence } from '../src/web/browser/page.ts'
 import { wait } from '../src/web/browser/storage.ts'
+import { imageUploadEvidence } from '../src/web/browser/media-dom.ts'
 
 test('production DOM adapter runs against real Chromium fixtures', async (t) => {
   const executable=process.env.CHATGPT_WEB_TEST_CHROMIUM
@@ -77,6 +78,25 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
       assert.equal(await call(projectSharingEvidence),false)
       await html('<div role="dialog"><span>Only you</span><a data-testid="project-public-link" href="https://example.invalid">Public link</a></div>')
       assert.equal(await call(projectSharingEvidence),false)
+    })
+
+    await t.test('CDP selects exact private image bytes and DOM completion never follows a preview alone', async () => {
+      const name = `dsh-${'a'.repeat(20)}-${'b'.repeat(20)}.png`
+      const path = join(root, name)
+      const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/an8AAAAASUVORK5CYII=', 'base64')
+      await writeFile(path, bytes, { mode: 0o600 })
+      await html('<form data-chatgpt-composer><textarea id="prompt-textarea"></textarea><input type="file" multiple><button data-testid="send-button">Send</button></form>')
+      await page.evaluate<void>(`document.querySelector('input').addEventListener('change',e=>{const file=e.target.files[0];const tile=document.createElement('div');tile.dataset.testid='file-upload';tile.dataset.filename=file.name;tile.dataset.uploadStatus='uploading';tile.innerHTML='<span role="progressbar"></span>';document.querySelector('form').append(tile);window.fixtureImageBytes=file.arrayBuffer().then(bytes=>[...new Uint8Array(bytes)]);})`)
+      await page.setFileInputFiles([path], 'about:blank')
+      const pending = await call<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence)
+      assert.equal(pending.cards[0]?.ready, false)
+      assert.equal(pending.busy, true)
+      assert.deepEqual(await page.evaluate<number[]>('window.fixtureImageBytes'), [...bytes])
+      await page.evaluate<void>(`const tile=document.querySelector('[data-testid="file-upload"]');tile.dataset.uploadStatus='complete';tile.dataset.fileId='remote-fixture-image';tile.querySelector('[role="progressbar"]').remove()`)
+      const complete = await call<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence)
+      assert.equal(complete.cards[0]?.name, name)
+      assert.equal(complete.cards[0]?.ready, true)
+      await assert.rejects(() => page.setFileInputFiles([path], 'https://chatgpt.com/c/different'), /unavailable/)
     })
 
     await page.close();cdp=undefined

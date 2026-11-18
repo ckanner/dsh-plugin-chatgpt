@@ -29,7 +29,7 @@ Use this model wherever a compatible DSH caller accepts a provider/model/effort 
 | Model discovery | Account catalog and the existing SIWC metadata policy | Explicit Web model, enabled in the provider card |
 | Credentials | Plugin-managed SIWC grant | Browser-managed website login; separately observed account fingerprint |
 | Context budget | SIWC model metadata and its configured overrides | Local Web byte policy plus the host's compaction policy |
-| Images | The existing SIWC attachment/vision contract | Unavailable in this candidate; original image/file blocks are rejected |
+| Images | The existing SIWC attachment/vision contract | Bounded PNG/JPEG/WebP/GIF uploads from durable user/tool image references; ordinary files are rejected |
 | Usage | Counters reported by the SIWC route | Unknown when the website provides no authoritative counters |
 
 Signing in or out of SIWC does not sign the dedicated browser in or out. SIWC's `contextWindowLimit`, `modelContextWindowLimits`, and server-side `proxyUrl` do not configure Web context or Chrome networking. An enabled Web model can appear in the picker before its browser account is connected; discovery is not a live readiness check.
@@ -93,9 +93,17 @@ Failure to verify those conditions stops the call. Managed mode does not fall ba
 
 The model returns a plugin-defined JSON envelope containing either final text or a batch of local tool calls. Before exposing any tool call, the plugin validates the complete response, request and generation identity, duplicate keys, nesting, call IDs, tool names, and every argument against the admitted JSON Schema. A malformed batch executes no partial subset of its tools.
 
-DSH executes accepted tools through its normal tool runtime, working directory, sandbox, and permissions. The website does not directly execute those local tools. Hosted website apps are a separate capability and must satisfy the managed-context checks; local sandbox settings are not evidence about remote app behavior. This candidate provides no automatic format-repair request when the envelope is invalid.
+DSH executes accepted tools through its normal tool runtime, working directory, sandbox, and permissions. The website does not directly execute those local tools. Hosted website apps are a separate capability and must satisfy the managed-context checks; local sandbox settings are not evidence about remote app behavior. A syntax-only rejection can trigger a bounded format correction after the complete answer and local cleanup are confirmed; no tool from a rejected response is exposed.
 
 Readable project/conversation titles are derived locally from the task and generation; setting them does not spend another Pro call. User-changed owned titles are preserved when the adapter can identify the change. If the DSH profile enables model-generated session titles, those remain separate auxiliary model calls.
+
+### Format corrections and rejected responses
+
+`maxFormatRepairs` defaults to **1** and accepts **0–2** in the Web card or profile budget. A correction is a separate model turn in the same owned conversation. It carries the captured answer and its digest, without replaying the task, history, or images. Every attempt shares the original absolute deadline, input limit, output reserve, and cumulative byte budget. Its usage remains unknown.
+
+The correction must preserve meaning mechanically: one outer JSON Markdown fence may be removed only when the enclosed complete envelope passes the original validator and every field, tool ID, name, and argument stays identical. Unstructured text may only be wrapped unchanged as final text. Wrong identities, duplicate keys, invalid tool schemas, unknown tools, and changed arguments remain rejected. Correcting an ambiguous tool request is unavailable. The raw captured artifacts and parent/child identities remain private and durable; a syntax correction does not acknowledge an answer. Only the validated final attempt receives the normal durable host ACK. The next model call starts a fresh generation from authoritative DSH history.
+
+A failed or interrupted correction does not resend automatically during recovery. An unknown submission remains blocked. For a complete rejected result, **Inspect captured result** exposes the rejection reason and digest. **Discard rejected response** is an explicit user action bound to that inspected digest: it preserves the evidence, ends the request as failed, and frees only its proven terminal capacity. It never acknowledges success, runs tools, or settles another unknown call/tool. Valid delivered responses require normal adoption and cannot use discard. A new task or generation remains an explicit next action.
 
 ## 6. Long conversations and compaction
 
@@ -119,9 +127,26 @@ The complete serialized prompt, including protocol and tool-schema overhead, mus
 | `maxGenerations` | 16 | Generation limit for a continuing main conversation |
 | `maxToolCalls` | 16 | Maximum validated tool calls in one response |
 | `maxJsonDepth` | 48 | Maximum response JSON nesting |
+| `maxFormatRepairs` | 1 | Additional syntax correction turns, configurable from 0 to 2 |
 | `wallTimeoutMs` | 60 minutes | Local invocation wall budget; an outer caller may impose less |
 
 These are local policies, not claims about an official GPT-6 or ChatGPT token window. The token-meter hint is derived from the byte budget; the final serialized-byte guard still applies. The response limit is separate from the smaller output reserve. Raising local limits cannot prove the website will accept a larger request.
+
+### Image input and upload receipts
+
+The Web model declares image input for user attachments and image-bearing tool results, including LCU screenshots. DSH must supply an actual durable `image` content block. A screenshot handle or a filename printed by a tool is not an image. The attachment service supplies the stored normalized image and validates its reference; the plugin checks the returned format, dimensions, encoded byte length and file signature before preparing a private, hashed upload artifact. Original host history keeps its durable references. Ordinary `file` blocks, unavailable attachments and unsupported roles or formats fail before browser dispatch. Host-offloaded images remain explicit absence notices and are not read again.
+
+Use the provider card's **Image upload limits** fields, or `web.imagePolicy` in a profile, to configure the limits below. They govern the actual upload batch: a compatible conversation uploads only new authoritative messages; starting a new generation uploads the current bounded bootstrap. Previously accepted prefix images do not count again and are not downloaded or uploaded again after restart. The bootstrap must fit on its own; use host compaction/offloading when it does not. These are local admission limits, not a claim about the website's quota.
+
+| `web.imagePolicy` field | Default | Absolute maximum |
+|---|---|---|
+| `maxImages` | 10 images per upload | 20 |
+| `maxImageBytes` | 20 MiB per image | 20 MiB |
+| `maxTotalBytes` | 32 MiB per upload | 64 MiB |
+
+Each image has a deterministic upload name linked to its original message position, role and, for tool output, `toolCallId`. The prompt carries this association and image metadata, without embedding image bytes in text. The browser sets the actual composer file input, checks exact attachment names and positive upload completion, then rechecks account, model and conversation ownership before Send. A local preview, preallocated file ID, disappearing spinner or enabled Send button alone is insufficient. Unsupported layouts that do not expose positive completion fail closed.
+
+After submission, the same image names must appear in the exact accepted user message. The durable receipt records that UI acceptance with `modelConsumption: 'unverified'`: it does not prove that the model interpreted the pixels. Capture/recovery retains the original private artifacts and attachment associations and does not re-upload an uncertain turn. Preserve the connection's recovery directory while a turn needs recovery; missing or altered bytes prevent adoption. Real signed-in account acceptance and visual task quality remain to be checked separately.
 
 ## 7. Activity, concurrency, and cancellation
 
@@ -167,6 +192,10 @@ This is a binding fragment, not a complete Flywheel task configuration. The SDK 
 
 The public `chatgptWebHost` service negotiates the exact binding and invocation identity. Its version 1 receipt names transport, connection, account, context policy, observation mode, and unknown usage. The `dsh-plugin-chatgpt/web-host` export advertises `webHostCapabilities` and `web-runtime/1`; importing it is a static contract check and never launches Chrome or verifies an account.
 
+Before submitting a prompt, an SDK caller can obtain `chatgptWebHost.recoveryCheckpoint(identity)`. After the original SDK owner exits, `readWebInvocationRecovery(checkpoint)` from `dsh-plugin-chatgpt/web-recovery` reads the original private host, browser, artifact, image, and commit evidence. This narrow entry point starts no SDK or browser, writes no journal, adopts no response, and sends no prompt. It rejects changes to the recorded identities, settings, execution-domain revision or artifacts, and incomplete tool or remote outcomes. A profile-managed checkpoint freezes the original settings; the next live SDK admission still validates the current profile.
+
+A committed model answer alone does not prove that the original SDK task finished. Flywheel additionally requires its original worker checkpoint, prompt/wait/terminal and cleanup evidence, and the unchanged candidate/role guard. It can reconcile a positively unsent invocation, an already completed SDK invocation whose result delivery was lost, or an explicitly discarded invalid result after confirmed SDK shutdown. Adopting only a final, tool response, or summary without the original complete SDK business evidence leaves the task blocked. Recovery retains unknown usage and never automatically replays the original task.
+
 Flywheel keeps its existing budget and permission rules. A hard token budget can block later calls when actual usage is unknown. Selecting this model does not silently relax that rule, and the plugin does not estimate a token count and report it as authoritative usage or cost.
 
 ## 10. Current acceptance boundaries
@@ -174,10 +203,10 @@ Flywheel keeps its existing budget and permission rules. A hard token budget can
 | Area | Current boundary |
 |---|---|
 | Live account and UI | Real macOS, a signed-in ChatGPT account, and the current website layout have not passed end-to-end acceptance. Account entitlement and matching visible controls are required at runtime. |
-| Browser environment | A Chromium smoke attempt in the available sandbox failed at socket setup with `EPERM`. That is an environment limitation, not evidence that live Chrome control passed. |
-| Media | No image or file upload path is enabled. Original attachments are rejected before text-only projection; they are not silently omitted. An authorized local text-reading tool remains available when the role permits it. |
+| Browser environment | CI runs the exact patched host and an isolated real Chrome DOM fixture on Linux and macOS. The local sandbox cannot launch Chrome because socket setup returns `EPERM`. The CI fixture contains no signed-in account and does not validate the current ChatGPT website. |
+| Media | Durable PNG/JPEG/WebP/GIF user/tool images, per-upload limits, private-artifact integrity, CDP file selection and exact message acceptance are implemented and covered by focused fixtures. Live website upload controls and model vision consumption remain unverified. Ordinary file blocks are rejected explicitly. |
 | Website full-context refusal | Local byte pressure and generation migration are implemented. A website refusal does not yet provide reliable proof of no side effect; ambiguous submission stays fenced instead of automatically starting a replacement chat. |
-| Invalid response format | No automatic repair, resend, or retire/discard action. Whole-response validation fails before tool exposure, retains the artifact, and keeps its capacity blocked; read-only recovery does not make invalid JSON adoptable. |
+| Invalid response format | Bounded syntax correction preserves exact captured content and proposed actions. Uncorrectable terminal results support explicit digest-bound discard; unknown dispatch, remote generation, local cleanup, or tool outcomes remain blocked. |
 | Project creation interruption | An uncertain creation can require manual identification of the owned project. Automatic reconciliation of that ambiguity is unavailable; repeated new project creation is blocked. |
 | Browser history and names | Owned projects/chats are retained and naming logic is implemented. Real-account history visibility, revisiting, and current UI naming controls remain part of live acceptance. |
 | Usage and throughput | Website token/cost counters stay unknown. Offline success does not measure Pro latency, capacity, quota consumption, or model quality. |
@@ -199,5 +228,7 @@ The Web harness exercise uses real DSH AgentLoop, compaction, tool execution, ho
 
 - [Model and local policy](../src/web/policy.ts), [settings](../src/web/config.ts), and [native model registration](../src/index.ts).
 - [Public host integration](../src/web/integration.ts) and [execution-domain ownership](../src/web/host.ts).
+- [Read-only invocation recovery](../src/web/recovery.ts); callers must separately verify their original SDK task completion.
 - [Incremental history and durable delivery](../src/web/session-coordinator.ts), [tool protocol](../src/web/protocol.ts), and [browser transport](../src/web/transport.ts).
+- [Durable image preparation](../src/web/media.ts), [image limits](../src/web/image-policy.ts), and [browser upload evidence](../src/web/browser/media-dom.ts). Media tests cover source associations, changed artifacts, explicit upload completion, incremental restart and recovery without re-upload; the Chromium fixture exercises actual file selection separately from live-account acceptance.
 - [DSH compatibility patch and build instructions](../compat/README.md).

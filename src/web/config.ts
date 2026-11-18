@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { budgetPolicy, DEFAULT_WEB_BUDGET, exactKeys, nonempty, objectValue, type WebBudgetPolicy, WebPolicyError } from './policy.ts'
 import { WebStore } from './store.ts'
 import type { WebConnection, WebContextPolicy } from './browser/types.ts'
+import { DEFAULT_WEB_IMAGE_LIMITS, imageLimits, type WebImageLimits } from './image-policy.ts'
 
 export interface WebSettings {
   version: 1
@@ -11,6 +12,7 @@ export interface WebSettings {
   connections: Record<string, WebConnection>
   contextPolicy: WebContextPolicy
   budget: WebBudgetPolicy
+  imagePolicy: WebImageLimits
 }
 
 export function defaultWebSettings(stateDir: string): WebSettings {
@@ -23,12 +25,13 @@ export function defaultWebSettings(stateDir: string): WebSettings {
       },
     },
     budget: { ...DEFAULT_WEB_BUDGET },
+    imagePolicy: { ...DEFAULT_WEB_IMAGE_LIMITS },
   }
 }
 
 export function parseWebSettings(input: unknown): WebSettings {
   const raw = objectValue(input, 'web settings')
-  exactKeys(raw, ['version', 'enabled', 'activeConnection', 'connections', 'contextPolicy', 'budget'], 'web settings')
+  exactKeys(raw, ['version', 'enabled', 'activeConnection', 'connections', 'contextPolicy', 'budget', 'imagePolicy'], 'web settings')
   if (raw.version !== 1 || typeof raw.enabled !== 'boolean') throw new WebPolicyError('unsupported Web settings version or enabled value')
   const activeConnection = nonempty(raw.activeConnection, 'activeConnection', 64)
   const entries = objectValue(raw.connections, 'connections')
@@ -49,7 +52,7 @@ export function parseWebSettings(input: unknown): WebSettings {
   }
   if (!Object.hasOwn(connections, activeConnection)) throw new WebPolicyError('activeConnection does not exist')
   if (raw.contextPolicy !== 'project-only' && raw.contextPolicy !== 'personalized') throw new WebPolicyError('unknown hosted-context policy')
-  return { version: 1, enabled: raw.enabled, activeConnection, connections, contextPolicy: raw.contextPolicy, budget: budgetPolicy(raw.budget) }
+  return { version: 1, enabled: raw.enabled, activeConnection, connections, contextPolicy: raw.contextPolicy, budget: budgetPolicy(raw.budget), imagePolicy: imageLimits(raw.imagePolicy) }
 }
 
 /** Profile-provided settings win; card settings otherwise persist in the plugin's private directory. */

@@ -101,7 +101,7 @@ The default Web context is a private `project-only` project for each session gen
 
 Interrupted Web work keeps separate dispatch, outcome, local cleanup, and remote-generation facts. Inspecting recovery sends no prompt and executes no tool. Explicitly adopting a captured response may execute its validated tools, but does not automatically request another model answer. Unknown remote or tool outcomes fence the execution domain; unknown website usage remains unknown.
 
-Real macOS, a signed-in ChatGPT account, and the current website layout have not completed acceptance. Media upload and automatic format repair are unavailable; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.
+Signed-in macOS Desktop use against the current ChatGPT website still needs end-to-end acceptance. Durable image uploads, bounded syntax correction, and explicit discard of terminal rejected responses are implemented and covered by offline fixtures. Image consumption by the model is unverified; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.
 
 -----
 
@@ -204,7 +204,7 @@ The adapter preserves reusable prefixes and opaque reasoning across tool turns a
 
 ## Known Limitations and Deferred Work
 
-- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, text-only input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.
+- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, bounded image input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.
 
 - **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: "in-history"`; see [the replay design and validation plan](docs/cache-replay.md).
 

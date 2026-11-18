@@ -6,17 +6,19 @@ import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { WebSettingsStore, type WebSettings } from './config.ts'
 import { WebStore } from './store.ts'
 import { canonical, digest, nonempty, WEB_EFFORT, WEB_MODEL_ID, WEB_PROTOCOL, WebPolicyError } from './policy.ts'
-import { WebSessionCoordinator, type WebCallContext, type WebDelivery, type WebReplayReference } from './session-coordinator.ts'
+import { WebSessionCoordinator, type WebCallContext, type WebDelivery, type WebReplayReference, type WebRetirement } from './session-coordinator.ts'
 import { WebTransport } from './transport.ts'
 import type { WebFacts, WebPageFactory } from './browser/types.ts'
 import { deliveryChunks } from './chunks.ts'
+import { WEB_IMAGE_POLICY } from './media.ts'
+import { createWebRecoveryCheckpoint, type WebRecoveryIdentity, type WebRecoveryCheckpoint } from './recovery.ts'
 
 export const webHostCapabilities = Object.freeze({
   version: 1, runtimeVersion: 'web-runtime/1', providerModel: WEB_MODEL_ID,
   transport: 'chatgpt-web', observation: 'opaque', usage: 'unknown',
   requiredHost: Object.freeze({ replayVeto: 1, durableResponseAck: 1, summaryRoute: 1, durableSummaryAck: 1, pressurePolicy: 1 }),
   // Capability declarations are not a live account or browser compatibility probe.
-  media: 'unavailable', oracleRuntime: false,
+  media: 'images', imageCapabilities: WEB_IMAGE_POLICY, oracleRuntime: false,
 })
 
 export interface WebBindingRequest {
@@ -50,6 +52,7 @@ interface CallRecord {
   facts: WebFacts
   committed: boolean
   conversationUrl?: string
+  retired?: WebRetirement
 }
 
 interface InvocationRecord {
@@ -79,6 +82,8 @@ interface HostRegistry {
 export interface WebHostEnvironment {
   capabilities(): { replayVeto?: number; durableResponseAck?: number; summaryRoute?: number; durableSummaryAck?: number; pressurePolicy?: number; recoveredResponse?: number; recoveredSummary?: number }
   activity(value: unknown): void
+  /** Authoritative durable DSH image store; media never interprets arbitrary paths or URLs. */
+  resolveAttachments?(): unknown
   /** Construction-only test seam; production always uses the managed CDP page. */
   pageFactory?: WebPageFactory
   isAgentBusy?(sessionId: string): boolean
@@ -183,7 +188,7 @@ export class ChatGptWebHost {
 
   private unresolved(record: InvocationRecord): boolean {
     return record.fence !== undefined || Object.entries(record.toolIntents).some(([id, tool]) => !tool.completed && !this.liveTools.has(`${record.hostInvocationId}:${id}`))
-      || record.calls.some(call => !call.committed && !this.callIsLive(call.requestId) && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
+      || record.calls.some(call => !call.committed && !call.retired && !this.callIsLive(call.requestId) && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
   }
 
   private callIsLive(requestId: string): boolean {
@@ -309,9 +314,9 @@ export class ChatGptWebHost {
           if (!call) { call = { requestId, sessionId: context.sessionId, kind: context.kind, connectionKey: key, facts, committed: false }; invocation.calls.push(call) }
           else call.facts = facts
           if (!this.liveCalls.has(requestId) && (facts.dispatch === 'unknown' || facts.remoteGeneration === 'unknown')) invocation.fence = 'remote dispatch or generation is unknown'
-          else if (invocation.calls.every(entry => entry.committed || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(invocation.toolIntents).every(tool => tool.completed)) delete invocation.fence
+          else if (invocation.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(invocation.toolIntents).every(tool => tool.completed)) delete invocation.fence
         })
-      }, (context, activity) => this.environment.activity({ ...activity as object, executionDomainId: context.executionDomainId, hostInvocationId: context.hostInvocationId, sessionId: context.sessionId }))
+      }, (context, activity) => this.environment.activity({ ...activity as object, executionDomainId: context.executionDomainId, hostInvocationId: context.hostInvocationId, sessionId: context.sessionId }), this.environment.resolveAttachments ? { resolveAttachments: () => this.environment.resolveAttachments!() } : {})
       this.coordinators.set(key, coordinator)
     }
     return { key, transport, coordinator }
@@ -338,7 +343,7 @@ export class ChatGptWebHost {
       const facts = (error as { facts?: WebFacts }).facts
       if (!facts || facts.dispatch !== 'not-dispatched' || facts.localCleanup !== 'confirmed' || !facts.replayAllowed) {
         const reason = error instanceof Error ? error.message.slice(0, 512) : 'Web call needs recovery'
-        const blocked = await this.change(registry => { const record = registry.invocations[context.hostInvocationId]; if (record?.calls.some(call => !call.committed)) { record.fence = reason; return true }; return false })
+        const blocked = await this.change(registry => { const record = registry.invocations[context.hostInvocationId]; if (record?.calls.some(call => !call.committed && !call.retired)) { record.fence = reason; return true }; return false })
         if (blocked) await this.stopDomain(context.executionDomainId, reason)
       }
       throw error
@@ -349,6 +354,7 @@ export class ChatGptWebHost {
     const registry = await this.registry()
     const invocation = registry.invocations[reference.hostInvocationId]
     const call = invocation?.calls.find(call => call.requestId === reference.requestId)
+    if (call?.retired) throw new WebPolicyError('a discarded response cannot be durably committed')
     if (!call || call.sessionId !== reference.sessionId || invocation?.executionDomainId !== reference.executionDomainId) throw new WebPolicyError('host commit has no matching Web invocation')
     try {
       if (!durable) throw new WebPolicyError('DSH did not confirm a durable host commit; Web response remains pending')
@@ -366,7 +372,7 @@ export class ChatGptWebHost {
         saved.committed = true
         saved.conversationUrl = reference.conversationUrl
         if (reference.kind === 'main' && reference.sessionId === record.sessionId && !blocks.some(block => (block as { type?: string }).type === 'tool-call')) { record.finished = true; record.completed = true }
-        if (record.calls.every(entry => entry.committed || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(record.toolIntents).every(tool => tool.completed)) delete record.fence
+        if (record.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(record.toolIntents).every(tool => tool.completed)) delete record.fence
       })
     } catch (error) {
       this.liveCalls.delete(reference.requestId)
@@ -492,7 +498,7 @@ export class ChatGptWebHost {
     // Live ownership affects admission/queuing, never the business evidence
     // returned at the process boundary while a response or tool is unfinished.
     const unknown = this.unresolved(record) || Object.values(record.toolIntents).some(tool => !tool.completed)
-      || record.calls.some(call => !call.committed && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
+      || record.calls.some(call => !call.committed && !call.retired && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
     const dispatch = record.calls.some(call => call.facts.dispatch === 'unknown') ? 'unknown' as const
       : record.calls.some(call => call.facts.dispatch === 'confirmed') ? 'dispatched' as const : 'not-dispatched' as const
     return {
@@ -501,8 +507,17 @@ export class ChatGptWebHost {
       remoteGeneration: record.calls.some(call => call.facts.remoteGeneration === 'unknown') ? 'unknown' as const
         : record.calls.some(call => call.facts.remoteGeneration === 'running') ? 'running' as const : 'idle' as const,
       localCleanupConfirmed: record.calls.every(call => call.facts.localCleanup === 'confirmed'), usageStatus: 'unknown' as const,
-      invocations: record.calls.map(call => ({ requestId: call.requestId, sessionId: call.sessionId, kind: call.kind, facts: call.facts, committed: call.committed })),
+      invocations: record.calls.map(call => ({ requestId: call.requestId, sessionId: call.sessionId, kind: call.kind, facts: call.facts, committed: call.committed, ...(call.retired ? { retired: call.retired } : {}) })),
     }
+  }
+
+  /** Freeze original invocation ownership before the caller submits its prompt. */
+  async recoveryCheckpoint(input: WebRecoveryIdentity): Promise<WebRecoveryCheckpoint> {
+    await this.queue
+    return await createWebRecoveryCheckpoint({
+      stateDir: this.stateDir, route: this.route, settings: await this.settings.read(),
+      profileManaged: this.settings.managedByProfile(),
+    }, input)
   }
 
   async status() {
@@ -515,7 +530,7 @@ export class ChatGptWebHost {
       // Static reads never launch Chrome, inspect personal tabs or spend quota.
       liveVerified: false,
       recentConversations: Object.values(registry.invocations).flatMap(record => record.calls).filter(call => call.committed && call.conversationUrl !== undefined).slice(-5).map(call => ({ sessionId: call.sessionId, kind: call.kind, url: call.conversationUrl! })),
-      pending: Object.values(registry.invocations).filter(record => this.unresolved(record)).map(record => ({ sessionId: record.sessionId, hostInvocationId: record.hostInvocationId, reason: record.fence ?? 'pending host/tool commit', requestIds: record.calls.filter(call => !call.committed).map(call => call.requestId) })),
+      pending: Object.values(registry.invocations).filter(record => this.unresolved(record)).map(record => ({ sessionId: record.sessionId, hostInvocationId: record.hostInvocationId, reason: record.fence ?? 'pending host/tool commit', requestIds: record.calls.filter(call => !call.committed && !call.retired).map(call => call.requestId) })),
     }
   }
 
@@ -550,6 +565,7 @@ export class ChatGptWebHost {
     const active = await this.connection(await this.settings.read())
     if (active.key !== call.connectionKey) throw new WebPolicyError('recovery requires the original Web connection')
     const observed = await active.coordinator.recover(requestId)
+    if (observed.retired) { await this.finishRetirement(requestId, observed.retired); if (adopt) throw new WebPolicyError('a discarded response cannot be adopted'); return observed }
     if (!adopt) return observed
     const delivery = await active.coordinator.delivery(requestId)
     if (!delivery) throw new WebPolicyError('no validated response is available to adopt')
@@ -557,6 +573,46 @@ export class ChatGptWebHost {
     if (this.environment.capabilities()[required] !== 1 || !this.environment.adopt) throw new WebPolicyError('the host does not provide this recovered-response adoption transaction; the captured result is read-only')
     await this.authorizeRecovery(delivery.reference)
     return await this.environment.adopt(delivery)
+  }
+
+  private assertRetirementOwner(registry: HostRegistry, requestId: string): { owner: InvocationRecord; call: CallRecord } {
+    const owner = Object.values(registry.invocations).find(record => record.calls.some(call => call.requestId === requestId))
+    const call = owner?.calls.find(call => call.requestId === requestId)
+    if (!owner || !call || call.committed) throw new WebPolicyError('discard requires an uncommitted owned response')
+    if (this.callIsLive(requestId) || this.environment.isAgentBusy?.(call.sessionId)) throw new WebPolicyError('wait for the original Agent to stop before discarding its response')
+    for (const record of Object.values(registry.invocations).filter(entry => entry.executionDomainId === owner.executionDomainId)) {
+      if (Object.values(record.toolIntents).some(tool => !tool.completed)) throw new WebPolicyError('discard cannot settle an unresolved local tool outcome')
+      if (record !== owner && this.unresolved(record)) throw new WebPolicyError('another invocation in the execution domain needs recovery')
+      if (record.calls.some(other => other.requestId !== requestId && !other.committed && !other.retired && !(other.facts.dispatch === 'not-dispatched' && other.facts.localCleanup === 'confirmed' && other.facts.replayAllowed))) throw new WebPolicyError('another response in the execution domain needs recovery')
+    }
+    return { owner, call }
+  }
+
+  private async finishRetirement(requestId: string, retired: WebRetirement): Promise<void> {
+    await this.change(registry => {
+      const { owner, call } = this.assertRetirementOwner(registry, requestId)
+      if (call.retired && canonical(call.retired) !== canonical(retired)) throw new WebPolicyError('discard conflicts with the existing durable disposition')
+      call.retired = retired
+      this.liveCalls.delete(requestId)
+      if (owner.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(owner.toolIntents).every(tool => tool.completed)) {
+        delete owner.fence
+        owner.finished = true
+        owner.completed = false
+      }
+    })
+  }
+
+  /** Human UI action, separate from read-only recovery and response adoption. */
+  async retire(requestId: string, responseDigest: string, confirmation: string): Promise<unknown> {
+    nonempty(requestId, 'requestId', 200)
+    if (confirmation !== 'discard-rejected-response' || !/^[a-f0-9]{64}$/.test(responseDigest)) throw new WebPolicyError('explicit discard confirmation and the inspected response digest are required')
+    await this.queue
+    const { call } = this.assertRetirementOwner(await this.registry(), requestId)
+    const active = await this.connection(await this.settings.read())
+    if (active.key !== call.connectionKey) throw new WebPolicyError('discard requires the original Web connection')
+    const retired = await active.coordinator.retire(requestId, responseDigest)
+    await this.finishRetirement(requestId, retired)
+    return { requestId, retired, outcome: 'failed', usage: 'unknown' }
   }
 
   /** Adoption can settle this response, never unrelated remote/tool uncertainty. */
@@ -573,7 +629,7 @@ export class ChatGptWebHost {
     for (const record of Object.values(registry.invocations).filter(entry => entry.executionDomainId === owner.executionDomainId)) {
       if (Object.values(record.toolIntents).some(tool => !tool.completed)) throw new WebPolicyError('recovery cannot settle an unresolved local tool outcome')
       if (record !== owner && this.unresolved(record)) throw new WebPolicyError('another invocation in this execution domain needs recovery')
-      if (record.calls.some(call => call.requestId !== target.requestId && !call.committed && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))) throw new WebPolicyError('another response in this execution domain needs recovery')
+      if (record.calls.some(call => call.requestId !== target.requestId && !call.committed && !call.retired && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))) throw new WebPolicyError('another response in this execution domain needs recovery')
     }
   }
 }

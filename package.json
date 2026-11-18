@@ -43,6 +43,10 @@
       "types": "./lib/types/web/host.d.ts",
       "default": "./lib/web/host.js"
     },
+    "./web-recovery": {
+      "types": "./lib/types/web/recovery.d.ts",
+      "default": "./lib/web/recovery.js"
+    },
     "./client": {
       "default": "./lib/client.js"
     }

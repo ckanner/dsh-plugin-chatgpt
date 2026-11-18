@@ -8,6 +8,8 @@ import { test } from 'node:test'
 import { WebTransport, WebTransportError, advanceTerminal } from '../src/web/transport.ts'
 import { BrowserStore, digest } from '../src/web/browser/storage.ts'
 import type { WebConnection, WebPage, WebPageFactory, WebPageSample, WebTurnRequest } from '../src/web/browser/types.ts'
+import { prepareWebMedia } from '../src/web/media.ts'
+import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 
 const account = digest('fixture@example.invalid')
 const bindingDigest = digest('chatgpt|gpt-6-pro-web|pro|permissions-v1')
@@ -43,6 +45,52 @@ function factory(options: { conversation?: typeof conversation; samples?: () => 
   }
   return { implementation, calls }
 }
+
+async function mediaFor(stateDir: string) {
+  const data = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/an8AAAAASUVORK5CYII=', 'base64')
+  const attachment = { attachmentId: 'lcu-screenshot', mediaType: 'image/png', bytes: data.length, width: 1, height: 1 }
+  const options = { messages: [{ role: 'tool', toolCallId: 'host_screenshot', content: [{ type: 'image', attachment }] }] } as unknown as GenerateOptions
+  return await prepareWebMedia(options, join(stateDir, 'images'), () => ({ async readImage() { return { ref: attachment, data } } }), Date.now() + 5000)
+}
+
+test('image acceptance receipts bind the exact user message and survive local recovery without another upload', async () => {
+  const env = await environment()
+  try {
+    const media = await mediaFor(env.connection.stateDir)
+    const f = factory({ samples: () => ({ ...sample(), acceptedMedia: media.map(item => item.uploadName) }) })
+    const transport = new WebTransport(env.connection, { pageFactory: f.implementation })
+    const result = await transport.run(env.request('images', { media }))
+    assert.equal(result.media?.userMessageId, 'user-1')
+    assert.equal(result.media?.attachments[0]!.toolCallId, 'host_screenshot')
+    assert.equal(result.media?.modelConsumption, 'unverified')
+    assert.equal(result.text, 'complete response', 'image bytes are separate from the model text artifact')
+    const recovered = await transport.recover('images', { observe: true })
+    assert.deepEqual(recovered.result?.media, result.media)
+    assert.equal(f.calls.submits, 1); assert.equal(f.calls.opens, 1)
+    const store = await BrowserStore.open(env.connection)
+    const journal = (await store.get('images'))!
+    journal.media!.acceptedUploadNames = ['another-image.png']; await store.put(journal)
+    await assert.rejects(() => transport.recover('images'), /do not match/)
+  } finally { await env.dispose() }
+})
+
+test('missing accepted images stay unknown and altered files fail before opening a browser', async () => {
+  const env = await environment()
+  try {
+    const media = await mediaFor(env.connection.stateDir)
+    const f = factory()
+    const transport = new WebTransport(env.connection, { pageFactory: f.implementation })
+    await assert.rejects(() => transport.run(env.request('missing-images', { media })), (error: unknown) => {
+      assert.ok(error instanceof WebTransportError); assert.match(error.message, /attachments do not match/)
+      assert.equal(error.facts.dispatch, 'unknown'); assert.equal(error.facts.outcome, 'unknown'); assert.equal(error.facts.replayAllowed, false)
+      return true
+    })
+    await writeFile(media[0]!.artifact.path, 'truncated', { mode: 0o600 })
+    await assert.rejects(() => transport.run(env.request('changed-images', { media })), /size|changed/)
+    assert.equal(f.calls.opens, 1, 'altered media is refused before page allocation')
+    assert.equal(f.calls.submits, 1)
+  } finally { await env.dispose() }
+})
 
 test('positive terminal controls and stable identity are both required; a quiet preamble never completes', () => {
   let state

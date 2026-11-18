@@ -64,6 +64,7 @@ export const Config = z.object({
     version: z.number().default(1), enabled: z.boolean().default(false), activeConnection: z.string(), contextPolicy: z.string(),
     connections: z.dict(z.object({ id: z.string(), browserPath: z.string(), profilePath: z.string(), stateDir: z.string(), accountFingerprint: z.string() })),
     budget: z.object({ version: z.string(), maxInputBytes: z.number(), outputReserveBytes: z.number(), maxResponseBytes: z.number(), maxHistoryBytes: z.number(), maxTurns: z.number(), maxGenerations: z.number(), maxToolCalls: z.number(), maxJsonDepth: z.number(), wallTimeoutMs: z.number() }),
+    imagePolicy: z.object({ maxImages: z.number().step(1).min(1).max(20).default(10), maxImageBytes: z.number().step(1).min(1024).max(20 * 1024 * 1024).default(20 * 1024 * 1024), maxTotalBytes: z.number().step(1).min(1024).max(64 * 1024 * 1024).default(32 * 1024 * 1024) }),
   })]).volatile(),
 })
 

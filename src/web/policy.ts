@@ -15,6 +15,8 @@ export interface WebBudgetPolicy {
   maxGenerations: number
   maxToolCalls: number
   maxJsonDepth: number
+  /** Additional format-only turns; all share the original wall and byte budgets. */
+  maxFormatRepairs: number
   wallTimeoutMs: number
 }
 
@@ -28,6 +30,7 @@ export const DEFAULT_WEB_BUDGET: Readonly<WebBudgetPolicy> = Object.freeze({
   maxGenerations: 16,
   maxToolCalls: 16,
   maxJsonDepth: 48,
+  maxFormatRepairs: 1,
   wallTimeoutMs: 60 * 60 * 1000,
 })
 
@@ -76,6 +79,7 @@ export function budgetPolicy(value: unknown = DEFAULT_WEB_BUDGET): WebBudgetPoli
     maxGenerations: integer(raw.maxGenerations, 'maxGenerations', 1, 256),
     maxToolCalls: integer(raw.maxToolCalls, 'maxToolCalls', 1, 64),
     maxJsonDepth: integer(raw.maxJsonDepth, 'maxJsonDepth', 4, 64),
+    maxFormatRepairs: integer(raw.maxFormatRepairs ?? DEFAULT_WEB_BUDGET.maxFormatRepairs, 'maxFormatRepairs', 0, 2),
     wallTimeoutMs: integer(raw.wallTimeoutMs, 'wallTimeoutMs', 1000, 24 * 60 * 60 * 1000),
   }
   if (policy.maxInputBytes - policy.outputReserveBytes < 4096) throw new WebPolicyError('input budget must leave at least 4096 bytes after the output reserve')
@@ -103,8 +107,8 @@ export function webModel(provider: string, policy = DEFAULT_WEB_BUDGET) {
   return {
     provider, id: WEB_MODEL_ID, name: 'GPT-6 Pro · Web',
     description: 'ChatGPT website · GPT-6 + Pro · separate browser connection; local byte budget',
-    // Text only until the actual attachment path has passed its own acceptance.
-    inputModalities: ['text'] as const,
+    // Image declarations are backed by the durable resolver and verified DOM upload path.
+    inputModalities: ['text', 'image'] as const,
     badge: { text: 'Web', tone: 'info' as const },
     // Local token-meter hint, not a vendor window claim. The byte guard also
     // measures protocol/tool overhead and remains the final admission check.

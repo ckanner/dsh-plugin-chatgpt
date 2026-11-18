@@ -48,6 +48,7 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
   })
   const host = new ChatGptWebHost(stateDir, route, {
     capabilities,
+    resolveAttachments: () => ctx.get('attachments'),
     ...(options.pageFactory === undefined ? {} : { pageFactory: options.pageFactory }),
     isAgentBusy: sessionId => (ctx.get('agents') as Agents | undefined)?.get(sessionId)?.status === 'running',
     blocked: async ({ executionDomainId, sessionIds, workspaces, reason }) => {
@@ -170,8 +171,8 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
           const sourceEventSeqs = surface.slice(surface.indexOf(selected[0]!), surface.indexOf(selected[selected.length - 1]!) + 1)
           context.recovery = { surfaceSeqs: [...agent.session.surface.nodes], sourceEventSeqs: [...sourceEventSeqs], originalCompactionId: start.data.compactionId }
         }
-        // Validate original media before DSH's text-only adapter projection.
-        if (options.messages.some(message => message.content.some(block => block.type === 'image' || block.type === 'file'))) throw new WebPolicyError('Web media is unavailable; original attachments cannot be silently projected away')
+        // rawOptions reaches the coordinator unchanged. Its image resolver runs
+        // before browser intent and rejects unsupported files or missing bytes.
         yield* host.wrap(context, next)
       },
     }
