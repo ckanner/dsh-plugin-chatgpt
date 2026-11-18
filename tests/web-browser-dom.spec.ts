@@ -15,6 +15,14 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
   await access(executable)
   const root=await mkdtemp(join(tmpdir(),'dsh-web-dom-'))
   const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${root}`,'about:blank'],{stdio:['ignore','ignore','pipe']})
+  let closed=false
+  const childClosed=new Promise<void>(resolve=>child.once('close',()=>{closed=true;resolve()}))
+  const awaitClose=async(milliseconds:number):Promise<boolean>=>{
+    if(closed)return true
+    let timer:ReturnType<typeof setTimeout>|undefined
+    try{return await Promise.race([childClosed.then(()=>true),new Promise<boolean>(resolve=>{timer=setTimeout(()=>resolve(false),milliseconds)})])}
+    finally{clearTimeout(timer)}
+  }
   let startupError: Error | undefined
   let stderr=''
   child.once('error',error=>{startupError=error})
@@ -99,11 +107,26 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
       await assert.rejects(() => page.setFileInputFiles([path], 'https://chatgpt.com/c/different'), /unavailable/)
     })
 
-    await page.close();cdp=undefined
   } finally {
-    cdp?.close()
-    child.kill('SIGTERM')
-    await new Promise<void>(resolve=>{if(startupError || child.exitCode!==null || child.signalCode!==null)resolve();else child.once('exit',()=>resolve())})
-    await rm(root,{recursive:true,force:true})
+    try {
+      if(cdp){
+        cdp.beginCleanup()
+        // The entire browser belongs to this fixture. Ask Chrome to flush its
+        // profile before detaching; production page cleanup remains detach-only.
+        try{await cdp.command('Browser.close')}catch(error){t.diagnostic(`Browser close response unavailable; awaiting owned process shutdown: ${String(error)}`)}
+        cdp.close()
+      }
+      if(!await awaitClose(5_000)){
+        child.kill('SIGTERM')
+        if(!await awaitClose(5_000)){
+          child.kill('SIGKILL')
+          if(!await awaitClose(5_000))throw new Error('Owned fixture browser did not close after termination')
+        }
+      }
+    } finally {
+      // macOS can finish a profile write after the browser's main exit event.
+      // Wait for stdio close above and retry only the bounded filesystem race.
+      await rm(root,{recursive:true,force:true,maxRetries:8,retryDelay:200})
+    }
   }
 })
