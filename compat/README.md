@@ -8,14 +8,16 @@ This directory contains a source compatibility candidate for DeepSeek Harness. T
 
 The patch targets `deepseek-ai/deepseek-harness` commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760`, whose package version is `0.2.2-rc.4`. It does not change DSH's release version and is not a published DSH release. [manifest.json](manifest.json) records the exact base, SHA-256, resulting source tree, capabilities, and verification limits. Keep the patch and manifest together.
 
-Use a clean checkout at that exact commit, Node.js 24.9 or newer, and the upstream `pnpm@11.28.5` toolchain. From that checkout, first check and then apply the absolute path to this file:
+Use a clean checkout at that exact commit, Node.js 24.9 or newer, and the upstream `pnpm@11.28.5` toolchain. The packaged verifier checks the patch hash, base commit and complete resulting tree before applying it to a clean checkout:
 
 ```sh
-git apply --check /absolute/path/to/compat/dsh-web-host-ca33fd68.patch
-git apply /absolute/path/to/compat/dsh-web-host-ca33fd68.patch
+node /absolute/path/to/compat/verify.mjs /absolute/path/to/dsh --apply
+cd /absolute/path/to/dsh
 pnpm install --frozen-lockfile
 pnpm run build
 ```
+
+Run the same verifier without `--apply` to check an already patched checkout. Verification uses a temporary Git index and preserves staged changes. It rejects a different base, modified patch bytes, missing patch files and unrelated source changes. The verifier ships with the npm archive; it does not install dependencies, publish packages or alter an existing DSH application.
 
 Follow the patched checkout's development instructions to run its SDK or build its desktop application. An already installed desktop continues to use its own bundled host until it is replaced with a build containing these changes. Applying a patch to a separate checkout does not change that desktop. Do not force this patch onto another base; review and regenerate it if upstream has moved.
 
@@ -37,6 +39,8 @@ The patch includes source, focused tests, bilingual API references, generated ca
 `ctx.agentLoop.adoptRecoveredResponse(agent, input)` and `ctx.compaction.adoptRecoveredSummary(agent, input, signal)` require their separate recovery policy events, a current Agent maintenance reservation, successful flush, and a readable `sessionPersistence` backend. They verify the original surface and request, complete artifact digest, and durable prior commit identity. Main-response adoption uses the ordinary tool pipeline only after a durable assistant commit. Summary adoption uses the normal balanced-range, shrink, and replacement transaction; it never creates an assistant message. An already committed result is returned without repeating tools or replacing history again. Reported failure may follow a durable partial commit; preserve the journal and reconcile it rather than resubmitting automatically.
 
 ## Verification and limits
+
+The reusable `web-host.yml` workflow is required by both CI and release. Its Linux/macOS jobs apply the verified patch, compile the affected host projects and actual native session lease, exercise retry/commit/recovery tests, and run the real cross-layer verifier. They also run the production CDP adapter against an isolated Chrome fixture; a missing or failed browser fails this job instead of silently skipping it. These checks do not sign into ChatGPT or certify a complete Desktop build. Workflow results must be checked for the exact candidate commit.
 
 The affected source projects, focused test TypeScript check, changed-file lint, exported API documentation, type-equivalence references, and generated Cordis catalog checks passed. The earlier focused pass covered nineteen files and 512 tests. The final summary identity correction passed all 18 summary-policy tests, including eight new rejection cases, and the six real cross-layer scenarios were rerun successfully. Recovery cases use the real JSONL backend and its native write lease; a no-op flush callback alone cannot satisfy recovery admission. The host patch applies cleanly to the exact base in an isolated Git index.
 

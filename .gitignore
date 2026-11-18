@@ -3,6 +3,7 @@ lib/
 *.tsbuildinfo
 .probe/
 .harness-contract/
+.harness-web/
 .DS_Store
 
 # Packed artifacts

@@ -11,14 +11,20 @@ import { wait } from '../src/web/browser/storage.ts'
 test('production DOM adapter runs against real Chromium fixtures', async (t) => {
   const executable=process.env.CHATGPT_WEB_TEST_CHROMIUM
   if (!executable) { t.skip('Set CHATGPT_WEB_TEST_CHROMIUM to run the isolated real browser fixture'); return }
-  try { await access(executable) } catch { t.skip('Set CHATGPT_WEB_TEST_CHROMIUM to run the isolated browser fixture'); return }
+  await access(executable)
   const root=await mkdtemp(join(tmpdir(),'dsh-web-dom-'))
-  const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${root}`,'about:blank'],{stdio:'ignore'})
+  const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${root}`,'about:blank'],{stdio:['ignore','ignore','pipe']})
+  let startupError: Error | undefined
+  let stderr=''
+  child.once('error',error=>{startupError=error})
+  child.stderr.on('data',chunk=>{stderr=(stderr+String(chunk)).slice(-8192)})
   let cdp:CdpConnection|undefined
   try {
     const deadline=Date.now()+20_000
     let endpoint:string|undefined
     for(;;) {
+      if(startupError) throw startupError
+      if(child.exitCode!==null || child.signalCode!==null) throw new Error(`Fixture browser exited before CDP became available: ${stderr}`)
       try { const [port,path]=(await readFile(join(root,'DevToolsActivePort'),'utf8')).trim().split('\n');endpoint=`ws://127.0.0.1:${port}${path}`;break } catch { await wait(100,deadline) }
     }
     cdp=await CdpConnection.connect(endpoint,Date.now()+60_000)
@@ -77,7 +83,7 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
   } finally {
     cdp?.close()
     child.kill('SIGTERM')
-    await new Promise<void>(resolve=>{if(child.exitCode!==null || child.signalCode!==null)resolve();else child.once('exit',()=>resolve())})
+    await new Promise<void>(resolve=>{if(startupError || child.exitCode!==null || child.signalCode!==null)resolve();else child.once('exit',()=>resolve())})
     await rm(root,{recursive:true,force:true})
   }
 })

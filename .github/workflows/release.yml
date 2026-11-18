@@ -29,7 +29,11 @@ permissions:
   id-token: write
 
 jobs:
+  web-host:
+    uses: ./.github/workflows/web-host.yml
+
   release:
+    needs: web-host
     runs-on: ubuntu-latest
     env:
       # Empty when the secret is absent, which is what selects the second step.

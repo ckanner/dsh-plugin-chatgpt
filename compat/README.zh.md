@@ -8,14 +8,16 @@
 
 补丁针对 `deepseek-ai/deepseek-harness` 提交 `ca33fd6843b205e279c7ccb6cb73a472c78f5760`，其包版本为 `0.2.2-rc.4`。补丁不修改 DSH 发布版本，也不代表已经发布的 DSH 版本。[manifest.json](manifest.json) 记录精确基线、SHA-256、应用后的源码树、能力和验证边界。请将补丁与 manifest 一起维护。
 
-使用精确提交的干净 checkout、Node.js 24.9 或更新版本，以及上游 `pnpm@11.28.5` 工具链。在该 checkout 中，先检查，再应用下面文件的绝对路径：
+使用精确提交的干净 checkout、Node.js 24.9 或更新版本，以及上游 `pnpm@11.28.5` 工具链。随包提供的验证器先核对补丁摘要、基线提交和完整目标源码树，再将补丁应用到干净 checkout：
 
 ```sh
-git apply --check /absolute/path/to/compat/dsh-web-host-ca33fd68.patch
-git apply /absolute/path/to/compat/dsh-web-host-ca33fd68.patch
+node /absolute/path/to/compat/verify.mjs /absolute/path/to/dsh --apply
+cd /absolute/path/to/dsh
 pnpm install --frozen-lockfile
 pnpm run build
 ```
+
+去掉 `--apply` 可以验证已经应用补丁的 checkout。验证器使用临时 Git index，保留已有暂存内容；它会拒绝错误基线、被修改的补丁字节、缺失的补丁文件和额外源码修改。验证器随 npm 包交付，不安装依赖、不发布包，也不修改已安装的 DSH 应用。
 
 按照补丁后 checkout 的开发说明运行其 SDK 或构建桌面应用。已安装的桌面端仍会使用自己捆绑的宿主，直到替换为包含这些改动的构建。在另一个 checkout 中应用补丁不会修改该桌面端。不要强行向其他基线应用此补丁；上游变动后，应审查并重新生成补丁。
 
@@ -37,6 +39,8 @@ pnpm run build
 `ctx.agentLoop.adoptRecoveredResponse(agent, input)` 和 `ctx.compaction.adoptRecoveredSummary(agent, input, signal)` 分别要求对应恢复策略事件、当前 Agent 维护保留、成功 flush，以及可读取的 `sessionPersistence` 后端。它们验证原始 surface 与请求、完整产物摘要和已有持久提交的身份。主响应接纳在 assistant 持久提交之后才使用普通工具流水线。摘要接纳使用正常的配对范围、缩减和替换事务，不会创建 assistant 消息。已经提交的结果直接返回，不再执行工具或替换历史。报告失败时可能已有部分持久提交，因此必须保留日志进行对账，不能自动重新发送请求。
 
 ## 验证与边界
+
+CI 和发布流程均依赖可复用的 `web-host.yml` 工作流。Linux/macOS 作业应用并核验补丁，编译受影响宿主项目和真实原生会话锁，执行重试、提交、恢复测试，并运行真实跨层验证。它们还在隔离 Chrome fixture 上执行生产 CDP 适配器；浏览器缺失或启动失败会使作业失败，不会静默跳过。这些检查不登录 ChatGPT，也不代表完整 Desktop 构建通过。必须核对精确候选提交对应的工作流结果。
 
 受影响源码项目、专项测试的 TypeScript 检查、修改文件的 lint、导出 API 文档、类型等价参考及生成的 Cordis 目录检查均通过。先前的专项验证覆盖 19 个文件，共 512 个测试通过。最后的摘要身份修正通过全部 18 个摘要策略测试，其中包含 8 个新增拒绝用例；6 个真实跨层场景也重新运行通过。恢复用例使用真实 JSONL 后端和原生写入租约；仅有空的 flush 回调不能满足恢复准入。补丁已在隔离 Git index 中验证，可以干净应用到精确基线。
 

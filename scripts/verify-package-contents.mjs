@@ -140,6 +140,9 @@ if (!files.has('cordis.patch.yml')) problems.push('cordis.patch.yml would not be
 // install, because the install reports success.
 if (!files.has('lib/index.js')) problems.push('lib/index.js (the host entry) would not be published')
 if (!files.has('lib/client.js')) problems.push('lib/client.js (the browser bundle) would not be published')
+for (const path of walk(join(root, 'compat'))) {
+  if (!files.has(path)) problems.push(`${path} (the Web host compatibility source) would not be published`)
+}
 
 if (problems.length > 0) {
   console.error(`package contents would not run (${String(problems.length)} problem(s)):`)

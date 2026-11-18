@@ -1,0 +1,77 @@
+name: Web host compatibility
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  web-host:
+    name: Web host / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.x'
+      - name: Verify patch bytes and read the pinned source identity
+        id: compatibility
+        run: node compat/verify.mjs --metadata >> "$GITHUB_OUTPUT"
+      - name: Checkout the exact DSH compatibility base
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ steps.compatibility.outputs.upstream_commit }}
+          path: .harness-web
+          persist-credentials: false
+      - name: Apply and verify the complete compatibility tree
+        run: node compat/verify.mjs .harness-web --apply
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: .harness-web/package.json
+      - name: Install plugin dependencies
+        run: npm ci --ignore-scripts
+      - name: Install the locked host dependencies
+        working-directory: .harness-web
+        run: pnpm install --frozen-lockfile
+      - name: Build the actual host session lease
+        working-directory: .harness-web
+        run: pnpm run build:native-system
+      - name: Type-check the affected host source projects
+        working-directory: .harness-web
+        run: pnpm exec tsc -b packages/llm/llm packages/core/agent-loop packages/compaction/compaction-basic
+      - name: Exercise host retry, durable commits and recovery
+        working-directory: .harness-web
+        run: >-
+          pnpm exec vitest run --maxWorkers=2
+          packages/core/agent-loop/tests/host-policy.spec.ts
+          packages/core/agent-loop/tests/recovered-response.spec.ts
+          packages/core/agent-loop/tests/tool-calls.spec.ts
+          packages/core/agent-loop/tests/request-error.spec.ts
+          packages/core/agent-loop/tests/cancel.spec.ts
+          packages/compaction/compaction-basic/tests
+          packages/llm/llm/tests/service.spec.ts
+      - name: Exercise the real plugin, host and JSONL transactions together
+        run: npm run verify:web-harness -- .harness-web
+      - name: Locate the fixture browser
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            browser='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+          else
+            browser="$(command -v google-chrome || command -v chromium)"
+          fi
+          test -x "$browser"
+          echo "CHATGPT_WEB_TEST_CHROMIUM=$browser" >> "$GITHUB_ENV"
+      - name: Exercise production CDP against an isolated real browser
+        run: node --test tests/web-browser-dom.spec.ts
+      - name: Verify the host source still matches the recorded patch
+        run: node compat/verify.mjs .harness-web
