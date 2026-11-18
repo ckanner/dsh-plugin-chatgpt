@@ -57,6 +57,9 @@ test('reads original completed host and browser evidence after process exit with
     registry.invocations.original.toolIntents.pending = { sessionId: 'root', rootCallId: 'pending', completed: false }
     await store.write('registry', 'current', registry)
     assert.equal((await readWebInvocationRecovery(f.checkpoint)).disposition, 'blocked')
+    registry.invocations.original.toolIntents.pending.completed = true
+    await store.write('registry', 'current', registry)
+    assert.equal((await readWebInvocationRecovery(f.checkpoint)).disposition, 'blocked', 'legacy ID-only completion cannot establish the original tool occurrence')
     delete registry.invocations.original.toolIntents.pending
     registry.invocations.other = { ...registry.invocations.original, hostInvocationId: 'other' }
     await store.write('registry', 'current', registry)

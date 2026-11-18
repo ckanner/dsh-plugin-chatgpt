@@ -268,14 +268,14 @@ test('discard refuses another unresolved tool and cannot discard a response alre
     // after configuring this fixture's policy.
     const host2 = new ChatGptWebHost(join(f.dir, 'second'), 'chatgpt', environment, () => f.settings)
     await host2.beginInvocation({ sessionId: 's1', executionDomainId: 'domain2', hostInvocationId: 'host2', workspace: join(f.dir, 'second') })
-    await host2.toolStarted('s1', 'earlier-pending-tool')
+    await host2.toolStarted('s1', 'earlier-pending-tool', 'earlier-pending-tool', 10)
     const context = await host2.callContext(f.request, 'main', { sessionId: 's1', rootSessionId: 's1', workspace: join(f.dir, 'second') })
     await assert.rejects(async () => {
       for await (const _ of host2.wrap(context, async function* () { await host2.generate(undefined, f.request); yield { type: 'finish' } as never })) { /* none */ }
     })
     const observed = await host2.recover(f.requests[0]!.requestId) as { rejection: { responseDigest: string } }
     await assert.rejects(() => host2.retire(f.requests[0]!.requestId, observed.rejection.responseDigest, 'discard-rejected-response'), /unresolved local tool/)
-    await host2.toolCommitted('s1', 'earlier-pending-tool', true, false)
+    await host2.toolCommitted({ sessionId: 's1', rootCallId: 'earlier-pending-tool', rootCallSeq: 10, resultEventSeq: 11 }, true, false)
     await host2.retire(f.requests[0]!.requestId, observed.rejection.responseDigest, 'discard-rejected-response')
     f.response(request => envelope(request, { kind: 'final', text: 'Valid answer' }))
     const coordinator = f.create()

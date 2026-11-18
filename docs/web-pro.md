@@ -95,6 +95,8 @@ The model returns a plugin-defined JSON envelope containing either final text or
 
 DSH executes accepted tools through its normal tool runtime, working directory, sandbox, and permissions. The website does not directly execute those local tools. Hosted website apps are a separate capability and must satisfy the managed-context checks; local sandbox settings are not evidence about remote app behavior. A syntax-only rejection can trigger a bounded format correction after the complete answer and local cleanup are confirmed; no tool from a rejected response is exposed.
 
+Every managed local tool, including non-Web child calls, is attributed to its owning DSH session and the original durable `tool/call` event. A result must cite that event through `sourceEventSeqs` and match its turn and step before it can settle the tool tree. Reused short call IDs in later steps or sibling sessions remain separate occurrences. Historical results and legacy ID-only receipts cannot establish completion; an unknown nested outcome remains blocked even if another occurrence later succeeds.
+
 Readable project/conversation titles are derived locally from the task and generation; setting them does not spend another Pro call. User-changed owned titles are preserved when the adapter can identify the change. If the DSH profile enables model-generated session titles, those remain separate auxiliary model calls.
 
 ### Format corrections and rejected responses

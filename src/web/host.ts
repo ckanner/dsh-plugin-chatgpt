@@ -12,6 +12,7 @@ import type { WebFacts, WebPageFactory } from './browser/types.ts'
 import { deliveryChunks } from './chunks.ts'
 import { WEB_IMAGE_POLICY } from './media.ts'
 import { createWebRecoveryCheckpoint, type WebRecoveryIdentity, type WebRecoveryCheckpoint } from './recovery.ts'
+import { settledToolIntent, toolOccurrenceKey, validToolRoot, type WebToolCommit, type WebToolIntent, type WebToolOccurrence, type WebToolRoot } from './tool-evidence.ts'
 
 export const webHostCapabilities = Object.freeze({
   version: 1, runtimeVersion: 'web-runtime/1', providerModel: WEB_MODEL_ID,
@@ -65,7 +66,7 @@ interface InvocationRecord {
   managedBy: 'host' | 'plugin'
   settingsDigest: string
   calls: CallRecord[]
-  toolIntents: Record<string, { sessionId: string; rootCallId: string; completed: boolean; observed?: boolean; outcomeUnknown?: boolean }>
+  toolIntents: Record<string, WebToolIntent>
   fence?: string
   finished: boolean
   completed: boolean
@@ -187,8 +188,12 @@ export class ChatGptWebHost {
   }
 
   private unresolved(record: InvocationRecord): boolean {
-    return record.fence !== undefined || Object.entries(record.toolIntents).some(([id, tool]) => !tool.completed && !this.liveTools.has(`${record.hostInvocationId}:${id}`))
+    return record.fence !== undefined || Object.entries(record.toolIntents).some(([id, tool]) => !settledToolIntent(id, tool, record.toolIntents) && !this.liveTools.has(`${record.hostInvocationId}:${id}`))
       || record.calls.some(call => !call.committed && !call.retired && !this.callIsLive(call.requestId) && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
+  }
+
+  private toolsSettled(record: InvocationRecord): boolean {
+    return Object.entries(record.toolIntents).every(([key, tool]) => settledToolIntent(key, tool, record.toolIntents))
   }
 
   private callIsLive(requestId: string): boolean {
@@ -314,7 +319,7 @@ export class ChatGptWebHost {
           if (!call) { call = { requestId, sessionId: context.sessionId, kind: context.kind, connectionKey: key, facts, committed: false }; invocation.calls.push(call) }
           else call.facts = facts
           if (!this.liveCalls.has(requestId) && (facts.dispatch === 'unknown' || facts.remoteGeneration === 'unknown')) invocation.fence = 'remote dispatch or generation is unknown'
-          else if (invocation.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(invocation.toolIntents).every(tool => tool.completed)) delete invocation.fence
+          else if (invocation.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && this.toolsSettled(invocation)) delete invocation.fence
         })
       }, (context, activity) => this.environment.activity({ ...activity as object, executionDomainId: context.executionDomainId, hostInvocationId: context.hostInvocationId, sessionId: context.sessionId }), this.environment.resolveAttachments ? { resolveAttachments: () => this.environment.resolveAttachments!() } : {})
       this.coordinators.set(key, coordinator)
@@ -372,7 +377,7 @@ export class ChatGptWebHost {
         saved.committed = true
         saved.conversationUrl = reference.conversationUrl
         if (reference.kind === 'main' && reference.sessionId === record.sessionId && !blocks.some(block => (block as { type?: string }).type === 'tool-call')) { record.finished = true; record.completed = true }
-        if (record.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(record.toolIntents).every(tool => tool.completed)) delete record.fence
+        if (record.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && this.toolsSettled(record)) delete record.fence
       })
     } catch (error) {
       this.liveCalls.delete(reference.requestId)
@@ -390,59 +395,98 @@ export class ChatGptWebHost {
     if (invocation) await this.assertDomain(invocation.executionDomainId)
   }
 
-  async toolStarted(sessionId: string, toolId: string, rootCallId = toolId): Promise<void> {
+  async toolStarted(sessionId: string, toolId: string, rootCallId = toolId, rootCallSeq?: number): Promise<WebToolOccurrence | undefined> {
     if (!(await this.registry()).sessions[sessionId]) return
+    const root: WebToolRoot = { sessionId, rootCallId, rootCallSeq: rootCallSeq as number }
+    if (!validToolRoot(root)) throw new WebPolicyError('managed tool dispatch requires its current durable Session call event')
+    nonempty(toolId, 'tool call identity', 4096)
     await this.replayCheck(sessionId)
-    await this.change(registry => {
+    return await this.change(registry => {
       const id = registry.sessions[sessionId]
       const invocation = id ? registry.invocations[id] : undefined
       if (invocation) {
         if (Object.values(registry.invocations).some(record => record.executionDomainId === invocation.executionDomainId && this.unresolved(record))) throw new WebPolicyError('execution domain became unresolved before tool dispatch')
-        if (invocation.toolIntents[toolId]) throw new WebPolicyError('tool identity was already dispatched')
-        invocation.toolIntents[toolId] = { sessionId, rootCallId, completed: false }
-        this.liveTools.set(`${invocation.hostInvocationId}:${toolId}`, sessionId)
+        const occurrence = { ...root, hostInvocationId: invocation.hostInvocationId, callId: toolId }
+        const key = toolOccurrenceKey(occurrence)
+        if (invocation.toolIntents[key]) throw new WebPolicyError('tool occurrence was already dispatched')
+        if (toolId !== rootCallId) {
+          const parentKey = toolOccurrenceKey({ ...root, callId: rootCallId })
+          const parent = invocation.toolIntents[parentKey]
+          if (!parent || parent.completed || !this.liveTools.has(`${invocation.hostInvocationId}:${parentKey}`)) throw new WebPolicyError('nested tool requires its live original root occurrence')
+        }
+        invocation.toolIntents[key] = { ...root, callId: toolId, completed: false }
+        this.liveTools.set(`${invocation.hostInvocationId}:${key}`, sessionId)
+        return occurrence
       }
     })
   }
 
-  async toolObserved(sessionId: string, toolId: string, unknown: boolean): Promise<void> {
+  async toolObserved(occurrence: WebToolOccurrence, unknown: boolean): Promise<void> {
     // Enqueue synchronously: tools/result is an emitted event, so an async
     // registry read here could let the following durable root result overtake it.
+    let changed = false
     const domain = await this.change(registry => {
-      const id = registry.sessions[sessionId]
-      const invocation = id ? registry.invocations[id] : undefined
-      const tool = invocation?.toolIntents[toolId]
+      const invocation = registry.invocations[occurrence.hostInvocationId]
+      const key = toolOccurrenceKey(occurrence)
+      const tool = invocation?.toolIntents[key]
       if (!invocation || !tool) return
+      changed = true
       tool.observed = true
       if (unknown) {
         tool.outcomeUnknown = true
-        this.liveTools.delete(`${invocation.hostInvocationId}:${toolId}`)
+        this.liveTools.delete(`${invocation.hostInvocationId}:${key}`)
         invocation.fence = 'tool outcome is not durably known'
         return invocation.executionDomainId
       }
-    }, registry => registry.sessions[sessionId] !== undefined)
+    }, () => changed)
     if (domain) await this.stopDomain(domain, 'tool outcome is not durably known')
   }
 
-  async toolCommitted(sessionId: string, toolId: string, durable: boolean, unknown: boolean): Promise<void> {
-    if (!(await this.registry()).sessions[sessionId]) return
+  async toolCommitted(proof: WebToolCommit, durable: boolean, unknown: boolean): Promise<void> {
+    if (!validToolRoot(proof) || !Number.isSafeInteger(proof.resultEventSeq) || proof.resultEventSeq <= proof.rootCallSeq) throw new WebPolicyError('tool result requires its original Session source-event link')
+    if (!(await this.registry()).sessions[proof.sessionId]) return
+    let changed = false
     const blocked = await this.change(registry => {
-      const id = registry.sessions[sessionId]
-      const invocation = id ? registry.invocations[id] : undefined
-      const related = Object.entries(invocation?.toolIntents ?? {}).filter(([id, tool]) => id === toolId || tool.rootCallId === toolId)
-      if (!invocation || related.length === 0) return
-      if (!durable || unknown) {
-        if (unknown) for (const [, tool] of related) tool.outcomeUnknown = true
-        invocation.fence = 'tool outcome is not durably known'; return invocation.executionDomainId
+      const matches = (tool: WebToolIntent) => tool.sessionId === proof.sessionId
+        && tool.rootCallId === proof.rootCallId && tool.rootCallSeq === proof.rootCallSeq
+      // A Session can already belong to a later invocation when its old events
+      // are scanned. Attribute both success and contradictions to the source
+      // occurrence's original owner, never to the current Session mapping.
+      const owners = Object.values(registry.invocations).filter(record => Object.values(record.toolIntents).some(matches))
+      if (owners.length === 0) return
+      if (owners.length !== 1) {
+        changed = true
+        for (const record of owners) {
+          for (const tool of Object.values(record.toolIntents).filter(matches)) tool.outcomeUnknown = true
+          record.fence = 'tool source occurrence has ambiguous invocation ownership'
+        }
+        return [...new Set(owners.map(record => record.executionDomainId))]
       }
-      for (const [id, tool] of related) {
-        if (tool.outcomeUnknown || (id !== toolId && !tool.observed)) { invocation.fence = 'nested tool outcome is not durably known'; continue }
+      const invocation = owners[0]!
+      const related = Object.entries(invocation.toolIntents).filter(([, tool]) => matches(tool))
+      const rootKey = toolOccurrenceKey({ ...proof, callId: proof.rootCallId })
+      if (!invocation.toolIntents[rootKey]) return
+      const conflicting = related.some(([, tool]) => tool.resultEventSeq !== undefined && tool.resultEventSeq !== proof.resultEventSeq)
+      if (unknown || conflicting) {
+        changed = true
+        for (const [, tool] of related) tool.outcomeUnknown = true
+        invocation.fence = conflicting ? 'tool has contradictory durable result events' : 'tool outcome is not durably known'
+        return [invocation.executionDomainId]
+      }
+      if (related.every(([key, tool]) => settledToolIntent(key, tool, invocation.toolIntents))) return
+      changed = true
+      if (!durable) {
+        invocation.fence = 'tool outcome is not durably known'; return [invocation.executionDomainId]
+      }
+      for (const [key, tool] of related) {
+        if (tool.outcomeUnknown || (key !== rootKey && !tool.observed)) { invocation.fence = 'nested tool outcome is not durably known'; continue }
         tool.completed = true
-        this.liveTools.delete(`${invocation.hostInvocationId}:${id}`)
+        tool.resultEventSeq = proof.resultEventSeq
+        this.liveTools.delete(`${invocation.hostInvocationId}:${key}`)
       }
-      if (related.some(([, tool]) => !tool.completed)) return invocation.executionDomainId
-    })
-    if (blocked) await this.stopDomain(blocked, 'tool outcome is not durably known')
+      if (related.some(([, tool]) => !tool.completed)) return [invocation.executionDomainId]
+    }, () => changed)
+    if (blocked) for (const domain of blocked) await this.stopDomain(domain, 'tool outcome is not durably known')
   }
 
   async guardSession(sessionId: string, workspace: string): Promise<void> {
@@ -497,7 +541,7 @@ export class ChatGptWebHost {
     if (!record || record.sessionId !== input.sessionId || record.executionDomainId !== input.executionDomainId) throw new WebPolicyError('no facts match this host invocation identity')
     // Live ownership affects admission/queuing, never the business evidence
     // returned at the process boundary while a response or tool is unfinished.
-    const unknown = this.unresolved(record) || Object.values(record.toolIntents).some(tool => !tool.completed)
+    const unknown = this.unresolved(record) || !this.toolsSettled(record)
       || record.calls.some(call => !call.committed && !call.retired && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))
     const dispatch = record.calls.some(call => call.facts.dispatch === 'unknown') ? 'unknown' as const
       : record.calls.some(call => call.facts.dispatch === 'confirmed') ? 'dispatched' as const : 'not-dispatched' as const
@@ -581,7 +625,7 @@ export class ChatGptWebHost {
     if (!owner || !call || call.committed) throw new WebPolicyError('discard requires an uncommitted owned response')
     if (this.callIsLive(requestId) || this.environment.isAgentBusy?.(call.sessionId)) throw new WebPolicyError('wait for the original Agent to stop before discarding its response')
     for (const record of Object.values(registry.invocations).filter(entry => entry.executionDomainId === owner.executionDomainId)) {
-      if (Object.values(record.toolIntents).some(tool => !tool.completed)) throw new WebPolicyError('discard cannot settle an unresolved local tool outcome')
+      if (!this.toolsSettled(record)) throw new WebPolicyError('discard cannot settle an unresolved local tool outcome')
       if (record !== owner && this.unresolved(record)) throw new WebPolicyError('another invocation in the execution domain needs recovery')
       if (record.calls.some(other => other.requestId !== requestId && !other.committed && !other.retired && !(other.facts.dispatch === 'not-dispatched' && other.facts.localCleanup === 'confirmed' && other.facts.replayAllowed))) throw new WebPolicyError('another response in the execution domain needs recovery')
     }
@@ -594,7 +638,7 @@ export class ChatGptWebHost {
       if (call.retired && canonical(call.retired) !== canonical(retired)) throw new WebPolicyError('discard conflicts with the existing durable disposition')
       call.retired = retired
       this.liveCalls.delete(requestId)
-      if (owner.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && Object.values(owner.toolIntents).every(tool => tool.completed)) {
+      if (owner.calls.every(entry => entry.committed || entry.retired || (entry.facts.dispatch === 'not-dispatched' && entry.facts.localCleanup === 'confirmed' && entry.facts.replayAllowed)) && this.toolsSettled(owner)) {
         delete owner.fence
         owner.finished = true
         owner.completed = false
@@ -627,7 +671,7 @@ export class ChatGptWebHost {
     if (active.key !== target.connectionKey || !delivery || canonical(delivery.reference) !== canonical(reference) || digest(delivery.blocks) !== reference.contentDigest || (chunks !== undefined && canonical(chunks) !== canonical(deliveryChunks(delivery)))) throw new WebPolicyError('recovery content differs from the validated private delivery')
     if (target.facts.outcome !== 'captured' || target.facts.remoteGeneration !== 'completed' || target.facts.localCleanup !== 'confirmed') throw new WebPolicyError('recovery requires a captured terminal response and confirmed local cleanup')
     for (const record of Object.values(registry.invocations).filter(entry => entry.executionDomainId === owner.executionDomainId)) {
-      if (Object.values(record.toolIntents).some(tool => !tool.completed)) throw new WebPolicyError('recovery cannot settle an unresolved local tool outcome')
+      if (!this.toolsSettled(record)) throw new WebPolicyError('recovery cannot settle an unresolved local tool outcome')
       if (record !== owner && this.unresolved(record)) throw new WebPolicyError('another invocation in this execution domain needs recovery')
       if (record.calls.some(call => call.requestId !== target.requestId && !call.committed && !call.retired && !(call.facts.dispatch === 'not-dispatched' && call.facts.localCleanup === 'confirmed' && call.facts.replayAllowed))) throw new WebPolicyError('another response in this execution domain needs recovery')
     }

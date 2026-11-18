@@ -92,33 +92,85 @@ export function snapshotPage(): {
 
 /** Read only controls in the project settings dialog, never model-generated text. */
 export function projectSettingsEvidence(): { projectOnly: boolean; emptyInstructions: boolean } {
-  const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"],[data-testid="project-settings"]')].find((node) => node.getClientRects().length > 0)
+  const visible = (node: Element): boolean => node.getClientRects().length > 0 && !node.closest('[hidden],[aria-hidden="true"]')
+  const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"],[data-testid="project-settings"]')].find(visible)
   if (!dialog) return { projectOnly: false, emptyInstructions: false }
-  const selected = [...dialog.querySelectorAll<HTMLElement>('[aria-checked="true"],[data-state="checked"],option:checked,[data-testid="project-memory-mode"],[data-project-memory]')]
-  const projectOnly = selected.some((node) => /^(Project.only(?: memory)?|仅限项目(?:记忆)?|仅项目)$/i.test(node.innerText?.trim() ?? node.textContent?.trim() ?? '')) ||
-    [...dialog.querySelectorAll<HTMLElement>('p,span,dd')].some((node) => /^(Project.only memory|记忆：仅限项目)$/i.test(node.innerText?.trim() ?? ''))
-  const instructions = dialog.querySelector<HTMLTextAreaElement>('textarea[name="instructions"],textarea[aria-label="Instructions"],textarea[aria-label="指令"],[data-testid="project-instructions"]')
-  const emptyInstructions = instructions ? !(instructions.value ?? instructions.innerText).trim() :
-    [...dialog.querySelectorAll<HTMLElement>('p,span')].some((node) => /^(No instructions|No project instructions|未添加指令|暂无指令)$/i.test(node.innerText?.trim() ?? ''))
+  const mode = (node: HTMLElement): 'project-only' | 'default' | undefined => {
+    const text = (node.innerText ?? node.textContent ?? '').trim()
+    if (/^(Project[- ]only(?: memory)?|仅限项目(?:记忆)?|仅项目(?:记忆)?)$/i.test(text)) return 'project-only'
+    if (/^(Default(?: memory)?|默认(?:记忆)?)$/i.test(text)) return 'default'
+    return undefined
+  }
+  const controlSelector = '[role="radio"],[role="menuitemradio"],option,[aria-checked],[data-state="checked"],[data-state="unchecked"]'
+  const controls = [...dialog.querySelectorAll<HTMLElement>(controlSelector)].filter(visible).filter(node =>
+    node.matches('[role="radio"],[role="menuitemradio"],option') || mode(node) !== undefined)
+  let contradictory = false
+  const selected = controls.filter(node => {
+    const states: boolean[] = []
+    const checked = node.getAttribute('aria-checked')
+    if (checked !== null) {
+      if (checked !== 'true' && checked !== 'false') contradictory = true
+      states.push(checked === 'true')
+    }
+    const state = node.getAttribute('data-state')
+    if (state === 'checked' || state === 'unchecked') states.push(state === 'checked')
+    if (node.tagName === 'OPTION') states.push((node as HTMLOptionElement).selected ?? node.hasAttribute('selected'))
+    if (states.some(Boolean) && states.some(value => !value)) contradictory = true
+    return states.length > 0 && states.every(Boolean)
+  })
+  // Only a dedicated current-mode field is a readonly fact. Labels inside
+  // unselected options and generic explanatory prose never establish memory.
+  const readonlyModes = [...dialog.querySelectorAll<HTMLElement>('[data-testid="project-memory-mode"],[data-project-memory]')]
+    .filter(node => visible(node) && !node.closest(controlSelector)).map(mode)
+  const readonlyConsistent = readonlyModes.every(value => value === 'project-only')
+  const projectOnly = !contradictory && readonlyConsistent && (controls.length > 0
+    ? selected.length === 1 && mode(selected[0]!) === 'project-only'
+    : readonlyModes.length > 0)
+  const instructions = [...dialog.querySelectorAll<HTMLTextAreaElement>('textarea[name="instructions"],textarea[aria-label="Instructions"],textarea[aria-label="指令"],[data-testid="project-instructions"]')].filter(visible)
+  const emptyInstructions = instructions.length > 0 && instructions.every(node => !(node.value ?? node.innerText ?? node.textContent ?? '').trim())
   return { projectOnly, emptyInstructions }
 }
 
 export function projectSourcesEvidence(): boolean {
+  const visible = (node: Element): boolean => node.getClientRects().length > 0 && !node.closest('[hidden],[aria-hidden="true"]')
   const root = document.querySelector<HTMLElement>('[data-testid="project-page"],main')
-  if (!root) return false
+  if (!root || !visible(root)) return false
   if (root.querySelector('[data-testid="project-file"],[data-testid="project-source"],[data-project-file-id],[data-project-source-id]')) return false
-  const empty = [...root.querySelectorAll<HTMLElement>('p,span,[role="status"]')].some((node) => node.getClientRects().length > 0 && /^(No (?:files|sources)(?: added)?(?: yet)?|尚无(?:文件|来源)|暂无(?:文件|来源)|未添加(?:文件|来源))$/i.test(node.innerText?.trim() ?? ''))
-  const count = root.querySelector<HTMLElement>('[data-testid="project-sources-count"]')
-  return empty || count?.innerText.trim() === '0'
+  const counts = [...root.querySelectorAll<HTMLElement>('[data-testid="project-sources-count"]')].filter(visible)
+  // A present count is authoritative, including a nonzero or loading value.
+  // An empty-state placeholder must not override it during UI transitions.
+  if (counts.length) return counts.every(node => (node.innerText ?? node.textContent ?? '').trim() === '0')
+  return [...root.querySelectorAll<HTMLElement>('p,span,[role="status"]')].some(node => visible(node) && /^(No (?:files|sources)(?: added)?(?: yet)?|尚无(?:文件|来源)|暂无(?:文件|来源)|未添加(?:文件|来源))$/i.test(node.innerText?.trim() ?? ''))
 }
 
 export function projectSharingEvidence(): boolean {
-  const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((node) => node.getClientRects().length > 0)
+  const visible = (node: Element): boolean => node.getClientRects().length > 0 && !node.closest('[hidden],[aria-hidden="true"]')
+  const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(visible)
   if (!dialog) return false
-  const privateSignal = [...dialog.querySelectorAll<HTMLElement>('p,span,[data-testid="project-sharing-mode"]')].some((node) => /^(Only you|Private|仅自己|仅你|私有)$/i.test(node.innerText?.trim() ?? ''))
   const collaborators = [...dialog.querySelectorAll('[data-testid="project-member"],[data-project-member-id]')].filter((node) => node.getAttribute('data-role') !== 'owner')
   const sharedLink = dialog.querySelector('[data-testid="project-public-link"],[data-sharing="anyone-with-link"]')
-  return privateSignal && !collaborators.length && !sharedLink
+  if (collaborators.length || sharedLink) return false
+  const privateMode = (node: HTMLElement): boolean => /^(Only you|Private|仅自己|仅你|私有)$/i.test((node.innerText ?? node.textContent ?? '').trim())
+  const controlSelector = '[role="radio"],[role="menuitemradio"],option,[aria-checked],[data-state="checked"],[data-state="unchecked"]'
+  const controls = [...dialog.querySelectorAll<HTMLElement>(controlSelector)].filter(visible)
+  let contradictory = false
+  const selected = controls.filter(node => {
+    const states: boolean[] = []
+    const checked = node.getAttribute('aria-checked')
+    if (checked !== null) {
+      if (checked !== 'true' && checked !== 'false') contradictory = true
+      states.push(checked === 'true')
+    }
+    const state = node.getAttribute('data-state')
+    if (state === 'checked' || state === 'unchecked') states.push(state === 'checked')
+    if (node.tagName === 'OPTION') states.push((node as HTMLOptionElement).selected ?? node.hasAttribute('selected'))
+    if (states.some(Boolean) && states.some(value => !value)) contradictory = true
+    return states.length > 0 && states.every(Boolean)
+  })
+  const readonlyModes = [...dialog.querySelectorAll<HTMLElement>('[data-testid="project-sharing-mode"]')]
+    .filter(node => visible(node) && !node.closest(controlSelector))
+  if (contradictory || readonlyModes.some(node => !privateMode(node))) return false
+  return controls.length > 0 ? selected.length === 1 && privateMode(selected[0]!) : readonlyModes.length > 0
 }
 
 export function conversationFromUrl(url: string, projectUrl?: string, title?: string): WebConversation {

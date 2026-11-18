@@ -37,7 +37,7 @@ try {
     import { Context } from '@deepseek-ai/cordis';
     import AgentRegistry from '@deepseek-ai/dsh-agent';
     import AgentLoop from '@deepseek-ai/dsh-agent-loop';
-    import LlmRuntime, { createUserMessage, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
+    import LlmRuntime, { createUserMessage, LlmAdapter, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
     import SessionStore from '@deepseek-ai/dsh-session';
     import SessionProjections from '@deepseek-ai/dsh-session-projection';
     import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
@@ -53,6 +53,7 @@ try {
     import { HarnessAdapter } from ${JSON.stringify(join(plugin, 'src/index.ts'))};
     import * as ChatGPTPlugin from ${JSON.stringify(join(plugin, 'src/index.ts'))};
     import { installWebHost } from ${JSON.stringify(join(plugin, 'src/web/integration.ts'))};
+    import { ChatGptWebHost } from ${JSON.stringify(join(plugin, 'src/web/host.ts'))};
     import { defaultWebSettings } from ${JSON.stringify(join(plugin, 'src/web/config.ts'))};
     import { WEB_MODEL_ID, WEB_EFFORT, WEB_PROTOCOL } from ${JSON.stringify(join(plugin, 'src/web/policy.ts'))};
 
@@ -69,6 +70,34 @@ try {
       assert.ok(composition.llm.listProviders().some(provider => provider.id === 'chatgpt-default'));
       console.log('PASS real plugin composition: omitted Web config preserves defaults and unsigned SIWC discovery');
     } finally { await composition.fiber.dispose(); }
+
+    for (const repairs of [0, 2, undefined]) {
+      const profile = new Context();
+      try {
+        const stateDir = join(root, 'profile-repairs-' + String(repairs));
+        const settings = defaultWebSettings(stateDir);
+        if (repairs === undefined) delete settings.budget.maxFormatRepairs;
+        else settings.budget.maxFormatRepairs = repairs;
+        await profile.plugin(LlmRuntime);
+        await profile.plugin(ChatGPTPlugin, { provider: 'profile-chatgpt', stateDir, web: settings });
+        const status = await profile.get('chatgptWebHost').status();
+        assert.equal(status.managedByProfile, true);
+        assert.equal(status.settings.budget.maxFormatRepairs, repairs ?? 1);
+      } finally { await profile.fiber.dispose(); }
+    }
+    for (const repairs of [-1, 0.5, 3]) {
+      const profile = new Context();
+      try {
+        const stateDir = join(root, 'invalid-profile-repairs-' + String(repairs));
+        const settings = defaultWebSettings(stateDir);
+        settings.budget.maxFormatRepairs = repairs;
+        await profile.plugin(LlmRuntime);
+        await assert.rejects(async () => {
+          await profile.plugin(ChatGPTPlugin, { provider: 'profile-chatgpt', stateDir, web: settings });
+        }, 'the host profile schema must reject unsupported correction budgets before activation');
+      } finally { await profile.fiber.dispose(); }
+    }
+    console.log('PASS real profile configuration: disabled/bounded/default format corrections, invalid values rejected before activation');
 
     class AlwaysAdapter extends HarnessAdapter {
       providerRetryPolicy() { return resolveRetryPolicy({ mode: 'always' }, 'integration-fixture'); }
@@ -165,6 +194,87 @@ try {
       await tools.host.guardSession(tools.agent.id, tools.directory);
       console.log('PASS real AgentLoop: captured response -> durable ACK -> one tool -> result -> final');
     } finally { await tools.dispose(); }
+
+    // A managed auxiliary/non-Web provider may reuse a model-supplied tool ID.
+    // Keep the actual second body open while a real auxiliary LLM request
+    // makes the production integration rescan the first turn's durable result.
+    const historyPages = pages(() => { throw new Error('this local tool-evidence scenario must not use a browser'); });
+    const history = await fixture('tool-occurrence-history', historyPages);
+    const enteredTool = Promise.withResolvers();
+    const finishTool = Promise.withResolvers();
+    try {
+      let modelRequests = 0;
+      let executions = 0;
+      history.ctx.llm.registerAdapter(['short-id-fixture'], new class extends LlmAdapter {
+        async resolveModel(provider, model) { return { provider, id: model, name: model }; }
+        async *stream(options) {
+          if (options.purpose === 'session-title') {
+            yield { type: 'block-start', index: 0, blockType: 'text' };
+            yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Read-only history probe' } };
+            yield { type: 'finish', reason: { kind: 'stop' } };
+            return;
+          }
+          modelRequests++;
+          if (modelRequests % 2 === 1) {
+            yield { type: 'block-start', index: 0, blockType: 'tool-call' };
+            yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: 'call_1', name: 'history_probe', arguments: '{}' } };
+            yield { type: 'finish', reason: { kind: 'tool-calls' } };
+          } else {
+            yield { type: 'block-start', index: 0, blockType: 'text' };
+            yield { type: 'block-end', index: 0, block: { type: 'text', text: 'This tool occurrence completed.' } };
+            yield { type: 'finish', reason: { kind: 'stop' } };
+          }
+        }
+      }());
+      history.agent.model.select({ provider: 'short-id-fixture', model: 'fixture' });
+      history.ctx.tools.register(defineContentToolFixture({
+        name: 'history_probe', description: 'Exercise the original durable tool occurrence', parameters: {},
+        async execute() {
+          executions++;
+          if (executions === 2) { enteredTool.resolve(); await finishTool.promise; }
+          return [{ type: 'text', text: 'Tool body completed.' }];
+        },
+      }));
+      const identity = { sessionId: history.agent.id, executionDomainId: 'history-domain', workspace: history.directory };
+      await history.host.beginInvocation({ ...identity, hostInvocationId: 'history-old' });
+      await history.send('Complete the first local tool occurrence.');
+      assert.equal(executions, 1);
+      const firstResult = (await history.durableEvents()).find(event => event.type === 'tool/result');
+      assert.equal(firstResult.data.message.toolCallId, 'call_1');
+      assert.equal(firstResult.sourceEventSeqs.length, 1);
+      await history.host.beginInvocation({ ...identity, hostInvocationId: 'history-current' });
+      history.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Start the next tool occurrence with the same short ID.' }] }));
+      await Promise.race([
+        enteredTool.promise,
+        history.agent.whenIdle().then(() => { throw new Error('the second managed tool body did not start'); }),
+      ]);
+      await history.ctx.agents.withInitiator(history.agent, async () => {
+        for await (const _chunk of history.ctx.llm.stream({
+          provider: 'short-id-fixture', model: 'fixture', sessionId: history.agent.id,
+          purpose: 'session-title', messages: [createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Inspect the current history.' }] })],
+        })) { /* Exhaust the real llm/stream middleware without another tool. */ }
+      });
+      const during = await history.durableEvents();
+      const calls = during.filter(event => event.type === 'tool/call' && event.data.callId === 'call_1');
+      assert.equal(calls.length, 2);
+      assert.notEqual(calls[0].seq, calls[1].seq);
+      assert.deepEqual(firstResult.sourceEventSeqs, [calls[0].seq]);
+      assert.equal(during.filter(event => event.type === 'tool/result').length, 1, 'the second body is still running and has no result');
+      const current = await history.host.invocationFacts({ ...identity, hostInvocationId: 'history-current' });
+      assert.equal(current.outcome, 'unknown', 'historical call_1 success must not settle the current unfinished call_1');
+      const reopened = new ChatGptWebHost(history.directory, 'chatgpt-test', { capabilities: () => ({}), activity() {} }, () => history.settings);
+      await assert.rejects(reopened.guardSession('fresh-session', history.directory), /needs recovery/, 'a new host without live ownership must retain the pending tool');
+      finishTool.resolve();
+      await history.agent.whenIdle();
+      assert.equal(executions, 2);
+      assert.equal(modelRequests, 4);
+      const results = (await history.durableEvents()).filter(event => event.type === 'tool/result');
+      assert.equal(results.length, 2);
+      assert.deepEqual(results[1].sourceEventSeqs, [calls[1].seq]);
+      await reopened.guardSession('fresh-session', history.directory);
+      assert.equal(historyPages.counts.opens, 0);
+      console.log('PASS real tool occurrence: reused call ID -> historical rescan cannot settle the live body -> its own result unblocks a reopened host');
+    } finally { finishTool.resolve(); await history.dispose(); }
 
     const imagePages = pages(async (request, index) => {
       assert.equal(request.media.length, 1, 'each delta uploads only its newly owned image');

@@ -18,8 +18,8 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { readdirSync, statSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -87,7 +87,18 @@ function jsonDocuments(text) {
 }
 
 /** The files npm would publish, from its own dry run. */
-function packedFiles() {
+function packedFiles(archive) {
+  if (archive) {
+    const listed = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }).trim().split('\n')
+    if (listed.some(path => !path.startsWith('package/') || path.includes('\\') || path.split('/').includes('..'))
+      || new Set(listed).size !== listed.length) throw new Error('Candidate archive has unexpected or duplicate paths')
+    const files = new Set(listed.filter(path => !path.endsWith('/')).map(path => path.slice('package/'.length)))
+    for (const path of files) {
+      const actual = execFileSync('tar', ['-xOzf', archive, `package/${path}`], { maxBuffer: 64 * 1024 * 1024 })
+      if (!actual.equals(readFileSync(join(root, path)))) throw new Error(`Candidate archive differs from the checked source/build: ${path}`)
+    }
+    return { files, entry: { files: [...files], size: statSync(archive).size } }
+  }
   // --ignore-scripts: the report is about which files would ship, and the build
   // output it reads is already on disk. Letting `prepare` run would also mix build
   // progress into the JSON on stdout.
@@ -122,7 +133,8 @@ function packReports(document) {
   return []
 }
 
-const { files, entry } = packedFiles()
+if (process.argv.length > 3) throw new Error('Usage: verify-package-contents.mjs [candidate.tgz]')
+const { files, entry } = packedFiles(process.argv[2] ? resolve(process.argv[2]) : undefined)
 const problems = []
 
 // The host half loads its imports at run time, so every compiled module and every

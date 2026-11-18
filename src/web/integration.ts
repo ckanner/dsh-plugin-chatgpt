@@ -8,8 +8,9 @@ import { deliveryChunks } from './chunks.ts'
 import { WEB_EFFORT, WEB_MODEL_ID, WebPolicyError } from './policy.ts'
 import type { WebCallContext, WebDelivery } from './session-coordinator.ts'
 import type { WebPageFactory } from './browser/types.ts'
+import { toolCommitFromEvent, toolRootFromEvents, type WebSessionEvent, type WebToolOccurrence } from './tool-evidence.ts'
 
-interface SessionEvent { type: string; seq: number; data: Record<string, unknown> }
+type SessionEvent = WebSessionEvent
 interface Agent {
   id: string
   status: 'idle' | 'running'
@@ -96,6 +97,7 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
     },
   }, configured, () => ctx.emit('llm/adapters-updated'))
   ctx.provide('chatgptWebHost', host)
+  const toolOccurrences = new Map<unknown, WebToolOccurrence>()
 
   function ownerOf(agent: Agent): { sessionId: string; rootSessionId: string; workspace: string; parentSessionId?: string } {
     const agents = ctx.get('agents') as Agents | undefined
@@ -116,14 +118,18 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
   }
 
   async function settleTools(agent: Agent): Promise<void> {
-    const events = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
-    if (events.length === 0) return
+    const events = agent.session.snapshotEvents()
+    const bySeq = new Map(events.map(event => [event.seq, event]))
+    const results = events.flatMap(event => {
+      const proof = toolCommitFromEvent(String(agent.id), event, bySeq)
+      return proof ? [{ event, proof }] : []
+    })
+    if (results.length === 0) return
     const sessions = ctx.get('sessions') as Sessions | undefined
     const durable = await sessions?.flush(agent.session) ?? false
-    for (const event of events) {
-      const message = event.data.message as { toolCallId?: string } | undefined
+    for (const { event, proof } of results) {
       const error = event.data.error as { code?: string } | undefined
-      if (message?.toolCallId) await host.toolCommitted(String(agent.id), String(message.toolCallId), durable, error?.code === 'TOOL_OUTCOME_UNKNOWN')
+      await host.toolCommitted(proof, durable, error?.code === 'TOOL_OUTCOME_UNKNOWN')
     }
   }
 
@@ -218,17 +224,24 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
     await host.committed(reference, payload.event.data.rawOutput as readonly unknown[], `compaction:${payload.agent.id}:${String(payload.event.data.compactionId)}:${payload.event.seq}`, payload.durable)
   })
 
-  listener(ctx, 'tools/execute', async (exec: { agent?: Agent; callId: string; rootCallId: string }, next: () => Promise<unknown>) => {
+  listener(ctx, 'tools/execute', async (exec: { agent?: Agent; callId: string; rootCallId: string; token: unknown }, next: () => Promise<unknown>) => {
     if (exec.agent) {
       await host.inheritOwner(ownerOf(exec.agent))
-      if (await host.isManagedSession(String(exec.agent.id), ownerOf(exec.agent).workspace)) await host.guardSession(String(exec.agent.id), ownerOf(exec.agent).workspace)
-      await host.toolStarted(String(exec.agent.id), String(exec.callId), String(exec.rootCallId))
+      if (await host.isManagedSession(String(exec.agent.id), ownerOf(exec.agent).workspace)) {
+        await host.guardSession(String(exec.agent.id), ownerOf(exec.agent).workspace)
+        if (typeof exec.token !== 'symbol') throw new WebPolicyError('managed tool dispatch requires the host execution token')
+      }
+      const root = toolRootFromEvents(String(exec.agent.id), String(exec.rootCallId), exec.agent.session.snapshotEvents())
+      const occurrence = await host.toolStarted(String(exec.agent.id), String(exec.callId), String(exec.rootCallId), root?.rootCallSeq)
+      if (occurrence) toolOccurrences.set(exec.token, occurrence)
     }
     return await next()
   })
-  listener(ctx, 'tools/result', (exec: { agent?: Agent; callId: string }, result: { error?: { info?: { code?: string } } }) => {
-    if (!exec.agent) return
-    void host.toolObserved(String(exec.agent.id), String(exec.callId), result.error?.info?.code === 'TOOL_OUTCOME_UNKNOWN').catch(() => {
+  listener(ctx, 'tools/result', (exec: { token: unknown }, result: { error?: { info?: { code?: string } } }) => {
+    const occurrence = toolOccurrences.get(exec.token)
+    if (!occurrence) return
+    toolOccurrences.delete(exec.token)
+    void host.toolObserved(occurrence, result.error?.info?.code === 'TOOL_OUTCOME_UNKNOWN').catch(() => {
       // A failed observer never grants admission: its intent remains pending.
     })
   })

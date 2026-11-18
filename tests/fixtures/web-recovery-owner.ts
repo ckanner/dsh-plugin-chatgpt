@@ -58,7 +58,11 @@ if (mode !== 'empty') {
     for await (const _chunk of host.wrap(context, async function* () { delivery = await host.generate(); yield* deliveryChunks(delivery) })) { /* stream complete before ACK */ }
   } catch (error) { if (mode !== 'unsent' && !mode.startsWith('retired')) throw error }
   if (delivery && mode !== 'captured') await host.committed(delivery.reference, delivery.blocks, 'original-host-commit', true)
-  if (mode === 'unknown-tool') { await host.toolStarted('root', 'unknown-local-tool'); await host.toolObserved('root', 'unknown-local-tool', true) }
+  if (mode === 'unknown-tool') {
+    const tool = await host.toolStarted('root', 'unknown-local-tool', 'unknown-local-tool', 10)
+    if (!tool) throw new Error('fixture tool was not admitted')
+    await host.toolObserved(tool, true)
+  }
   if (mode.startsWith('retired')) {
     const observed = await host.recover(firstRequest) as { rejection: { responseDigest: string } }
     await host.retire(firstRequest, observed.rejection.responseDigest, 'discard-rejected-response')

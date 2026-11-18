@@ -1,66 +1,75 @@
-# Publishing is a release, not a side effect of a push.
-#
-# One tag does both halves of a release, so the registry and this repository's
-# Releases page cannot drift apart again: the run publishes only when the version
-# is new, and always records the GitHub Release. Pushing a tag for a version that
-# is already on the registry therefore backfills its Release instead of failing,
-# which is how the releases skipped while publishing by hand get recorded.
-#
-# Two ways in for the publish half, and the workflow does not care which one the
-# maintainer chose: a repository `NPM_TOKEN` secret, or npm trusted publishing,
-# where npm exchanges this run's OIDC identity for a short-lived credential and no
-# long-lived token exists to leak. The Release half needs neither — it uses the
-# run's own GITHUB_TOKEN, which is why `contents` is write below.
-#
-# Every check the CI lane runs has to pass here too, because an artifact that is
-# already on the registry cannot be unpublished into a fix.
 name: release
 
 on:
   push:
     tags: ['v*']
-  # Releasing the manifest's version by hand, creating the tag when it is absent.
+  # Manual retries must select the existing version tag as their workflow ref.
+  # A branch run cannot create or move a release tag.
   workflow_dispatch:
 
 permissions:
-  # Creating the GitHub Release, and attaching the packed tarball to it.
-  contents: write
-  # Trusted publishing: npm accepts this run's OIDC identity in place of a token.
-  id-token: write
+  contents: read
+
+# Version/channel reconciliation is serialized, including manual retries.
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
 
 jobs:
+  source:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      tag_object: ${{ steps.source.outputs.tag_object }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.22.1'
+      - name: Admit the exact tag and reviewed main source
+        id: source
+        run: node scripts/release.mjs source
+
   web-host:
+    needs: source
     uses: ./.github/workflows/web-host.yml
 
   release:
-    needs: web-host
+    needs: [source, web-host]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
     env:
-      # Empty when the secret is absent, which is what selects the second step.
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      RELEASE_TAG_OBJECT: ${{ needs.source.outputs.tag_object }}
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
         with:
-          # Node 22 is the lowest the plugin supports, so the artifact is built
-          # and published by the oldest runtime it claims to work on.
-          node-version: '22.x'
-          registry-url: https://registry.npmjs.org
-
-      - name: Use an npm that knows trusted publishing
-        # Node 22 bundles npm 10, which has no OIDC exchange at all: with no token
-        # configured it stops at ENEEDAUTH instead of asking npm for a credential.
-        # Trusted publishing needs npm 11.5 or later.
+          ref: ${{ needs.source.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set isolated release paths
         run: |
-          npm install --global npm@latest
+          printf 'RELEASE_DIRECTORY=%s/chatgpt-release\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'NPM_CONFIG_USERCONFIG=%s/public-registry.npmrc\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/public-registry.npmrc"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.22.1'
+      - name: Install the fixed trusted-publishing toolchain
+        run: |
+          : > "$NPM_CONFIG_USERCONFIG"
+          npm install --global npm@12.2.1 --ignore-scripts --registry=https://registry.npmjs.org
           node --version
           npm --version
-
-      - run: npm install --ignore-scripts
-
+      - run: npm ci --ignore-scripts
       - name: Checkout pinned DSH contract sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: deepseek-ai/deepseek-harness
           ref: d743267388641bc76f17c45ce8b4c231aed1d32c
@@ -71,7 +80,6 @@ jobs:
             packages/util/brand/src
             packages/util/values/src
             packages/util/crypto/src
-
       - name: Unit tests
         run: npm test
       - name: Real DSH stream and replay contract
@@ -82,100 +90,57 @@ jobs:
         run: npm run typecheck
       - name: Browser bundle honours the loader contract
         run: npm run verify:client
-      - name: Published package would load
-        run: npm run verify:package
-      - name: Verify installation with actual host peers
-        run: npm run verify:install
       - name: README pair is aligned
         run: npm run check:i18n
-
-      - name: Resolve the version, and refuse a tag that does not match it
-        # A publish is not undoable, and an npm version can never be reused, so a
-        # mistyped tag would burn the number permanently.
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$GITHUB_REF_TYPE" != 'tag' ]; then
-            # A manual run releases whatever the manifest says.
-            tag="$version"
-          fi
-          if [ "$tag" != "$version" ]; then
-            echo "tag v$tag does not match package.json version $version" >&2
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "Releasing dsh-plugin-chatgpt@$version"
-
-      - name: Ask the registry whether this version exists yet
-        id: registry
-        run: |
-          if npm view "dsh-plugin-chatgpt@$VERSION" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-
+      - name: Pack the source candidate exactly once
+        run: node scripts/release.mjs pack "$RELEASE_DIRECTORY"
+      - name: Verify the actual candidate archive
+        run: npm run verify:package -- "$RELEASE_DIRECTORY/candidate.tgz"
+      - name: Install that candidate with actual host peers
+        run: npm run verify:install -- "$RELEASE_DIRECTORY/candidate.tgz"
+      - name: Refuse an existing conflicting GitHub Release before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs check-github "$RELEASE_DIRECTORY"
       - name: Choose the publishing credential
-        # Decided from the secret itself in a shell step. setup-node exports a
-        # placeholder `NODE_AUTH_TOKEN` (`XXXXX-XXXXX-XXXXX-XXXXX`) once `registry-url`
-        # is set, so a condition that reads the environment cannot tell a real secret
-        # from that placeholder.
         id: credential
         env:
           TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -n "$TOKEN" ]; then
-            echo "mode=token" >> "$GITHUB_OUTPUT"
-            echo "Publishing with the repository's NPM_TOKEN secret."
+            echo 'mode=token' >> "$GITHUB_OUTPUT"
+            printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/token-publishing.npmrc"
           else
-            echo "mode=trusted" >> "$GITHUB_OUTPUT"
-            echo "No NPM_TOKEN secret is set; publishing through npm trusted publishing."
+            echo 'mode=trusted' >> "$GITHUB_OUTPUT"
+            : > "$RUNNER_TEMP/trusted-publishing.npmrc"
           fi
-
-      - name: Publish with the repository's npm token
-        if: steps.registry.outputs.published == 'false' && steps.credential.outputs.mode == 'token'
+      - name: Publish or reconcile the exact candidate with an npm token
+        if: steps.credential.outputs.mode == 'token'
         env:
-          # Stated here because setup-node's placeholder would otherwise win.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
-
-      - name: Publish through npm trusted publishing
-        # No secret: npm exchanges the id-token for a credential scoped to this
-        # workflow. Trusted publishing has to be configured for this repository on
-        # npmjs.com before the first run.
-        #
-        # npm prefers a configured token over the OIDC exchange, and setup-node's
-        # `.npmrc` points `_authToken` at the placeholder, so this step runs against
-        # an empty config: with no token to send, npm performs the exchange.
-        if: steps.registry.outputs.published == 'false' && steps.credential.outputs.mode == 'trusted'
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/token-publishing.npmrc
+        run: node scripts/release.mjs publish "$RELEASE_DIRECTORY"
+      - name: Publish or reconcile the exact candidate through trusted publishing
+        if: steps.credential.outputs.mode == 'trusted'
         env:
           NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/trusted-publishing.npmrc
-        run: |
-          : > "$NPM_CONFIG_USERCONFIG"
-          npm publish --access public --provenance
-
-      - name: Record a version that was published by hand
-        if: steps.registry.outputs.published == 'true'
-        run: |
-          echo "dsh-plugin-chatgpt@$VERSION is already on the registry." >> "$GITHUB_STEP_SUMMARY"
-          echo "This run records its GitHub Release and publishes nothing." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Pack the tarball the Release carries
-        # The asset keeps a version-free name so `releases/latest/download/…` is a
-        # stable address for the current build, as the install notes promise.
-        run: |
-          npm pack
-          mv dsh-plugin-chatgpt-*.tgz dsh-plugin-chatgpt.tgz
-
-      - name: Create or update the GitHub Release
+          NODE_AUTH_TOKEN: ''
+        run: node scripts/release.mjs publish "$RELEASE_DIRECTORY"
+      - name: Install the verified archive fetched from the public registry
+        run: npm run verify:install -- "$RELEASE_DIRECTORY/registry/dsh-plugin-chatgpt.tgz"
+      - name: Promote the verified version to its explicit channel with an npm token
+        if: steps.credential.outputs.mode == 'token'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/token-publishing.npmrc
+        run: node scripts/release.mjs promote "$RELEASE_DIRECTORY"
+      - name: Promote the verified version to its explicit channel through trusted publishing
+        if: steps.credential.outputs.mode == 'trusted'
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/trusted-publishing.npmrc
+          NODE_AUTH_TOKEN: ''
+        run: node scripts/release.mjs promote "$RELEASE_DIRECTORY"
+      - name: Record the GitHub Release with the verified registry bytes
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release upload "v$VERSION" dsh-plugin-chatgpt.tgz --clobber
-          else
-            gh release create "v$VERSION" \
-              --title "v$VERSION" \
-              --generate-notes \
-              dsh-plugin-chatgpt.tgz
-          fi
+        run: node scripts/release.mjs github "$RELEASE_DIRECTORY"

@@ -47,12 +47,89 @@ test('DOM fixtures require actual private project settings, empty sources and bo
   const f = dom('<main><h1>Private project-only project</h1></main><div role="dialog"><span>Default memory</span><textarea name="instructions"></textarea></div>')
   assert.equal(f.call<ReturnType<typeof projectSettingsEvidence>>(projectSettingsEvidence).projectOnly, false)
   assert.equal(f.call(projectSourcesEvidence), false)
-  f.document.body.innerHTML = '<main><p>No files added yet</p></main><div role="dialog"><button role="radio" aria-checked="true">Project-only</button><textarea name="instructions"></textarea><span>Only you</span></div>'
+  f.document.body.innerHTML = '<main><p>No files added yet</p></main><div role="dialog"><button role="radio" aria-checked="true">Project-only</button><textarea name="instructions"></textarea><span data-testid="project-sharing-mode">Only you</span></div>'
   assert.equal(f.call<ReturnType<typeof projectSettingsEvidence>>(projectSettingsEvidence).projectOnly, true)
-  assert.equal(f.call(projectSourcesEvidence), true); assert.equal(f.call(projectSharingEvidence), true)
+  assert.equal(f.call(projectSourcesEvidence), true)
+  f.document.querySelector('[role="dialog"]')!.innerHTML = '<span data-testid="project-sharing-mode">Only you</span>'
+  assert.equal(f.call(projectSharingEvidence), true)
   const member = f.document.createElement('span'); member.setAttribute('data-testid', 'project-member'); member.setAttribute('data-role', 'member')
   f.document.querySelector('[role="dialog"]')!.append(member)
   assert.equal(f.call(projectSharingEvidence), false)
+})
+
+test('project memory evidence rejects unselected, hidden and contradictory mode labels', () => {
+  const cases = {
+    'default selected with an unchecked project-only option': '<button role="radio" aria-checked="true"><span>Default memory</span></button><button role="radio" aria-checked="false"><span>Project-only memory</span></button>',
+    'project-only option without a selection': '<button role="radio" aria-checked="false"><span>Project-only memory</span></button>',
+    'generic explanatory text': '<p>Project-only memory</p>',
+    'hidden selected control': '<button role="radio" aria-checked="true" hidden>Project-only</button>',
+    'hidden readonly metadata': '<div aria-hidden="true"><span data-testid="project-memory-mode">Project-only memory</span></div>',
+    'default selection with contradictory readonly metadata': '<button role="radio" aria-checked="true">Default memory</button><span data-testid="project-memory-mode">Project-only memory</span>',
+    'two checked choices': '<button role="radio" aria-checked="true">Default memory</button><button role="radio" aria-checked="true">Project-only</button>',
+    'selected choice contradicts readonly metadata': '<button role="radio" aria-checked="true">Project-only</button><span data-testid="project-memory-mode">Default memory</span>',
+    'readonly marker inside an unchecked option': '<button role="radio" aria-checked="false"><span data-project-memory>Project-only memory</span></button>',
+  }
+  for (const [name, content] of Object.entries(cases)) {
+    const f = dom(`<div role="dialog">${content}<textarea name="instructions"></textarea></div>`)
+    assert.equal(f.call<ReturnType<typeof projectSettingsEvidence>>(projectSettingsEvidence).projectOnly, false, name)
+  }
+})
+
+test('project memory evidence accepts one explicit selected mode or visible readonly mode metadata', () => {
+  for (const content of [
+    '<button role="radio" aria-checked="true">Project-only</button><button role="radio" aria-checked="false">Default memory</button>',
+    '<button data-state="checked">Project-only memory</button>',
+    '<span data-testid="project-memory-mode">Project-only memory</span>',
+    '<div data-project-memory>仅限项目记忆</div>',
+  ]) {
+    const f = dom(`<div role="dialog">${content}<textarea name="instructions"></textarea></div>`)
+    assert.equal(f.call<ReturnType<typeof projectSettingsEvidence>>(projectSettingsEvidence).projectOnly, true, content)
+  }
+})
+
+test('project sources never let an empty-state label override a nonzero or unknown count', () => {
+  for (const count of ['2', 'Loading', '']) {
+    const f = dom(`<main><p>No files added yet</p><span data-testid="project-sources-count">${count}</span></main>`)
+    assert.equal(f.call(projectSourcesEvidence), false, `explicit count ${JSON.stringify(count)}`)
+  }
+  const f = dom('<main><span data-testid="project-sources-count" hidden>0</span></main>')
+  assert.equal(f.call(projectSourcesEvidence), false, 'hidden zero is not current source evidence')
+  f.document.body.innerHTML = '<main><span data-testid="project-sources-count">0</span></main>'
+  assert.equal(f.call(projectSourcesEvidence), true)
+  f.document.body.innerHTML = '<main><span data-testid="project-sources-count">0</span><span data-testid="project-sources-count">2</span></main>'
+  assert.equal(f.call(projectSourcesEvidence), false, 'conflicting counts cannot prove an empty project')
+})
+
+test('project sharing requires current private evidence and rejects public or unchecked labels', () => {
+  for (const content of [
+    '<button role="radio" aria-checked="true"><span>Anyone with link</span></button><button role="radio" aria-checked="false"><span>Only you</span></button>',
+    '<button role="radio" aria-checked="false"><span>Only you</span></button>',
+    '<span>Only you</span>',
+    '<span data-testid="project-sharing-mode" hidden>Only you</span>',
+    '<button role="radio" aria-checked="true">Anyone with link</button><span data-testid="project-sharing-mode">Only you</span>',
+    '<button role="radio" aria-checked="true">Only you</button><span data-testid="project-sharing-mode">Anyone with link</span>',
+  ]) {
+    const f = dom(`<div role="dialog">${content}</div>`)
+    assert.equal(f.call(projectSharingEvidence), false, content)
+  }
+  for (const content of [
+    '<span data-testid="project-sharing-mode">Only you</span>',
+    '<button role="radio" aria-checked="true">Only you</button><button role="radio" aria-checked="false">Anyone with link</button>',
+  ]) {
+    const f = dom(`<div role="dialog">${content}</div>`)
+    assert.equal(f.call(projectSharingEvidence), true, content)
+  }
+})
+
+test('project instructions require visible empty fields without contradictory content', () => {
+  for (const content of [
+    '<textarea name="instructions" hidden></textarea><textarea name="instructions">Unbound instruction</textarea>',
+    '<textarea name="instructions"></textarea><div data-testid="project-instructions">Unbound instruction</div>',
+    '<span>No instructions</span>',
+  ]) {
+    const f = dom(`<div role="dialog"><span data-testid="project-memory-mode">Project-only memory</span>${content}</div>`)
+    assert.equal(f.call<ReturnType<typeof projectSettingsEvidence>>(projectSettingsEvidence).emptyInstructions, false, content)
+  }
 })
 
 test('managed prepare drives real DOM creation/settings/share controls after account and WAL admission', async () => {
@@ -82,7 +159,7 @@ test('managed prepare drives real DOM creation/settings/share controls after acc
       const menu=append('<div role="menu"><button role="menuitem">Project settings</button></div>')
       menu.querySelector('button')!.addEventListener('click',()=>{menu.remove();append('<div role="dialog"><button role="radio" aria-checked="true">Project-only</button><textarea name="instructions"></textarea></div>')})
     })
-    f.document.getElementById('share')!.addEventListener('click',()=>append('<div role="dialog"><span>Only you</span></div>'))
+    f.document.getElementById('share')!.addEventListener('click',()=>append('<div role="dialog"><span data-testid="project-sharing-mode">Only you</span></div>'))
   }
   const raw = {
     targetId:'owned-fixture',sessionId:'fixture',cdp:{beginCleanup(){}},

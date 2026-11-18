@@ -71,21 +71,54 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
       await html('<main><h1>Private project-only project</h1></main><div role="dialog"><h2>Project settings</h2><span>Default memory</span><textarea name="instructions"></textarea></div>')
       assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:false,emptyInstructions:true})
       assert.equal(await call(projectSourcesEvidence),false)
+      for (const memory of [
+        '<button role="radio" aria-checked="true">Default memory</button><button role="radio" aria-checked="false"><span>Project-only memory</span></button>',
+        '<button role="radio" aria-checked="true">Default memory</button><span data-testid="project-memory-mode">Project-only memory</span>',
+        '<button role="radio" aria-checked="true" hidden>Project-only</button>',
+        '<div style="display:none"><span data-testid="project-memory-mode">Project-only memory</span></div>',
+        '<p>Project-only memory</p>',
+      ]) {
+        await html(`<div role="dialog">${memory}<textarea name="instructions"></textarea></div>`)
+        assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:false,emptyInstructions:true},memory)
+      }
+      await html('<div role="dialog"><span data-testid="project-memory-mode">Project-only memory</span><textarea name="instructions"></textarea></div>')
+      assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:true,emptyInstructions:true})
       await html('<main><p>No files added yet</p></main><div role="dialog"><h2>Project settings</h2><button role="radio" aria-checked="true">Project-only</button><textarea name="instructions"></textarea></div>')
       assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:true,emptyInstructions:true})
       assert.equal(await call(projectSourcesEvidence),true)
       await page.evaluate<void>(`document.querySelector('textarea').value='unbound instructions';const source=document.createElement('div');source.dataset.testid='project-source';document.querySelector('main').append(source)`)
       assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:true,emptyInstructions:false})
       assert.equal(await call(projectSourcesEvidence),false)
+      await html('<div role="dialog"><span data-testid="project-memory-mode">Project-only memory</span><textarea name="instructions" hidden></textarea><textarea name="instructions">Unbound instruction</textarea></div>')
+      assert.deepEqual(await call(projectSettingsEvidence),{projectOnly:true,emptyInstructions:false})
+      for (const count of ['2','Loading','']) {
+        await html(`<main><p>No files added yet</p><span data-testid="project-sources-count">${count}</span></main>`)
+        assert.equal(await call(projectSourcesEvidence),false)
+      }
+      await html('<main><span data-testid="project-sources-count" hidden>0</span></main>')
+      assert.equal(await call(projectSourcesEvidence),false)
+      await html('<main><span data-testid="project-sources-count">0</span></main>')
+      assert.equal(await call(projectSourcesEvidence),true)
     })
 
     await t.test('sharing evidence rejects collaborators and public links',async()=>{
-      await html('<div role="dialog"><h2>Share project</h2><span>Only you</span></div>')
+      await html('<div role="dialog"><h2>Share project</h2><span data-testid="project-sharing-mode">Only you</span></div>')
       assert.equal(await call(projectSharingEvidence),true)
       await page.evaluate<void>(`const n=document.createElement('div');n.dataset.testid='project-member';n.dataset.role='member';document.querySelector('[role="dialog"]').append(n)`)
       assert.equal(await call(projectSharingEvidence),false)
-      await html('<div role="dialog"><span>Only you</span><a data-testid="project-public-link" href="https://example.invalid">Public link</a></div>')
+      await html('<div role="dialog"><span data-testid="project-sharing-mode">Only you</span><a data-testid="project-public-link" href="https://example.invalid">Public link</a></div>')
       assert.equal(await call(projectSharingEvidence),false)
+      for (const sharing of [
+        '<button role="radio" aria-checked="true">Anyone with link</button><button role="radio" aria-checked="false"><span>Only you</span></button>',
+        '<button role="radio" aria-checked="true">Anyone with link</button><span data-testid="project-sharing-mode">Only you</span>',
+        '<span data-testid="project-sharing-mode" hidden>Only you</span>',
+        '<span>Only you</span>',
+      ]) {
+        await html(`<div role="dialog">${sharing}</div>`)
+        assert.equal(await call(projectSharingEvidence),false)
+      }
+      await html('<div role="dialog"><button role="radio" aria-checked="true">Only you</button><button role="radio" aria-checked="false">Anyone with link</button></div>')
+      assert.equal(await call(projectSharingEvidence),true)
     })
 
     await t.test('CDP selects exact private image bytes and DOM completion never follows a preview alone', async () => {

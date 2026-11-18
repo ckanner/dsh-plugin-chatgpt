@@ -250,11 +250,21 @@ node scripts/generate-model-catalog.mjs /path/to/@earendil-works/pi-ai
 
 ### 发版
 
-一次发版就是一个 tag：提版本、打 tag、推送。release 流水线会跑 CI 的全部检查，只在 registry 上还没有该版本时才发布，而无论是否发布都会记录 GitHub Release。
+合并 PR 不会自动发布包。先把版本变更（`package.json` 与 `package-lock.json` 同步）合并到 `main`，再推送匹配的 `v<version>` 标签。发布流水线只接受已存在、指向本次流水线精确提交且位于 `origin/main` 的标签，并在发布前重新核对远端标签对象。当前开发版本在 review、合并后可按以下步骤打标签：
 
 ```text
-npm version 0.1.14
-git push --follow-tags
+git switch main
+git pull --ff-only
+git tag v0.2.0-alpha.1
+git push origin v0.2.0-alpha.1
 ```
 
-发布凭据走仓库的 `NPM_TOKEN` secret 或 npm 可信发布（工作流 `release.yml`）；Release 那一半用运行自带的 token。关键在「先问 registry」：它让手工发布过的版本在打 tag 时只补 Release 而不会失败，也让重跑同一个 tag 能修复缺失的 Release。`workflow_dispatch` 会发布 manifest 里的版本，并在 tag 不存在时自动创建。
+发布工具链固定为 Node `24.22.1` 与 npm `12.2.1`，依赖按已提交的 lockfile 安装。现有单元测试、真实 DSH 契约、构建、类型、客户端、双语文档与 macOS/Linux Web 宿主门禁仍然必需；PR CI 矩阵另覆盖 Node 22 兼容性。源码只打包一次，先核对真实压缩包的内容和真实宿主 peer 安装，再将同一份压缩包发布到 `candidate-<version>` 标签（版本号中的点替换为连字符）。
+
+随后流水线从公共 registry 获取该精确版本，核对 SHA-512 完整性与字节，再次进行消费者安装检查。通过后才把 `-alpha.N` 提升到 npm `alpha`、`-beta.N` 提升到 `beta`、`-rc.N` 提升到 `rc`，或把稳定版 `X.Y.Z` 提升到 `latest`。Alpha/beta/rc 的 GitHub Release 显式标记为预发布，不会替换稳定版 latest Release。安装预发布版时请使用精确版本或相应渠道，例如 `dsh-plugin-chatgpt@0.2.0-alpha.1` 或 `dsh-plugin-chatgpt@alpha`。
+
+重试只有在 registry 完整性和下载压缩包都与已验证的源码候选包一致时，才复用已发布版本。GitHub Release 附带的正是这份 registry 字节；已有附件必须一致，绝不会被覆盖。Release 会先创建为草稿，上传压缩包经下载核验后，才发布同一个 release ID。创建、上传或发布中断后，重试可以继续完成身份一致的草稿；附件存在冲突或仅部分上传时，对账会停止。来源不同、远端标签变化、渠道已有更新版本、Release 冲突、认证失败、超时或 registry 响应格式异常都会中止流水线。只有正常退出进程返回的结构化 npm `E404` 才能证明版本不存在。
+
+发布与渠道提升使用仓库的 `NPM_TOKEN` secret，或为 `release.yml` 配置的 npm trusted publishing；GitHub Release 使用本次运行的 token。首次运行前，应提供有权发布本包并更新其 dist-tag 的 token，或为 trusted publisher 同时允许直接 `npm publish` 和 **Allow npm dist-tag**。[dist-tag 权限](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing) 是独立授权，默认关闭；已有 publisher 也须启用。固定的 npm `12.2.1` 已满足 CLI 版本要求。只有 publish 权限时，候选版本可能已发布，但流程会在 `promote` 失败，公共渠道保持不变，GitHub Release 尚未完成。补齐 publisher 权限或提供适用的 token 后，可重试同一标签。读取公共标签和 `npm whoami` 都不能证明 trusted publisher 具有写权限。
+
+重试时以已有发布标签运行 `gh workflow run release.yml --ref v0.2.0-alpha.1`。手动从分支运行会被拒绝，不会创建标签。npm 包包含维护中的 [DSH 兼容源码](../compat/README.zh.md)，安装插件不会自动应用宿主补丁，也不会生成兼容桌面端安装包。

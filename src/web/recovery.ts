@@ -9,6 +9,7 @@ import { answerBlocks, WebToolProtocol, type WebToolSchema } from './protocol.ts
 import type { WebFacts, WebJournal, WebMediaAttachment } from './browser/types.ts'
 import type { WebDelivery } from './session-coordinator.ts'
 import { assertAcceptedWebMedia, readWebMediaArtifact, validateWebMedia } from './media.ts'
+import { settledToolIntent, type WebToolIntent } from './tool-evidence.ts'
 
 /** Private, invocation-bound evidence. This is not a browser connection API. */
 export interface WebRecoveryIdentity { sessionId: string; executionDomainId: string; hostInvocationId: string }
@@ -42,7 +43,7 @@ interface SavedInvocation extends WebRecoveryIdentity {
   requireIsolation: boolean
   settingsDigest: string
   calls: SavedCall[]
-  toolIntents: Record<string, { sessionId: string; rootCallId: string; completed: boolean; outcomeUnknown?: boolean }>
+  toolIntents: Record<string, WebToolIntent>
   fence?: string
   finished: boolean
   completed: boolean
@@ -193,8 +194,8 @@ export async function readWebInvocationRecovery(input: WebRecoveryCheckpoint) {
   const terminalMain: { requestId: string; responseId: string; contentDigest: string; hostCommitId: string; text: string }[] = []
   let blocked = record.fence !== undefined, retired = false, confirmed = false
   let cleanup = true, remote: 'idle' | 'running' | 'unknown' = 'idle', dispatch: 'not-dispatched' | 'dispatched' | 'unknown' = 'not-dispatched'
-  for (const tool of Object.values(record.toolIntents)) {
-    if (!tool || tool.completed !== true || tool.outcomeUnknown === true) blocked = true
+  for (const [key, tool] of Object.entries(record.toolIntents)) {
+    if (!settledToolIntent(key, tool, record.toolIntents)) blocked = true
   }
   for (const call of record.calls) {
     nonempty(call.requestId, 'original requestId', 200)

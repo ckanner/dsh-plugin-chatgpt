@@ -250,11 +250,21 @@ node scripts/generate-model-catalog.mjs /path/to/@earendil-works/pi-ai
 
 ### Releasing
 
-A release is one tag: bump the version, push the tag, and the release workflow runs every check the CI lane runs, publishes only when the registry does not have that version yet, and records the GitHub Release either way.
+Merging a PR does not publish a package. First merge the version change (both `package.json` and `package-lock.json`) into `main`; then push the matching `v<version>` tag. The release workflow accepts only an existing tag at the exact workflow commit on `origin/main`, and rechecks its remote tag object before publication. The current development version would be tagged as follows after review and merge:
 
 ```text
-npm version 0.1.14
-git push --follow-tags
+git switch main
+git pull --ff-only
+git tag v0.2.0-alpha.1
+git push origin v0.2.0-alpha.1
 ```
 
-Publishing takes either the repository's `NPM_TOKEN` secret or npm trusted publishing (workflow `release.yml`); the Release half uses the run's own token. Asking the registry first is what lets a tag for a version that was published by hand record its Release instead of failing, and what lets re-running a tag repair a missing Release. `workflow_dispatch` releases the manifest's version, creating the tag when it is absent.
+The release toolchain is fixed to Node `24.22.1` and npm `12.2.1`, with dependencies installed from the committed lockfile. Existing unit, real DSH contract, build, type, client, bilingual documentation and macOS/Linux Web host gates remain required; Node 22 compatibility is also covered by the PR CI matrix. The source is packed once. The actual archive contents and installation with real host peers are checked before that same archive is published under `candidate-<version>` (dots replaced with hyphens).
+
+The workflow then fetches that exact version from the public registry, verifies its SHA-512 integrity and bytes, and repeats the consumer installation check. Only then does it promote `-alpha.N` to npm `alpha`, `-beta.N` to `beta`, `-rc.N` to `rc`, or stable `X.Y.Z` to `latest`. Alpha/beta/rc GitHub Releases are explicitly prereleases and do not replace the stable latest Release. Install a prerelease by its exact version or its named channel, for example `dsh-plugin-chatgpt@0.2.0-alpha.1` or `dsh-plugin-chatgpt@alpha`.
+
+Retries reuse an already published version only when the registry integrity and downloaded archive match the tested source candidate. The GitHub Release carries those registry bytes; an existing asset must match and is never overwritten. The Release is created as a draft; the uploaded archive is downloaded and verified before publishing that same release ID. Retries can finish a matching draft after an interrupted create, upload or publish, while a conflicting or partially uploaded asset stops reconciliation. A different source, changed remote tag, newer channel version, conflicting Release, authentication failure, timeout, or malformed registry response stops the run. Only a structured npm `E404` from a normally exited process proves that a version is absent.
+
+Publishing and channel promotion use either the repository `NPM_TOKEN` secret or npm trusted publishing configured for `release.yml`; GitHub Releases use the run token. Before the first run, provide a token authorized to publish this package and update its dist-tags, or configure the trusted publisher to allow both direct `npm publish` and **Allow npm dist-tag**. The [dist-tag permission](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing) is separate and disabled by default; existing publishers must also have it enabled. The pinned npm `12.2.1` meets the CLI requirement. A publish-only configuration can publish the candidate, then fails at `promote`, leaving the public channel unchanged and the GitHub Release unfinished. Correct the publisher permissions or supply a suitable token, then retry the same tag. Public tag reads and `npm whoami` do not prove trusted-publisher write permission.
+
+To retry, run `gh workflow run release.yml --ref v0.2.0-alpha.1` with the existing release tag. A manual run from a branch is rejected and never creates a tag. The npm package includes the maintained [DSH compatibility sources](compat/README.md); installing it does not apply the host patch or produce a compatible desktop installer.
