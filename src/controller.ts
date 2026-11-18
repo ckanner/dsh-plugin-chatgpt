@@ -18,20 +18,23 @@
 
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ChatGptSession, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
+import type { ChatGptWebHost } from './web/host.ts'
 
 export type { ChatGptPendingView, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
 
 /** Remote owner of the ChatGPT sign-in and account surface. */
 export class ChatGptController extends TypertRemoteService {
   private readonly session: ChatGptSession
+  private readonly web: ChatGptWebHost | undefined
 
   /**
    * @param ctx - the plugin context.
    * @param session - the state machine this service carries.
    */
-  constructor(ctx: unknown, session: ChatGptSession) {
+  constructor(ctx: unknown, session: ChatGptSession, web?: ChatGptWebHost) {
     super(ctx, 'chatgptController', { namespace: 'chatgpt' })
     this.session = session
+    this.web = web
   }
 
   /**
@@ -79,5 +82,32 @@ export class ChatGptController extends TypertRemoteService {
   @Remote
   async signOut(subject?: string): Promise<ChatGptSignOutOutcome> {
     return await this.session.signOut(subject)
+  }
+
+  @Remote
+  async webStatus(): Promise<unknown> { return await this.web?.status() }
+
+  @Remote
+  async webConfigure(value: unknown): Promise<unknown> {
+    if (!this.web) throw new Error('Web host is unavailable')
+    return await this.web.configure(value)
+  }
+
+  @Remote
+  async webConnect(): Promise<unknown> {
+    if (!this.web) throw new Error('Web host is unavailable')
+    return await this.web.connect()
+  }
+
+  @Remote
+  async webRecover(requestId: string): Promise<unknown> {
+    if (!this.web) throw new Error('Web host is unavailable')
+    return await this.web.recover(requestId)
+  }
+
+  @Remote
+  async webAdopt(requestId: string): Promise<unknown> {
+    if (!this.web) throw new Error('Web host is unavailable')
+    return await this.web.recover(requestId, true)
   }
 }

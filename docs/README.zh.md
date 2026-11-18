@@ -2,13 +2,14 @@
 
 [English](../README.md) | 中文
 
-为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。
+为 DeepSeek Harness 增加一个 Provider 路由 `chatgpt`，通过 ChatGPT 订阅使用模型。现有订阅模型采用 OpenAI 公布的 *Sign in with ChatGPT*（SIWC）流程和账号模型目录。实验性的 **GPT-6 Pro · Web** 模型使用独立的专用浏览器连接。路由命名为 `chatgpt`，因为内置 pi-ai 插件已占用 `openai`。
 
 ![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)
 
 ## Table of Contents
 
 - [使用本包](#use-this-package)
+- [实验性 ChatGPT Web Pro](#chatgpt-web-pro)
 - [你会得到什么](#what-you-get)
 - [实现说明](#understand-the-implementation)
 - [延伸阅读](#further-exploration)
@@ -89,12 +90,27 @@ auth.adopt(credential)
 
 -----
 
+<a id="chatgpt-web-pro"></a>
+## 实验性 ChatGPT Web Pro
+
+`0.2.0-alpha.1` 开发候选版本将 `chatgpt` / `gpt-6-pro-web` / `pro` 接入 DSH 原生模型和档位控件，尚未发布到 npm。Web 模型默认关闭，需要针对 commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760`（`0.2.2-rc.4`）维护的精确基线 [DSH 兼容补丁](../compat/README.zh.md)；只在原版 SDK 中安装插件不会补出这些宿主扩展。
+
+在现有 ChatGPT Provider 卡片中，为 Chrome、专用浏览器 profile 和单独的私有恢复目录配置绝对路径。保存后点击 **Connect / verify login**，在该浏览器中手动完成网页登录，再次点击 **Connect / verify login**。启用 **GPT-6 Pro · Web**，并在普通模型选择器中选择 **Pro**。这条连接与 SIWC 登录及其账号目录模型相互独立。
+
+默认 Web 上下文为每个会话代次独立的私有 `project-only` 项目。DSH 负责本地工具和权限，在执行工具前验证完整结构化响应，并让唯一压缩引擎使用 Web 压力与摘要策略。兼容轮次发送增量历史，代次迁移依据 DSH 的权威历史。模型可按调用方的权限用于规划、review 和执行角色。
+
+被中断的 Web 工作分别保留派发、结果、本地清理和远端生成事实。检查恢复不发送 prompt，也不执行工具。显式采纳已捕获响应可能执行其中已验证的工具，但不会自动请求下一次模型回答。远端或工具结果未知时阻断执行域；网页用量未知就保持 unknown。
+
+真实 macOS、已登录 ChatGPT 账号和当前网页布局尚未完成验收。未提供媒体上传和自动格式修复；网页上下文已满或项目创建存在歧义时保守阻断。启用候选版本前，请阅读完整的 [Web Pro 设置、预算、恢复与验收边界](web-pro.zh.md)。
+
+-----
+
 <a id="what-you-get"></a>
 ## 你会得到什么
 
-一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。
+一个 Provider 路由，像内置 Provider 一样出现在 **设置 → 模型** 中。现有 SIWC 模型跟随账号目录，显式启用的 Web 模型显示在同一处。在那里选择模型，就会将其加入普通模型选择器。
 
-模型元数据来自账号列表。适配器默认跟随各模型在账号目录中声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算；显式配置会按填写的值采用。登录仍在这一行的卡片上。
+现有 SIWC 模型的元数据来自账号目录。适配器默认跟随各模型声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算，显式值按填写内容采用。Web Pro 使用上文所述的独立本地字节策略。登录仍在该行的卡片上。
 
 例如，在插件配置中加入以下字段，即可把没有单独配置的模型的 DSH 上下文预算设为 1,000,000 token，即使目录声明的最大值是 872,000 也不会缩小。删除此字段后，这些模型恢复账号默认值。这些设置与 Codex 配置相互独立。DSH 仍会为压缩预留空间；它们不会改变服务端的请求限制。
 
@@ -144,8 +160,11 @@ modelContextWindowLimits:
 | `src/api/client.ts` | 两次 HTTP 调用：列出模型、跑一轮。 |
 | `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |
 | `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |
+| `src/web/host.ts` 与 `src/web/integration.ts` | Web 绑定、执行域归属、公共 DSH hooks 与恢复采纳。 |
+| `src/web/session-coordinator.ts` 与 `src/web/protocol.ts` | 浏览器代次增量历史、持久交付与本地工具响应整包校验。 |
+| `src/web/transport.ts` 与 `src/web/browser/` | 专用 Chrome 控制、实际活动、不可变响应 artifact 与独立清理事实。 |
 
-代码强制而非仅记录的三条规则：
+代码实际强制的三条 SIWC 规则：
 
 - 请求绝不携带 `temperature`、`max_output_tokens`、`top_p`、`truncation` 等套餐额度路由拒收的字段。它们被显式列在 `REFUSED_FIELDS` 中，因此不会被误加回来。
 - `response.completed` 是唯一成功的终态。没有它就以结束的流算作错误，因为「被截断却看起来已完成」的回答比一个可见的失败更糟。
@@ -167,7 +186,7 @@ modelContextWindowLimits:
 <a id="model-experience"></a>
 ## 模型体验
 
-本 bundle 只插入一行 provider，该行的插件拥有全部面向模型的行为；配置层本身不贡献任何 prompt、工具或上下文。
+本节的上下文与缓存行为描述现有 SIWC 模型。这个 bundle 插入一个 Provider 行，由该行的插件负责模型行为；配置层自身不增加 prompt、工具或上下文。Web Pro 使用独立的浏览器与结构化工具契约，详见其使用说明。
 
 ### 请求上下文与条件
 
@@ -184,6 +203,8 @@ modelContextWindowLimits:
 适配器在多轮工具调用和会话恢复中保留可复用前缀及不透明推理状态。本地授权命名空间、client 注册、端点、provider、会话 ID 和调用用途的固定长度哈希同时用于 `prompt_cache_key` 与 `session_id` 请求头；刷新 token 不改变它。重新授权会生成新命名空间，旧凭据在首次读取时补齐；无会话 ID 的调用则省略两者。GPT-5.6 及以后由 OpenAI 自动处理缓存路由，key 不保证命中。SIWC 要求 `store: false` 并在 HTTP 请求中携带完整历史，响应存储与提示词缓存是两件事。与 Pi 的公共 SIWC 路线一样，这里继续省略缓存保留期与 options，等待按模型和路由验证。参见[官方缓存指南](https://developers.openai.com/api/docs/guides/prompt-caching)及[推理回放说明](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses)。
 
 ## 已知限制与待办
+
+- **Web Pro 是实验性的独立连接模型** — 其候选版本、宿主补丁要求、未知用量、纯文本输入、恢复阻断与未完成的真实验收均记录在 [Web Pro 使用说明](web-pro.zh.md)。SIWC 的上下文覆盖、图片支持、代理设置和缓存计数不能证明 Web 通道具备相同能力。
 
 - **已有历史仍可使用** — 旧会话缺失的加密回放数据无法恢复，但可见消息和工具记录会按顺序回放。对于被编辑、裁剪、来自其他适配器、格式错误或不兼容的元数据，会退回可见历史，避免重新引入已丢弃内容。此集成要求 DSH 宿主支持 `finish.replayState` 和 `systemPromptUpdate: "in-history"`；参见[回放设计与验证方案](cache-replay.md)。
 
@@ -215,6 +236,7 @@ npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness # actual Web host/compaction with offline browser pages
 npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 

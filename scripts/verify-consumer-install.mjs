@@ -44,10 +44,14 @@ try {
     import { apply, HarnessAdapter } from 'dsh-plugin-chatgpt'
     import { LlmAdapter } from '@deepseek-ai/dsh-llm'
     import { contentCapabilities } from 'dsh-plugin-chatgpt/capabilities'
+    import { webHostCapabilities, ChatGptWebHost } from 'dsh-plugin-chatgpt/web-host'
     assert.equal(typeof apply, 'function')
     assert.ok(HarnessAdapter.prototype instanceof LlmAdapter)
     assert.equal(contentCapabilities.version, 1)
     assert.deepEqual(contentCapabilities.imageInputRoles, ['user', 'tool'])
+    assert.equal(webHostCapabilities.requiredHost.pressurePolicy, 1)
+    assert.equal(webHostCapabilities.providerModel, 'gpt-6-pro-web')
+    assert.equal(typeof ChatGptWebHost, 'function')
   `)
   execFileSync(process.execPath, [check], { cwd: temporary, stdio: 'inherit' })
   console.log('PASS: exact candidate installed and imported with real Cordis 4.1.0, Schemastery 3.19.0 and DSH 0.2.2-rc.3 peers')

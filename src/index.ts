@@ -18,7 +18,7 @@ import z, { type Volatile } from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
-  AdapterRegistrationHandle, DirectoryRegistrationHandle, GenerateOptions, StreamChunk,
+  AdapterRegistrationHandle, DirectoryRegistrationHandle, GenerateOptions, StreamChunk, LlmModelInfo, PreparedAdapterCall,
 } from '@deepseek-ai/dsh-llm'
 import { ChatGptAdapter, isCodedError } from './adapter.ts'
 import { ChatGptAuth } from './auth/manager.ts'
@@ -27,7 +27,13 @@ import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 import { requestOf } from './convert/harness.ts'
 import { createScopedFetch } from './http.ts'
+import { installWebHost, type WebPluginContext } from './web/integration.ts'
+import { ChatGptWebHost } from './web/host.ts'
+import { digest, WEB_MODEL_ID, webModel, WebPolicyError } from './web/policy.ts'
+import { deliveryChunks } from './web/chunks.ts'
+import type { WebSettings } from './web/config.ts'
 export { contentCapabilities } from './capabilities.ts'
+export { webHostCapabilities } from './web/host.ts'
 
 /**
  * Route and endpoint policy for one installation.
@@ -53,6 +59,12 @@ export const Config = z.object({
   contextWindowLimit: z.number().step(1).min(1024).volatile(),
   /** Exact model IDs with budgets that override the global context budget. */
   modelContextWindowLimits: z.dict(z.number().step(1).min(1024)).volatile(),
+  /** Explicit profile configuration; otherwise the provider card owns private Web settings. */
+  web: z.union([z.object({
+    version: z.number().default(1), enabled: z.boolean().default(false), activeConnection: z.string(), contextPolicy: z.string(),
+    connections: z.dict(z.object({ id: z.string(), browserPath: z.string(), profilePath: z.string(), stateDir: z.string(), accountFingerprint: z.string() })),
+    budget: z.object({ version: z.string(), maxInputBytes: z.number(), outputReserveBytes: z.number(), maxResponseBytes: z.number(), maxHistoryBytes: z.number(), maxTurns: z.number(), maxGenerations: z.number(), maxToolCalls: z.number(), maxJsonDepth: z.number(), wallTimeoutMs: z.number() }),
+  })]).volatile(),
 })
 
 /** The configuration one installation supplies, as the harness resolves it. */
@@ -64,6 +76,7 @@ export type Config = {
   proxyUrl: Volatile<string>
   contextWindowLimit: Volatile<number>
   modelContextWindowLimits: Volatile<Record<string, number>>
+  web?: Volatile<WebSettings>
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -127,36 +140,73 @@ function asHostError(error: unknown, fallbackCode: string): Error {
 export class HarnessAdapter extends LlmAdapter {
   private readonly inner: ChatGptAdapter
   private readonly route: string
+  private readonly web: ChatGptWebHost | undefined
 
   /**
    * @param inner - the adapter that talks to the API.
    * @param route - the provider route this instance serves.
    */
-  constructor(inner: ChatGptAdapter, route: string) {
+  constructor(inner: ChatGptAdapter, route: string, web?: ChatGptWebHost) {
     super()
     this.inner = inner
     this.route = route
+    this.web = web
   }
 
   override providerInfo(provider: string): { id: string, name: string } {
     return this.inner.providerInfo(provider)
   }
 
-  override async listModels(provider: string): Promise<readonly { provider: string, id: string, name: string }[]> {
+  override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     void provider
+    const settings = await this.web?.settings.read()
+    const web = settings?.enabled ? webModel(this.route, settings.budget) : undefined
+    let models: Awaited<ReturnType<ChatGptAdapter['listModels']>>
     try {
-      const models = await this.inner.listModels()
-      return models.map(model => ({ provider: this.route, id: model.id, name: model.name }))
+      models = await this.inner.listModels()
     } catch (error) {
+      if (web) return [web]
       throw asHostError(error, 'chatgpt_listing_failed')
     }
+    if (models.some(model => model.id === WEB_MODEL_ID)) throw new WebPolicyError('SIWC catalog collides with the reserved Web model ID')
+    const catalog: LlmModelInfo[] = models.map(model => ({
+      provider: this.route, id: model.id, name: model.name,
+      ...(model.description === undefined ? {} : { description: model.description }),
+      inputModalities: model.input,
+    }))
+    if (web) catalog.push(web)
+    return catalog
   }
 
   override async resolveModel(provider: string, model: string): Promise<ReturnType<LlmAdapter['resolveModel']> extends Promise<infer T> ? T : never> {
+    if (model === WEB_MODEL_ID) {
+      const settings = await this.web?.settings.read()
+      if (!settings?.enabled) throw new WebPolicyError('Web models are disabled')
+      const { badge: _badge, ...resolved } = webModel(provider, settings.budget)
+      return resolved as never
+    }
     return await this.inner.resolveModel(provider, model) as never
   }
 
+  override async prepareCall(provider: string, model: string): Promise<PreparedAdapterCall> {
+    const metadata = await this.resolveModel(provider, model)
+    if (model !== WEB_MODEL_ID) return { model: metadata, stream: options => this.stream(options) }
+    const frozenSettings = digest(await this.web!.settings.read())
+    return { model: metadata, stream: options => this.webStream(options, frozenSettings) }
+  }
+
+  private async *webStream(options: GenerateOptions, frozenSettings?: string): AsyncGenerator<StreamChunk, void, undefined> {
+    if (!this.web || options.provider !== this.route || options.model !== WEB_MODEL_ID) throw new WebPolicyError('Web dispatch binding is invalid')
+    try {
+      const delivery = await this.web.generate(frozenSettings, options)
+      yield* deliveryChunks(delivery)
+      if (delivery.reference.kind === 'session-title' || delivery.reference.kind === 'one-shot') await this.web.deliveredEphemeral(delivery.reference, delivery.blocks)
+    } catch (error) { throw asHostError(error, 'TRANSPORT') }
+  }
+
   override async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk, void, undefined> {
+    // Route before SIWC auth, request conversion, metadata fallback or image resolution.
+    if (options.model === WEB_MODEL_ID) { yield* this.webStream(options); return }
     const chunks: AsyncGenerator<AdapterChunk, void, undefined> = this.inner.stream(
       options.provider,
       requestOf(options),
@@ -222,7 +272,8 @@ export function apply(ctx: Context, config: Config): void {
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 
-  const adapter = new HarnessAdapter(inner, route)
+  const web = installWebHost(ctx as unknown as WebPluginContext, stateDir, route, () => config.web?.get())
+  const adapter = new HarnessAdapter(inner, route, web)
   const handle: AdapterRegistrationHandle = ctx.llm.registerAdapter([route], adapter)
   ctx.effect(() => () => { handle() })
 
@@ -245,5 +296,5 @@ export function apply(ctx: Context, config: Config): void {
     // after a sign-in that the selector slept through, so it has to be told.
     onRosterChanged: () => { ctx.emit('llm/adapters-updated') },
   })
-  new ChatGptController(ctx, session)
+  new ChatGptController(ctx, session, web)
 }

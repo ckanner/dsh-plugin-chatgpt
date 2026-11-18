@@ -53,6 +53,11 @@ export const REMOTE_METHODS: readonly RemoteMethod[] = [
   { method: 'submit', parameters: [{ wire: 'value' }] },
   { method: 'cancel', parameters: [] },
   { method: 'signOut', parameters: [{ wire: 'subject', optional: true }] },
+  { method: 'webStatus', parameters: [] },
+  { method: 'webConfigure', parameters: [{ wire: 'value' }] },
+  { method: 'webConnect', parameters: [] },
+  { method: 'webRecover', parameters: [{ wire: 'requestId' }] },
+  { method: 'webAdopt', parameters: [{ wire: 'requestId' }] },
 ]
 
 /** The Cordis service key the controller registers, and the descriptor's service field. */

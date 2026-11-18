@@ -36,6 +36,7 @@ declare module '@deepseek-ai/dsh-llm' {
     name: string
     description?: string
     inputModalities?: readonly ModelModality[]
+    badge?: { text: string | Record<string, string>; tone: 'neutral' | 'info' | 'success' | 'warning' }
   }
 
   /** Capacity facts about one model. */
@@ -141,6 +142,9 @@ declare module '@deepseek-ai/dsh-llm' {
     model: LlmResolvedModelInfo
     stream(options: GenerateOptions): AsyncIterable<StreamChunk>
   }
+
+  /** Process-local marker supplied by the host's one shared LLM module. */
+  export function isAgentLoopRequest(options: GenerateOptions): boolean
 
   /**
    * Provider-wire adapter for the harness message and stream vocabulary.

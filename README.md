@@ -2,13 +2,14 @@
 
 English | [中文](docs/README.zh.md)
 
-Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.
+Adds one DeepSeek Harness provider route, `chatgpt`, for models served through your ChatGPT subscription. Existing subscription models use OpenAI's published *Sign in with ChatGPT* (SIWC) flow and the account's model catalog. The experimental **GPT-6 Pro · Web** model uses a separate dedicated browser connection. The route is named `chatgpt` because the built-in pi-ai plugin already owns `openai`.
 
 ![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)
 
 ## Table of Contents
 
 - [Use this package](#use-this-package)
+- [Experimental ChatGPT Web Pro](#chatgpt-web-pro)
 - [What you get](#what-you-get)
 - [Understand the implementation](#understand-the-implementation)
 - [Further Exploration](#further-exploration)
@@ -89,12 +90,27 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 -----
 
+<a id="chatgpt-web-pro"></a>
+## Experimental ChatGPT Web Pro
+
+The `0.2.0-alpha.1` development candidate adds `chatgpt` / `gpt-6-pro-web` / `pro` to DSH's native model and effort controls. It is not yet published to npm. The Web model is disabled by default and requires the maintained, exact-base [DSH compatibility patch](compat/README.md) for commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760` (`0.2.2-rc.4`); installing a plugin into a stock SDK does not supply those host extensions.
+
+In the existing ChatGPT provider card, configure absolute paths for Chrome, a dedicated browser profile, and a separate private recovery directory. Save, click **Connect / verify login**, complete the website login manually in that browser, then click **Connect / verify login** again. Enable **GPT-6 Pro · Web** and select **Pro** in the normal model picker. This connection is independent of SIWC sign-in and its account-catalog models.
+
+The default Web context is a private `project-only` project for each session generation. DSH owns local tools and permissions, validates complete structured responses before executing tools, and uses its single compaction engine with the Web pressure and summary policies. Compatible turns send incremental history; generation migration uses DSH's authoritative history. The model can serve planning, review, and execution roles according to each caller's permissions.
+
+Interrupted Web work keeps separate dispatch, outcome, local cleanup, and remote-generation facts. Inspecting recovery sends no prompt and executes no tool. Explicitly adopting a captured response may execute its validated tools, but does not automatically request another model answer. Unknown remote or tool outcomes fence the execution domain; unknown website usage remains unknown.
+
+Real macOS, a signed-in ChatGPT account, and the current website layout have not completed acceptance. Media upload and automatic format repair are unavailable; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.
+
+-----
+
 <a id="what-you-get"></a>
 ## What you get
 
-One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
+One provider route, listed in **Settings → Models** like any built-in provider. Existing SIWC models follow the account's catalog; the explicitly enabled Web model appears alongside them. Selecting a model there puts it in the normal model selector.
 
-Model metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Sign-in lives on that row's card.
+For the existing SIWC models, metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Web Pro has a separate local byte policy described above. Sign-in lives on that row's card.
 
 For example, add this field to the plugin's configuration to set DSH's context budget to 1,000,000 tokens for models without an individual override, even if the catalog reports a maximum of 872,000. Remove it to restore account defaults for those models. These settings are independent of Codex settings. DSH still reserves headroom for compaction; they do not change service-side request limits.
 
@@ -144,8 +160,11 @@ The share of the plan this installation may spend is set per app, in ChatGPT set
 | `src/api/client.ts` | The two HTTP calls: list models, run one turn. |
 | `src/models/describe.ts` | Availability and capacities, preferring what the account reports over the bundled catalog. |
 | `src/adapter.ts` | The harness-facing half of the provider contract. |
+| `src/web/host.ts` and `src/web/integration.ts` | Web binding, execution-domain ownership, public DSH hooks, and recovery adoption. |
+| `src/web/session-coordinator.ts` and `src/web/protocol.ts` | Incremental browser generations, durable delivery, and complete local-tool response validation. |
+| `src/web/transport.ts` and `src/web/browser/` | Dedicated Chrome control, observed activity, immutable response artifacts, and separate cleanup facts. |
 
-Three rules the code enforces rather than documents:
+Three SIWC rules the code enforces rather than documents:
 
 - A request never carries `temperature`, `max_output_tokens`, `top_p`, `truncation`, or the other fields the plan-usage route refuses. They are named in `REFUSED_FIELDS` so they cannot be reintroduced by accident.
 - `response.completed` is the only successful terminal. A stream that ends without one is an error, because a truncated answer that reads as finished is worse than a visible failure.
@@ -167,7 +186,7 @@ Three rules the code enforces rather than documents:
 <a id="model-experience"></a>
 ## Model Experience
 
-This bundle inserts one provider row, and that row's plugin owns all of its model-facing behaviour; the layer itself contributes no prompt, tool, or context of its own.
+The context and cache behavior in this section describes the existing SIWC models. This bundle inserts one provider row, and that row's plugin owns its model-facing behavior; the layer itself contributes no prompt, tool, or context. Web Pro uses the separate browser and structured-tool contract documented in its guide.
 
 ### Request context and condition
 
@@ -184,6 +203,8 @@ Variable. Visible context comes from DSH. Replaying encrypted reasoning can also
 The adapter preserves reusable prefixes and opaque reasoning across tool turns and session restore. A bounded hash of the local authorization namespace, client registration, endpoint, provider, session ID, and call purpose supplies both `prompt_cache_key` and the `session_id` header; token refresh does not change it. Reauthorization gets a fresh namespace; legacy grants acquire one on first load. Sessionless calls omit these identifiers. OpenAI handles cache routing automatically on GPT-5.6 and later; a key is not a cache-hit guarantee. The SIWC route requires `store: false` and full HTTP history; response storage and prompt caching are separate. Cache retention/options remain omitted, as in Pi's public SIWC path, pending model-and-route-specific validation. See the [official caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) and [reasoning replay guidance](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses).
 
 ## Known Limitations and Deferred Work
+
+- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, text-only input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.
 
 - **Existing histories remain usable** — older sessions have no encrypted replay state to recover. Their visible messages and tools are replayed in order. Edited, pruned, foreign, malformed, or incompatible replay metadata falls back to visible history without reintroducing discarded content. This integration requires a DSH host supporting `finish.replayState` and `systemPromptUpdate: "in-history"`; see [the replay design and validation plan](docs/cache-replay.md).
 
@@ -215,6 +236,7 @@ npm test          # node --test, no build step
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness # actual Web host/compaction with offline browser pages
 npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 

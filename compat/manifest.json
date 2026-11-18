@@ -1,0 +1,80 @@
+{
+  "formatVersion": 1,
+  "status": "source-compatibility-candidate-not-an-upstream-release",
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "ca33fd6843b205e279c7ccb6cb73a472c78f5760",
+    "packageVersion": "0.2.2-rc.4",
+    "node": ">=24.9.0",
+    "packageManager": "pnpm@11.28.5"
+  },
+  "patch": {
+    "file": "dsh-web-host-ca33fd68.patch",
+    "sha256": "9718aaf2b8087dc953507347ef018f8fe6a8bbb181c7fa60aaadf32517c978b9",
+    "bytes": 334255,
+    "patchedTree": "333e1019f2333068ba4f6157705bf2d6d4b676cf",
+    "applyCheck": "git apply --cached --check against the exact upstream base passed"
+  },
+  "capabilities": {
+    "agentLoop": {
+      "replayVeto": 1,
+      "durableResponseAck": 1,
+      "recoveredResponse": 1
+    },
+    "compaction": {
+      "summaryRoute": 1,
+      "pressurePolicy": 1,
+      "durableSummaryAck": 1,
+      "recoveredSummary": 1
+    }
+  },
+  "publicApi": {
+    "events": [
+      "agent/replay-check",
+      "agent/response-committed",
+      "agent/recovery-check",
+      "compaction/pressure-policy",
+      "compaction/summary-route",
+      "compaction/committed",
+      "compaction/recovery-check"
+    ],
+    "methods": [
+      "agentLoop.adoptRecoveredResponse(agent, input)",
+      "compaction.adoptRecoveredSummary(agent, input, signal)",
+      "llm.stream(options, observeResolved?)"
+    ],
+    "recoveryStorage": "readable sessionPersistence backend plus successful session flush and current Agent maintenance reservation"
+  },
+  "verification": {
+    "focusedTestFiles": 19,
+    "focusedTestsPassed": 512,
+    "recoveryUsesRealJsonl": true,
+    "sourceTypecheck": "passed for affected source projects",
+    "testTypecheck": "passed for affected test files",
+    "lint": "passed for changed TypeScript files",
+    "publicJsdoc": "passed",
+    "typeEquivalentBlocks": 607,
+    "generatedCordisArtifacts": 133,
+    "liveBrowserAcceptance": false,
+    "fullBuild": "not completed in this runner: tsx CLI IPC denied; full host aggregate typecheck exceeded available memory. Affected source and test checks passed.",
+    "crossLayerCasesPassed": 6,
+    "crossLayerRuntime": "actual DSH source, JSONL persistence with native lease, plugin HarnessAdapter/transport/journals/public hooks, and actual Flywheel web-policy.js; only browser page scripted",
+    "crossLayerCommand": "node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness /path/to/flywheel",
+    "focusedVerificationStage": "before the final summary identity correction; that correction reran the relevant summary-policy suite and the six cross-layer scenarios",
+    "summaryIdentityFollowUp": {
+      "testFiles": 1,
+      "testsPassed": 18,
+      "newRejectionCases": 8,
+      "ordinaryReplayIdentity": "requires a present exact opaque replayState match",
+      "recoveredReceiptIdentity": [
+        "executionDomainId",
+        "requestId",
+        "providerResponseId",
+        "responseDigest",
+        "originalCompactionId"
+      ],
+      "independentHelperReview": "passed ordinary mismatch/missing rejection, ordinary/recovered matched acceptance, and all five receipt mismatch rejections",
+      "crossLayerCasesRerunPassed": 6
+    }
+  }
+}

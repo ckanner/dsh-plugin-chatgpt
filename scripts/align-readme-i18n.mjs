@@ -33,8 +33,6 @@ const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 const LINE_TRANSLATIONS = {
   "English | [中文](docs/README.zh.md)":
     "[English](../README.md) | 中文",
-  "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":
-    "为 DeepSeek Harness 增加一个 provider 路由 `chatgpt`，它用已登录的 ChatGPT 订阅而不是 API key 来应答模型调用。登录采用 OpenAI 公布的 *Sign in with ChatGPT* 流程，因此由账号自己的套餐为推理付费。路由命名为 `chatgpt` 而非 `openai`，因为内置的 pi-ai 插件已经占用了后者。模型及其上下文窗口与推理级别都来自你自己账号的列表，因此可选范围跟着套餐走，而不是一份写死的清单。",
   "![Connect DeepSeek Harness to ChatGPT](assets/screenshot-1-connect.png)":
     "![把 DeepSeek Harness 接入 ChatGPT](../assets/screenshot-1-connect.png)",
   "- [Use this package](#use-this-package)":
@@ -85,10 +83,8 @@ const LINE_TRANSLATIONS = {
     "授权凭据以仅属主可读的权限存放在 `stateDir` 下。`attempt.submit()` 对格式错误或不匹配的值会拒绝，并让本次尝试保持存活，所以粘贴错了可以改正重试。",
   "## What you get":
     "## 你会得到什么",
-  "One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.":
-    "一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。",
-  "Model metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Sign-in lives on that row's card.":
-    "模型元数据来自账号列表。适配器默认跟随各模型在账号目录中声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算；显式配置会按填写的值采用。登录仍在这一行的卡片上。",
+  "One provider route, listed in **Settings → Models** like any built-in provider. Existing SIWC models follow the account's catalog; the explicitly enabled Web model appears alongside them. Selecting a model there puts it in the normal model selector.":
+    "一个 Provider 路由，像内置 Provider 一样出现在 **设置 → 模型** 中。现有 SIWC 模型跟随账号目录，显式启用的 Web 模型显示在同一处。在那里选择模型，就会将其加入普通模型选择器。",
   "For example, add this field to the plugin's configuration to set DSH's context budget to 1,000,000 tokens for models without an individual override, even if the catalog reports a maximum of 872,000. Remove it to restore account defaults for those models. These settings are independent of Codex settings. DSH still reserves headroom for compaction; they do not change service-side request limits.":
     "例如，在插件配置中加入以下字段，即可把没有单独配置的模型的 DSH 上下文预算设为 1,000,000 token，即使目录声明的最大值是 872,000 也不会缩小。删除此字段后，这些模型恢复账号默认值。这些设置与 Codex 配置相互独立。DSH 仍会为压缩预留空间；它们不会改变服务端的请求限制。",
   "For separate model budgets, use exact model IDs as dictionary keys. The priority is individual model, then global budget, then account default. In this example Astra uses 1,000,000, Sol uses 800,000, and other models use 500,000. The global field is optional; omit it to let other models follow their account defaults.":
@@ -137,8 +133,6 @@ const LINE_TRANSLATIONS = {
     "| `src/models/describe.ts` | 可用性与容量，优先采用账号所报的值而非内置目录。 |",
   "| `src/adapter.ts` | The harness-facing half of the provider contract. |":
     "| `src/adapter.ts` | provider 契约面向 Harness 的那一半。 |",
-  "Three rules the code enforces rather than documents:":
-    "代码强制而非仅记录的三条规则：",
   "- A request never carries `temperature`, `max_output_tokens`, `top_p`, `truncation`, or the other fields the plan-usage route refuses. They are named in `REFUSED_FIELDS` so they cannot be reintroduced by accident.":
     "- 请求绝不携带 `temperature`、`max_output_tokens`、`top_p`、`truncation` 等套餐额度路由拒收的字段。它们被显式列在 `REFUSED_FIELDS` 中，因此不会被误加回来。",
   "- `response.completed` is the only successful terminal. A stream that ends without one is an error, because a truncated answer that reads as finished is worse than a visible failure.":
@@ -155,8 +149,6 @@ const LINE_TRANSLATIONS = {
     "- [Preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) — 该路由目前尚不具备的能力。",
   "## Model Experience":
     "## 模型体验",
-  "This bundle inserts one provider row, and that row's plugin owns all of its model-facing behaviour; the layer itself contributes no prompt, tool, or context of its own.":
-    "本 bundle 只插入一行 provider，该行的插件拥有全部面向模型的行为；配置层本身不贡献任何 prompt、工具或上下文。",
   "### Request context and condition":
     "### 请求上下文与条件",
   "#### What the model sees":
@@ -211,6 +203,36 @@ const LINE_TRANSLATIONS = {
     "一次发版就是一个 tag：提版本、打 tag、推送。release 流水线会跑 CI 的全部检查，只在 registry 上还没有该版本时才发布，而无论是否发布都会记录 GitHub Release。",
   "Publishing takes either the repository's `NPM_TOKEN` secret or npm trusted publishing (workflow `release.yml`); the Release half uses the run's own token. Asking the registry first is what lets a tag for a version that was published by hand record its Release instead of failing, and what lets re-running a tag repair a missing Release. `workflow_dispatch` releases the manifest's version, creating the tag when it is absent.":
     "发布凭据走仓库的 `NPM_TOKEN` secret 或 npm 可信发布（工作流 `release.yml`）；Release 那一半用运行自带的 token。关键在「先问 registry」：它让手工发布过的版本在打 tag 时只补 Release 而不会失败，也让重跑同一个 tag 能修复缺失的 Release。`workflow_dispatch` 会发布 manifest 里的版本，并在 tag 不存在时自动创建。",
+  "Adds one DeepSeek Harness provider route, `chatgpt`, for models served through your ChatGPT subscription. Existing subscription models use OpenAI's published *Sign in with ChatGPT* (SIWC) flow and the account's model catalog. The experimental **GPT-6 Pro · Web** model uses a separate dedicated browser connection. The route is named `chatgpt` because the built-in pi-ai plugin already owns `openai`.":
+    "为 DeepSeek Harness 增加一个 Provider 路由 `chatgpt`，通过 ChatGPT 订阅使用模型。现有订阅模型采用 OpenAI 公布的 *Sign in with ChatGPT*（SIWC）流程和账号模型目录。实验性的 **GPT-6 Pro · Web** 模型使用独立的专用浏览器连接。路由命名为 `chatgpt`，因为内置 pi-ai 插件已占用 `openai`。",
+  "- [Experimental ChatGPT Web Pro](#chatgpt-web-pro)":
+    "- [实验性 ChatGPT Web Pro](#chatgpt-web-pro)",
+  "## Experimental ChatGPT Web Pro":
+    "## 实验性 ChatGPT Web Pro",
+  "The `0.2.0-alpha.1` development candidate adds `chatgpt` / `gpt-6-pro-web` / `pro` to DSH's native model and effort controls. It is not yet published to npm. The Web model is disabled by default and requires the maintained, exact-base [DSH compatibility patch](compat/README.md) for commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760` (`0.2.2-rc.4`); installing a plugin into a stock SDK does not supply those host extensions.":
+    "`0.2.0-alpha.1` 开发候选版本将 `chatgpt` / `gpt-6-pro-web` / `pro` 接入 DSH 原生模型和档位控件，尚未发布到 npm。Web 模型默认关闭，需要针对 commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760`（`0.2.2-rc.4`）维护的精确基线 [DSH 兼容补丁](../compat/README.zh.md)；只在原版 SDK 中安装插件不会补出这些宿主扩展。",
+  "In the existing ChatGPT provider card, configure absolute paths for Chrome, a dedicated browser profile, and a separate private recovery directory. Save, click **Connect / verify login**, complete the website login manually in that browser, then click **Connect / verify login** again. Enable **GPT-6 Pro · Web** and select **Pro** in the normal model picker. This connection is independent of SIWC sign-in and its account-catalog models.":
+    "在现有 ChatGPT Provider 卡片中，为 Chrome、专用浏览器 profile 和单独的私有恢复目录配置绝对路径。保存后点击 **Connect / verify login**，在该浏览器中手动完成网页登录，再次点击 **Connect / verify login**。启用 **GPT-6 Pro · Web**，并在普通模型选择器中选择 **Pro**。这条连接与 SIWC 登录及其账号目录模型相互独立。",
+  "The default Web context is a private `project-only` project for each session generation. DSH owns local tools and permissions, validates complete structured responses before executing tools, and uses its single compaction engine with the Web pressure and summary policies. Compatible turns send incremental history; generation migration uses DSH's authoritative history. The model can serve planning, review, and execution roles according to each caller's permissions.":
+    "默认 Web 上下文为每个会话代次独立的私有 `project-only` 项目。DSH 负责本地工具和权限，在执行工具前验证完整结构化响应，并让唯一压缩引擎使用 Web 压力与摘要策略。兼容轮次发送增量历史，代次迁移依据 DSH 的权威历史。模型可按调用方的权限用于规划、review 和执行角色。",
+  "Interrupted Web work keeps separate dispatch, outcome, local cleanup, and remote-generation facts. Inspecting recovery sends no prompt and executes no tool. Explicitly adopting a captured response may execute its validated tools, but does not automatically request another model answer. Unknown remote or tool outcomes fence the execution domain; unknown website usage remains unknown.":
+    "被中断的 Web 工作分别保留派发、结果、本地清理和远端生成事实。检查恢复不发送 prompt，也不执行工具。显式采纳已捕获响应可能执行其中已验证的工具，但不会自动请求下一次模型回答。远端或工具结果未知时阻断执行域；网页用量未知就保持 unknown。",
+  "Real macOS, a signed-in ChatGPT account, and the current website layout have not completed acceptance. Media upload and automatic format repair are unavailable; ambiguous website full-context refusals and project creation remain conservatively blocked. See the complete [Web Pro setup, budgets, recovery, and validation boundaries](docs/web-pro.md) before enabling the candidate.":
+    "真实 macOS、已登录 ChatGPT 账号和当前网页布局尚未完成验收。未提供媒体上传和自动格式修复；网页上下文已满或项目创建存在歧义时保守阻断。启用候选版本前，请阅读完整的 [Web Pro 设置、预算、恢复与验收边界](web-pro.zh.md)。",
+  "For the existing SIWC models, metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Web Pro has a separate local byte policy described above. Sign-in lives on that row's card.":
+    "现有 SIWC 模型的元数据来自账号目录。适配器默认跟随各模型声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算，显式值按填写内容采用。Web Pro 使用上文所述的独立本地字节策略。登录仍在该行的卡片上。",
+  "| `src/web/host.ts` and `src/web/integration.ts` | Web binding, execution-domain ownership, public DSH hooks, and recovery adoption. |":
+    "| `src/web/host.ts` 与 `src/web/integration.ts` | Web 绑定、执行域归属、公共 DSH hooks 与恢复采纳。 |",
+  "| `src/web/session-coordinator.ts` and `src/web/protocol.ts` | Incremental browser generations, durable delivery, and complete local-tool response validation. |":
+    "| `src/web/session-coordinator.ts` 与 `src/web/protocol.ts` | 浏览器代次增量历史、持久交付与本地工具响应整包校验。 |",
+  "| `src/web/transport.ts` and `src/web/browser/` | Dedicated Chrome control, observed activity, immutable response artifacts, and separate cleanup facts. |":
+    "| `src/web/transport.ts` 与 `src/web/browser/` | 专用 Chrome 控制、实际活动、不可变响应 artifact 与独立清理事实。 |",
+  "Three SIWC rules the code enforces rather than documents:":
+    "代码实际强制的三条 SIWC 规则：",
+  "The context and cache behavior in this section describes the existing SIWC models. This bundle inserts one provider row, and that row's plugin owns its model-facing behavior; the layer itself contributes no prompt, tool, or context. Web Pro uses the separate browser and structured-tool contract documented in its guide.":
+    "本节的上下文与缓存行为描述现有 SIWC 模型。这个 bundle 插入一个 Provider 行，由该行的插件负责模型行为；配置层自身不增加 prompt、工具或上下文。Web Pro 使用独立的浏览器与结构化工具契约，详见其使用说明。",
+  "- **Web Pro is an experimental, separately connected model** — its candidate, host-patch requirement, unknown usage, text-only input, recovery fences, and incomplete live acceptance are documented in the [Web Pro guide](docs/web-pro.md). SIWC context overrides, image support, proxy settings, and cache counters do not establish those capabilities for the Web route.":
+    "- **Web Pro 是实验性的独立连接模型** — 其候选版本、宿主补丁要求、未知用量、纯文本输入、恢复阻断与未完成的真实验收均记录在 [Web Pro 使用说明](web-pro.zh.md)。SIWC 的上下文覆盖、图片支持、代理设置和缓存计数不能证明 Web 通道具备相同能力。",
 }
 
 /** Lines carried through unchanged: they hold no prose in either language. */

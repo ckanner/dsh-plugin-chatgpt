@@ -148,6 +148,11 @@ describe('the client Remote table', () => {
       'chatgpt/submit',
       'chatgpt/cancel',
       'chatgpt/signOut',
+      'chatgpt/webStatus',
+      'chatgpt/webConfigure',
+      'chatgpt/webConnect',
+      'chatgpt/webRecover',
+      'chatgpt/webAdopt',
     ])
   })
 })
