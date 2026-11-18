@@ -9,3 +9,13 @@ export const contentCapabilities = Object.freeze({
   toolOutput: 'text-or-responses-content-array',
   fileInput: false,
 })
+
+/** Shared by runtime admission and the browser settings card; contains no host code. */
+export const webRequiredHostCapabilities = Object.freeze({
+  replayVeto: 1,
+  durableResponseAck: 1,
+  // Version 2 distinguishes an explicitly configured summary route from history.
+  summaryRoute: 2,
+  durableSummaryAck: 1,
+  pressurePolicy: 1,
+})

@@ -13,11 +13,12 @@ import { deliveryChunks } from './chunks.ts'
 import { WEB_IMAGE_POLICY } from './media.ts'
 import { createWebRecoveryCheckpoint, type WebRecoveryIdentity, type WebRecoveryCheckpoint } from './recovery.ts'
 import { settledToolIntent, toolOccurrenceKey, validToolRoot, type WebToolCommit, type WebToolIntent, type WebToolOccurrence, type WebToolRoot } from './tool-evidence.ts'
+import { webRequiredHostCapabilities } from '../capabilities.ts'
 
 export const webHostCapabilities = Object.freeze({
   version: 1, runtimeVersion: 'web-runtime/1', providerModel: WEB_MODEL_ID,
   transport: 'chatgpt-web', observation: 'opaque', usage: 'unknown',
-  requiredHost: Object.freeze({ replayVeto: 1, durableResponseAck: 1, summaryRoute: 1, durableSummaryAck: 1, pressurePolicy: 1 }),
+  requiredHost: webRequiredHostCapabilities,
   // Capability declarations are not a live account or browser compatibility probe.
   media: 'images', imageCapabilities: WEB_IMAGE_POLICY, oracleRuntime: false,
 })

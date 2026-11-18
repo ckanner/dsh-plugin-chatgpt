@@ -131,7 +131,7 @@ try {
       };
     }
 
-    async function fixture(name, page, automatic = false, always = false) {
+    async function fixture(name, page, automatic = false, always = false, compactionConfig = {}, separateState = false) {
       const directory = join(root, name);
       await mkdir(directory, { recursive: true });
       const ctx = new Context();
@@ -140,13 +140,14 @@ try {
         await ctx.plugin(FsLocal, { cwd: directory });
         await ctx.plugin(WorkingDirectory);
         await ctx.plugin(JsonlSessionPersistence, { root: join(directory, 'sessions'), compression: 'none' });
-        await ctx.plugin(BasicCompaction, { auto: automatic });
+        await ctx.plugin(BasicCompaction, { auto: automatic, ...compactionConfig });
         await ctx.plugin(AgentLoop, { agents: [] });
-        const settings = defaultWebSettings(directory);
+        const stateDirectory = separateState ? join(directory, 'private-plugin-state') : directory;
+        const settings = defaultWebSettings(stateDirectory);
         settings.enabled = true;
         if (automatic) settings.budget = { ...settings.budget, maxInputBytes: 24 * 1024, outputReserveBytes: 8 * 1024 };
         settings.connections.default.accountFingerprint = 'a'.repeat(64);
-        const host = installWebHost(ctx, directory, 'chatgpt-test', () => settings, { pageFactory: page.factory });
+        const host = installWebHost(ctx, stateDirectory, 'chatgpt-test', () => settings, { pageFactory: page.factory });
         const inner = {
           providerInfo(provider) { return { id: provider, name: 'Fixture' }; },
           async listModels() { throw new Error('SIWC catalog must not serve Web'); },
@@ -426,6 +427,123 @@ try {
       assert.equal(compactPages.counts.closes, compactPages.counts.opens);
       console.log('PASS real BasicCompaction: automatic + manual Web/Pro summaries and separate durable ACK');
     } finally { await compact.dispose(); }
+
+    const explicitSummaryPages = pages(() => ({ kind: 'final', text: 'Implementation details. '.repeat(140) }));
+    const explicitSummary = await fixture('explicit-summary-route', explicitSummaryPages, true, false, {
+      summarizationProvider: 'summary-fixture', summarizationModel: 'summary-model',
+    });
+    try {
+      const summaryRequests = [];
+      explicitSummary.ctx.llm.registerAdapter(['summary-fixture'], new class extends LlmAdapter {
+        async resolveModel(provider, model) { return { provider, id: model, name: model }; }
+        async *stream(options) {
+          summaryRequests.push(options);
+          assert.equal(options.purpose, 'compaction');
+          yield { type: 'block-start', index: 0, blockType: 'text' };
+          yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Checkpoint from the configured summary provider.' } };
+          yield { type: 'usage', usage: { inputTokens: 37, outputTokens: 11 } };
+          yield { type: 'finish', reason: { kind: 'stop' } };
+        }
+      });
+      for (let index = 0; index < 3; index++) await explicitSummary.send(('Task ' + index + ': retained requirement. ').repeat(100));
+      const automatic = explicitSummary.agent.session.snapshotEvents().filter(event => event.type === 'compaction/summary');
+      assert.ok(automatic.length > 0, 'automatic compaction must produce a configured-provider summary');
+      const before = explicitSummaryPages.counts.submits;
+      const result = await explicitSummary.ctx.compaction.compactNow(explicitSummary.agent, new AbortController().signal);
+      assert.ok(result, 'manual compaction must retain the explicit summary provider');
+      const summaries = explicitSummary.agent.session.snapshotEvents().filter(event => event.type === 'compaction/summary');
+      assert.equal(summaryRequests.length, summaries.length);
+      for (const event of summaries) {
+        assert.equal(event.data.provider, 'summary-fixture');
+        assert.equal(event.data.model, 'summary-model');
+        assert.deepEqual(event.data.usage, { inputTokens: 37, outputTokens: 11 });
+      }
+      assert.equal(explicitSummaryPages.counts.submits, before, 'manual non-Web compaction must not send a browser request');
+      assert.equal((await explicitSummary.host.status()).pending.length, 0);
+      console.log('PASS real explicit summary route: automatic + manual compaction preserve the configured provider, model and usage');
+    } finally { await explicitSummary.dispose(); }
+
+    for (const configured of [false, true]) {
+      const summaryPages = pages(() => ({ kind: 'final', text: 'Web checkpoint preserving the original task.' }));
+      const routed = await fixture(configured ? 'explicit-web-summary' : 'switched-web-summary', summaryPages, false, false,
+        configured ? { summarizationProvider: 'chatgpt-test', summarizationModel: WEB_MODEL_ID } : {});
+      try {
+        routed.ctx.llm.registerAdapter(['prior-model'], new class extends LlmAdapter {
+          async resolveModel(provider, model) { return { provider, id: model, name: model }; }
+          async *stream(options) {
+            assert.equal(options.purpose, undefined, 'the inherited history model must not steal the Web summary route');
+            yield { type: 'block-start', index: 0, blockType: 'text' };
+            yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Earlier model implementation details. '.repeat(140) } };
+            yield { type: 'finish', reason: { kind: 'stop' } };
+          }
+        });
+        routed.agent.model.select({ provider: 'prior-model', model: 'prior-model-id' });
+        for (let index = 0; index < 2; index++) await routed.send(('Task ' + index + ': keep the requirement. ').repeat(100));
+        if (!configured) routed.agent.model.select({ provider: 'chatgpt-test', model: WEB_MODEL_ID, reasoningEffort: WEB_EFFORT });
+        assert.equal(summaryPages.counts.submits, 0);
+        const selection = routed.agent.model.current();
+        const result = await routed.ctx.compaction.compactNow(routed.agent, new AbortController().signal);
+        assert.ok(result, 'the selected Web summary must commit a useful checkpoint');
+        const summary = routed.agent.session.eventAt(result.summarySeq);
+        assert.equal(summary.data.provider, 'chatgpt-test');
+        assert.equal(summary.data.model, WEB_MODEL_ID);
+        assert.equal(summary.data.reasoningEffort, WEB_EFFORT);
+        assert.deepEqual(routed.agent.model.current(), selection, 'summary routing must not replace the main model selection');
+        assert.equal(summaryPages.counts.submits, 1);
+        assert.equal((await routed.host.status()).pending.length, 0, 'the auxiliary Web summary retains its own durable ACK');
+        console.log(configured
+          ? 'PASS real explicit Web summary: a non-Web main model keeps its selection while the configured summary uses Web/Pro'
+          : 'PASS real model switch: an inherited history route does not override the newly proposed Web/Pro summary');
+      } finally { await routed.dispose(); }
+    }
+
+    const manualPages = pages(() => ({ kind: 'final', text: 'Recovered manual checkpoint preserving the original request.' }));
+    const manual = await fixture('manual-summary-recovery', manualPages, false, false,
+      { summarizationProvider: 'chatgpt-test', summarizationModel: WEB_MODEL_ID }, true);
+    try {
+      manual.ctx.llm.registerAdapter(['manual-history'], new class extends LlmAdapter {
+        async resolveModel(provider, model) { return { provider, id: model, name: model }; }
+        async *stream() {
+          yield { type: 'block-start', index: 0, blockType: 'text' };
+          yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Original implementation history. '.repeat(200) } };
+          yield { type: 'finish', reason: { kind: 'stop' } };
+        }
+      });
+      manual.agent.model.select({ provider: 'manual-history', model: 'manual-history-model' });
+      for (let index = 0; index < 2; index++) await manual.send(('Task ' + index + ': preserve the source range. ').repeat(100));
+      const surface = [...manual.agent.session.surface.nodes];
+      const assistantCount = manual.agent.session.snapshotEvents().filter(event => event.type === 'assistant/message').length;
+      let initiator;
+      const detach = manual.ctx.on('llm/stream', (options, next) => ({ async *[Symbol.asyncIterator]() {
+        if (options.purpose === 'compaction') initiator = manual.ctx.agents.currentInitiator()?.id;
+        yield* next();
+        if (options.purpose === 'compaction') throw new Error('fixture consumer lost the captured manual summary');
+      } }));
+      try {
+        await assert.rejects(() => manual.ctx.compaction.compactNow(manual.agent, new AbortController().signal), /could not produce/);
+      } finally { detach(); }
+      assert.equal(initiator, manual.agent.id, 'manual maintenance must retain the actual Agent initiator');
+      assert.deepEqual(manual.agent.session.surface.nodes, surface, 'the interrupted summary must not replace history');
+      const pending = (await manual.host.status()).pending;
+      assert.equal(pending.length, 1);
+      await assert.rejects(() => manual.host.guardSession('fresh-workspace-session', manual.directory), /recovery/,
+        'manual summary uncertainty belongs to the actual workspace, not the plugin state directory');
+      const requestId = pending[0].requestIds[0];
+      const adopted = await manual.host.recover(requestId, true);
+      const summaries = manual.agent.session.snapshotEvents().filter(event => event.type === 'compaction/summary');
+      assert.equal(summaries.length, 1);
+      assert.equal(adopted.summarySeq, summaries[0].seq);
+      assert.equal(summaries[0].data.model, WEB_MODEL_ID);
+      assert.equal(summaries[0].data.reasoningEffort, WEB_EFFORT);
+      assert.equal(manual.agent.session.snapshotEvents().filter(event => event.type === 'assistant/message').length, assistantCount);
+      const duplicate = await manual.host.recover(requestId, true);
+      assert.deepEqual(duplicate, adopted, 'duplicate summary adoption returns its original committed range and identity');
+      assert.equal(manual.agent.session.snapshotEvents().filter(event => event.type === 'compaction/summary').length, 1);
+      assert.equal(manualPages.counts.submits, 1, 'summary adoption never makes another model request');
+      assert.equal((await manual.host.status()).pending.length, 0);
+      await manual.host.guardSession('fresh-workspace-session', manual.directory);
+      console.log('PASS real manual summary recovery: original Agent/workspace -> captured source range -> one durable summary adoption and idempotent ACK');
+    } finally { await manual.dispose(); }
 
     const failedPages = pages(() => ({ kind: 'final', text: 'never delivered', submitFailure: true }));
     const failed = await fixture('always-veto', failedPages, false, true);

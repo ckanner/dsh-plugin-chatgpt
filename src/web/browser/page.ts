@@ -198,6 +198,7 @@ export class ChatGptPage implements WebPage {
   private baselineIds = new Set<string>()
   private prompt: string | undefined
   private boundConversationUrl: string | undefined
+  private preparedConversationUrl: string | undefined
   private cleanupUntil: number | undefined
   private readonly page: CdpPage
   private readonly connection: WebConnection
@@ -324,9 +325,15 @@ export class ChatGptPage implements WebPage {
     await this.verifyContext()
     await this.selectModel(true)
     const snapshot = await this.evaluate<ReturnType<typeof snapshotPage>>(snapshotPage)
+    const expectedUrl = request.conversation?.url ?? this.projectUrl ?? 'https://chatgpt.com/'
+    if (snapshot.url !== expectedUrl) throw new Error('Owned conversation changed during preparation')
     if (snapshot.stopVisible || snapshot.thinkingVisible || snapshot.messages.some((message) => message.thinking)) throw new Error('Conversation already has an active generation')
     this.baselineIds = new Set(snapshot.messages.map((message) => message.id))
     const conversation = conversationFromUrl(snapshot.url, this.projectUrl, this.title)
+    // A new chat has no durable /c/... URL yet, but its prepared composer is
+    // already owned. Freeze that page until Send; sample() binds the new URL
+    // only after the exact submitted user message is observed there.
+    this.preparedConversationUrl = conversation.url
     return { conversation, evidence: this.evidence(conversation.url, account) }
   }
   async inspect(request: WebTurnRequest): Promise<{ conversation: WebConversation; evidence: WebEvidence }> {
@@ -353,7 +360,7 @@ export class ChatGptPage implements WebPage {
     const before = await this.evaluate<ReturnType<typeof imageUploadEvidence>>(imageUploadEvidence)
     if (before.cards.length || before.busy || before.error) throw new Error('Composer contains unexpected or unresolved attachments')
     const expectedUrl = await this.page.evaluate<string>('location.href')
-    if (new URL(expectedUrl).origin !== 'https://chatgpt.com' || (this.boundConversationUrl && expectedUrl !== this.boundConversationUrl)) throw new Error('Owned conversation changed before upload')
+    if (new URL(expectedUrl).origin !== 'https://chatgpt.com' || expectedUrl !== this.preparedConversationUrl || (this.boundConversationUrl && expectedUrl !== this.boundConversationUrl)) throw new Error('Owned conversation changed before upload')
     const focused = await this.page.evaluate<boolean>(`(() => { const e = document.querySelector(${JSON.stringify(COMPOSER)}); if (!e || (e.innerText || e.value || '').trim()) return false; e.focus(); return true; })()`)
     if (!focused) throw new Error('Composer is unavailable or contains unexpected unsent content')
     if (media.length) {

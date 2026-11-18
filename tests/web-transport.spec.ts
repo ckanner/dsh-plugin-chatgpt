@@ -106,6 +106,7 @@ test('positive terminal controls and stable identity are both required; a quiet 
   const rewrite=advanceTerminal(state,sample('different response'),2500)
   assert.equal(rewrite.complete,false)
   assert.equal(advanceTerminal(state,{...sample(),thinking:true},3000).complete,false)
+  assert.equal(advanceTerminal(state,{...sample(),error:{code:'SERVER',reason:'web-ui-error'}},3000).complete,false)
   assert.equal(advanceTerminal(state,{...sample(),userMessageId:undefined} as unknown as WebPageSample,3000).complete,false)
 })
 
@@ -203,6 +204,40 @@ test('timed out preamble is recovered without re-sending, preserves dispatch, an
     await transport.acknowledge('recoverable',{hostCommitId:'adoption-1',responseDigest:recovered.result!.artifact.sha256})
     await transport.run(env.request('continued',{conversation}))
     assert.equal(f.calls.submits,2)
+  } finally { await env.dispose() }
+})
+
+test('recovery cannot adopt a partial answer while the page reports a generation error', async () => {
+  const env = await environment()
+  let state: 'running' | 'failed' | 'complete' = 'running'
+  const f = factory({ samples: () => ({
+    ...sample(state === 'complete' ? 'complete response' : 'partial response'),
+    finishedActions: state !== 'running',
+    ...(state === 'failed' ? { error: { code: 'SERVER' as const, reason: 'web-ui-error' } } : {}),
+  }) })
+  const transport = new WebTransport(env.connection, { pageFactory: f.implementation })
+  try {
+    await assert.rejects(transport.run(env.request('error-during-recovery', { deadlineMs: Date.now() + 500 })),
+      error => error instanceof WebTransportError && error.code === 'TIMEOUT' && error.facts.dispatch === 'confirmed')
+    state = 'failed'
+    await assert.rejects(transport.recover('error-during-recovery', { observe: true }), (error: unknown) => {
+      assert.ok(error instanceof WebTransportError)
+      assert.equal(error.code, 'SERVER')
+      assert.equal(error.facts.dispatch, 'confirmed')
+      assert.equal(error.facts.outcome, 'unknown')
+      assert.equal(error.facts.remoteGeneration, 'unknown')
+      assert.equal(error.facts.replayAllowed, false)
+      return true
+    })
+    const journal = (await (await BrowserStore.open(env.connection)).get('error-during-recovery'))!
+    assert.equal(journal.artifact, undefined, 'an errored partial answer must never become an adoptable artifact')
+    assert.equal(journal.facts.outcome, 'unknown')
+    await assert.rejects(transport.run(env.request('still-fenced')), /unresolved remote call/)
+    state = 'complete'
+    const recovered = await transport.recover('error-during-recovery', { observe: true })
+    assert.equal(recovered.result?.text, 'complete response')
+    assert.equal(f.calls.submits, 1, 'observing the original turn never resends the prompt')
+    await transport.acknowledge('error-during-recovery', { hostCommitId: 'recovered-complete', responseDigest: recovered.result!.artifact.sha256 })
   } finally { await env.dispose() }
 })
 

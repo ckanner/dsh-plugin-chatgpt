@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0-alpha.1 (Unreleased)
+
+Add the opt-in `chatgpt / gpt-6-pro-web / pro` route, with dedicated browser
+ownership, validated local tools, durable recovery, image uploads and the single
+DSH compaction engine. This candidate requires the bundled DSH compatibility
+patch; it has not been published or accepted on a signed-in user's Desktop.
+
+- Preserve an explicitly configured summary provider/model in automatic and
+  manual compaction. Summary-route capability v2 distinguishes that choice from
+  historical and proposed main routes; explicit Web summaries retain Pro and
+  their own durable acknowledgement. Runtime and settings readiness share the
+  same version requirements.
+- Keep the actual Agent initiator throughout host maintenance, so an interrupted
+  manual summary retains its original workspace fence and source range and can
+  be adopted once through the durable compaction transaction.
+- Bind a new chat or project to its prepared composer before uploading images
+  or entering a prompt, so navigation cannot send it to another conversation.
+- Reject visible generation errors during recovery. Partial text and leftover
+  answer controls cannot become a completed artifact or release an unresolved
+  invocation; observing the original answer later does not resend it.
+
 ## 0.1.20
 
 Preserve durable images and tool output content on current DSH.

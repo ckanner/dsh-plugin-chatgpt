@@ -1,3 +1,44 @@
+diff --git a/docs/architecture.i18n.yaml b/docs/architecture.i18n.yaml
+index c4549ec1..8e10768c 100644
+--- a/docs/architecture.i18n.yaml
++++ b/docs/architecture.i18n.yaml
+@@ -21,8 +21,8 @@
+   en: 20ef882e44b06a10
+   zh: c10c3934ed5570e9
+ /deepseek-harness-architecture/events:
+-  en: 0d4481070a0ba352
+-  zh: 026be77a9f3db68e
++  en: b49d86a1406ade0b
++  zh: 5307f52df947d7eb
+ /deepseek-harness-architecture/turn-flow:
+   en: 96ad2d8611fd5b88
+   zh: 0a6bb22b3b0e1335
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 9661ac7a..dac2ca24 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -74,7 +74,7 @@ Events provide extension points in three domains.
+ 
+ Subagent Activations own runtime tree membership.
+ 
+-AgentLoop rolls back failed initialization and awaits serial `agent/created` before queued work; shutdown cancels and awaits active work despite queue-cleanup failures before releasing resources ([ordering](../packages/core/agent-loop/README.md#understand-the-implementation)).
++AgentLoop runs turns and maintenance in the owning Agent's initiator scope, with [ordered initialization, rollback, cancellation, and teardown](../packages/core/agent-loop/README.md#understand-the-implementation).
+ 
+ [Event producers and consumers](event-producer-consumer.md).
+ 
+diff --git a/docs/architecture.zh.md b/docs/architecture.zh.md
+index 41595f1b..0f27c280 100644
+--- a/docs/architecture.zh.md
++++ b/docs/architecture.zh.md
+@@ -76,7 +76,7 @@ Electron 使用 Electron Node 模式启动私有 Desktop Host。Host 调用共
+ 
+ Subagent Activation 拥有运行时树成员关系。
+ 
+-AgentLoop 回滚失败的初始化，并在启动已排队工作前等待串行 `agent/created`；关闭时即使队列清理失败，也会取消并等待当前工作，再释放资源（[顺序](../packages/core/agent-loop/README.zh.md#understand-the-implementation)）。
++AgentLoop 在所属 Agent 的发起者作用域内运行轮次和维护任务，并按约定完成[初始化、回滚、取消和资源释放](../packages/core/agent-loop/README.zh.md#understand-the-implementation)。
+ 
+ [事件生产者与消费者](event-producer-consumer.zh.md)。
+ 
 diff --git a/docs/module-graph.md b/docs/module-graph.md
 index 6cf46b78..fa78fe89 100644
 --- a/docs/module-graph.md
@@ -1796,7 +1837,7 @@ index cc446efc..93d40fb1 100644
      "e308ccf867a5398e": {"kind":"object","properties":[{"name":"data","type":"f90eb4ab2d3897bc","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"8e8155594e078123","optional":false}],"indices":[]},
      "e31572180d6b28b7": {"kind":"literal","value":"provider"},
 diff --git a/docs/subsystems/compaction.md b/docs/subsystems/compaction.md
-index c186ba35..2b76f0d7 100644
+index c186ba35..ae5023dc 100644
 --- a/docs/subsystems/compaction.md
 +++ b/docs/subsystems/compaction.md
 @@ -147,6 +147,16 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
@@ -1914,7 +1955,7 @@ index c186ba35..2b76f0d7 100644
  <a id="compactionsummary-error--waterfall"></a>
  
  #### `compaction/summary-error` — waterfall
-@@ -280,5 +358,27 @@ Recover a failed summary request by synchronously recording a durable change to
+@@ -280,5 +358,29 @@ Recover a failed summary request by synchronously recording a durable change to
  
  Types: [Session](session.md) · [SessionSeq](session.md)
  
@@ -1924,18 +1965,20 @@ index c186ba35..2b76f0d7 100644
 +
 +#### `compaction/summary-route` — waterfall
 +
-+Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap.
++Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap. `configuredTarget` is present only for an explicit backend summary target; `defaultTarget` may instead be inherited from the answered conversation.
 +
 +```ts cordis-catalog
 +/**
 + * Select the actual summary route before constructing its LLM request.
 + * Return next() when this policy does not own the proposed target. The
 + * backend records the returned provider, model, effort, and output cap.
-+ * @param payload - owning Agent, frozen proposed route, and backend defaults.
++ * `configuredTarget` is present only for an explicit backend summary target;
++ * `defaultTarget` may instead be inherited from the answered conversation.
++ * @param payload - owning Agent, proposed route, explicit summary target, and backend defaults.
 + * @param next - delegate to the next routing policy.
 + * @mode waterfall
 + */
-+'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
++'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; configuredTarget?: Readonly<CompactionSummaryRoute>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
 +```
 +
 +Types: [Agent](core.md) · [LlmCallConfig](llm-streaming.md)
@@ -1943,7 +1986,7 @@ index c186ba35..2b76f0d7 100644
  Source: [`packages/compaction/compaction/src/index.ts`](../../packages/compaction/compaction/src/index.ts)
  <!-- END GENERATED cordis-surface -->
 diff --git a/docs/subsystems/compaction.zh.md b/docs/subsystems/compaction.zh.md
-index e9e05247..ed70fcd9 100644
+index e9e05247..0dd5c190 100644
 --- a/docs/subsystems/compaction.zh.md
 +++ b/docs/subsystems/compaction.zh.md
 @@ -147,6 +147,16 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
@@ -2061,7 +2104,7 @@ index e9e05247..ed70fcd9 100644
  <a id="compactionsummary-error--waterfall"></a>
  
  #### `compaction/summary-error` — waterfall
-@@ -280,5 +358,27 @@ Recover a failed summary request by synchronously recording a durable change to
+@@ -280,5 +358,29 @@ Recover a failed summary request by synchronously recording a durable change to
  
  Types: [Session](session.zh.md) · [SessionSeq](session.zh.md)
  
@@ -2071,18 +2114,20 @@ index e9e05247..ed70fcd9 100644
 +
 +#### `compaction/summary-route` — waterfall
 +
-+Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap.
++Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap. `configuredTarget` is present only for an explicit backend summary target; `defaultTarget` may instead be inherited from the answered conversation.
 +
 +```ts cordis-catalog
 +/**
 + * Select the actual summary route before constructing its LLM request.
 + * Return next() when this policy does not own the proposed target. The
 + * backend records the returned provider, model, effort, and output cap.
-+ * @param payload - owning Agent, frozen proposed route, and backend defaults.
++ * `configuredTarget` is present only for an explicit backend summary target;
++ * `defaultTarget` may instead be inherited from the answered conversation.
++ * @param payload - owning Agent, proposed route, explicit summary target, and backend defaults.
 + * @param next - delegate to the next routing policy.
 + * @mode waterfall
 + */
-+'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
++'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; configuredTarget?: Readonly<CompactionSummaryRoute>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
 +```
 +
 +Types: [Agent](core.zh.md) · [LlmCallConfig](llm-streaming.zh.md)
@@ -2090,10 +2135,19 @@ index e9e05247..ed70fcd9 100644
  Source: [`packages/compaction/compaction/src/index.ts`](../../packages/compaction/compaction/src/index.ts)
  <!-- END GENERATED cordis-surface -->
 diff --git a/docs/subsystems/core.md b/docs/subsystems/core.md
-index a316daab..beded8fe 100644
+index a316daab..93c973ba 100644
 --- a/docs/subsystems/core.md
 +++ b/docs/subsystems/core.md
-@@ -539,6 +539,15 @@ Source: [`packages/core/agent-default-model/src/index.ts`](../../packages/core/a
+@@ -96,6 +96,8 @@ interface Agent {
+    * Run one non-turn maintenance task from the true idle phase. The task starts
+    * synchronously after claiming that phase; later waking input remains in the
+    * inbox until the task settles, while public status stays `idle`.
++   * The task runs with this Agent as the initiator across awaits; the caller's
++   * initiator scope is preserved outside the task, including after failure.
+    * `whenIdle()` follows both the task and any waking work released behind it.
+    * @param task - operation whose fulfillment or rejection is preserved, with a signal aborted by {@link cancel}.
+    * @throws synchronously when turn-driving or another maintenance task already owns the agent.
+@@ -539,6 +541,15 @@ Source: [`packages/core/agent-default-model/src/index.ts`](../../packages/core/a
  Concrete agent factory and driver service.
  
  ```ts cordis-catalog
@@ -2109,7 +2163,7 @@ index a316daab..beded8fe 100644
  /**
   * Create an agent and session under one caller-supplied identity, owned by
   * the accessing fiber. Constructor-driven config calls mint a fresh combined
-@@ -1035,6 +1044,51 @@ Types: [Scoped](scope.md) · [UserMessage](session.md)
+@@ -1035,6 +1046,51 @@ Types: [Scoped](scope.md) · [UserMessage](session.md)
  
  Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
  
@@ -2161,7 +2215,7 @@ index a316daab..beded8fe 100644
  <a id="agentrequest-error--waterfall"></a>
  
  #### `agent/request-error` — waterfall
-@@ -1064,6 +1118,28 @@ Types: [LlmFailure](llm-streaming.md) · [ResolvedRetryPolicy](llm-streaming.md)
+@@ -1064,6 +1120,28 @@ Types: [LlmFailure](llm-streaming.md) · [ResolvedRetryPolicy](llm-streaming.md)
  
  Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
  
@@ -2191,10 +2245,19 @@ index a316daab..beded8fe 100644
  
  #### `agent/status` — emit
 diff --git a/docs/subsystems/core.zh.md b/docs/subsystems/core.zh.md
-index 9d8d401f..e9144b88 100644
+index 9d8d401f..fde0e84f 100644
 --- a/docs/subsystems/core.zh.md
 +++ b/docs/subsystems/core.zh.md
-@@ -551,6 +551,15 @@ Source: [`packages/core/agent-default-model/src/index.ts`](../../packages/core/a
+@@ -100,6 +100,8 @@ interface Agent {
+    * Run one non-turn maintenance task from the true idle phase. The task starts
+    * synchronously after claiming that phase; later waking input remains in the
+    * inbox until the task settles, while public status stays `idle`.
++   * The task runs with this Agent as the initiator across awaits; the caller's
++   * initiator scope is preserved outside the task, including after failure.
+    * `whenIdle()` follows both the task and any waking work released behind it.
+    * @param task - operation whose fulfillment or rejection is preserved, with a signal aborted by {@link cancel}.
+    * @throws synchronously when turn-driving or another maintenance task already owns the agent.
+@@ -551,6 +553,15 @@ Source: [`packages/core/agent-default-model/src/index.ts`](../../packages/core/a
  Concrete agent factory and driver service.
  
  ```ts cordis-catalog
@@ -2210,7 +2273,7 @@ index 9d8d401f..e9144b88 100644
  /**
   * Create an agent and session under one caller-supplied identity, owned by
   * the accessing fiber. Constructor-driven config calls mint a fresh combined
-@@ -1047,6 +1056,51 @@ Types: [Scoped](scope.zh.md) · [UserMessage](session.zh.md)
+@@ -1047,6 +1058,51 @@ Types: [Scoped](scope.zh.md) · [UserMessage](session.zh.md)
  
  Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
  
@@ -2262,7 +2325,7 @@ index 9d8d401f..e9144b88 100644
  <a id="agentrequest-error--waterfall"></a>
  
  #### `agent/request-error` — waterfall
-@@ -1076,6 +1130,28 @@ Types: [LlmFailure](llm-streaming.zh.md) · [ResolvedRetryPolicy](llm-streaming.
+@@ -1076,6 +1132,28 @@ Types: [LlmFailure](llm-streaming.zh.md) · [ResolvedRetryPolicy](llm-streaming.
  
  Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
  
@@ -2368,7 +2431,7 @@ index 03ba6e1e..976e632f 100644
      step: number
      message: AssistantMessage
 diff --git a/packages/compaction/compaction-basic/README.i18n.yaml b/packages/compaction/compaction-basic/README.i18n.yaml
-index eb5ecf79..504f4e8a 100644
+index eb5ecf79..89be7745 100644
 --- a/packages/compaction/compaction-basic/README.i18n.yaml
 +++ b/packages/compaction/compaction-basic/README.i18n.yaml
 @@ -36,8 +36,11 @@
@@ -2380,13 +2443,13 @@ index eb5ecf79..504f4e8a 100644
 +  en: aee62cfa285d086c
 +  zh: 3180c01cd9e8c152
 +/deepseek-ai-dsh-compaction-basic/use-this-package/provider-summary-policy-and-captured-summaries:
-+  en: c9a39c0caabb310a
-+  zh: a265642e59571723
++  en: 4130b2a4d673f53b
++  zh: 5bae442e413c736a
  /deepseek-ai-dsh-compaction-basic/understand-the-implementation:
    en: deb655b3b1860576
    zh: 79f56e41a9dfe01f
 diff --git a/packages/compaction/compaction-basic/README.md b/packages/compaction/compaction-basic/README.md
-index a33c2d7f..b707d7b7 100644
+index a33c2d7f..72c28b84 100644
 --- a/packages/compaction/compaction-basic/README.md
 +++ b/packages/compaction/compaction-basic/README.md
 @@ -97,6 +97,14 @@ With `dsh-command-compact` mounted, type `/compact` in a chat UI to condense imm
@@ -2397,7 +2460,7 @@ index a33c2d7f..b707d7b7 100644
 +
 +`compaction/pressure-policy` supplies optional route-specific overrides for pressure headroom, retention, and summary output budget. Returned fields are merged over the configured target policy and checked with the same strict validator. An explicit retention form replaces the other default form. Unhandled targets retain their defaults; adapters with small local windows can admit a feasible budget without changing unrelated providers.
 +
-+`compaction/summary-route` can explicitly select the auxiliary provider, model, effort, and output cap. It receives the proposed main-call target separately from the default summary target. Automatic pre-step, model-switch, and manual entry points preserve that captured proposal. Without a policy override, the answered-model selection described above remains the default. The optional resolved-call observer on `llm.stream()` captures the actual bound route after existing stream middleware; `compaction/summary` records its resolved effort, output cap, usage, and optional replay association.
++`compaction/summary-route` can explicitly select the auxiliary provider, model, effort, and output cap. Its version 2 capability supplies `configuredTarget` only when the backend explicitly configures a summary provider/model; `defaultTarget` is that target or the inherited answered-model route. The proposed main-call target remains separate, so provider policies can preserve an explicit summary choice while applying their defaults after a main-model switch. Automatic pre-step, model-switch, and manual entry points preserve that captured proposal. Without a policy override, the answered-model selection described above remains the default. The optional resolved-call observer on `llm.stream()` captures the actual bound route after existing stream middleware; `compaction/summary` records its resolved effort, output cap, usage, and optional replay association.
 +
 +`compaction/committed` is independent of assistant-message acknowledgement. It runs after the summary, replacement surface, and clean closing event are committed and a flush completes; external providers must require its `durable` flag. `ctx.compaction.adoptRecoveredSummary(agent, input, signal)` requires a summary-specific `compaction/recovery-check` listener and an idle maintenance reservation. It requires a readable `sessionPersistence` backend, validates the complete durable history, response digest, original compaction identity, unchanged surface, and exact original summary messages/tools, then reuses the normal balanced-range, shrink, replacement, and durability transaction. It never creates an assistant message or dispatches a new LLM call. A matching original checkpoint or recovery receipt returns the prior transaction without replacing history again. Missing policy, damaged artifacts, changed history, unresolved partial commits, and unavailable persistence stop recovery; the caller retains responsibility for provider identity, domain fences, and permission checks.
 +
@@ -2405,7 +2468,7 @@ index a33c2d7f..b707d7b7 100644
  
  <a id="understand-the-implementation"></a>
 diff --git a/packages/compaction/compaction-basic/README.zh.md b/packages/compaction/compaction-basic/README.zh.md
-index 0ab7a2cf..b12d264e 100644
+index 0ab7a2cf..62cbe496 100644
 --- a/packages/compaction/compaction-basic/README.zh.md
 +++ b/packages/compaction/compaction-basic/README.zh.md
 @@ -97,6 +97,14 @@ kind: "package-reference"
@@ -2416,7 +2479,7 @@ index 0ab7a2cf..b12d264e 100644
 +
 +`compaction/pressure-policy` 提供按路由选择的可选覆盖值，包括压力余量、保留范围及摘要输出预算。返回字段与目标的已有配置合并，并使用同一个严格验证器检查。显式保留形式会替换另一种默认形式。未处理的目标保持原默认值；本地窗口较小的适配器因此可以使用可行预算，而不改变其他提供方。
 +
-+`compaction/summary-route` 可以显式选择辅助调用的提供方、模型、推理强度和输出上限。它分别接收主调用的拟用目标和默认摘要目标。自动步骤前检查、模型切换和手动入口都会保留捕获的目标。策略没有覆盖时，上述已回答模型选择仍是默认行为。`llm.stream()` 的可选已解析调用观察器在现有流中间件之后捕获实际绑定的路由；`compaction/summary` 记录解析后的推理强度、输出上限、用量及可选的回放关联。
++`compaction/summary-route` 可以显式选择辅助调用的提供方、模型、推理强度和输出上限。其版本 2 能力仅在后端显式配置摘要提供方／模型时提供 `configuredTarget`；`defaultTarget` 则为该目标或继承的已回答模型路由。主调用的拟用目标保持独立，使提供方策略能保留显式摘要选择，并在主模型切换后应用自己的默认规则。自动步骤前检查、模型切换和手动入口都会保留捕获的目标。策略没有覆盖时，上述已回答模型选择仍是默认行为。`llm.stream()` 的可选已解析调用观察器在现有流中间件之后捕获实际绑定的路由；`compaction/summary` 记录解析后的推理强度、输出上限、用量及可选的回放关联。
 +
 +`compaction/committed` 独立于 assistant 消息确认。它在摘要、替换 surface 和正常结束事件提交且 flush 完成后运行；外部提供方必须要求其 `durable` 标志。`ctx.compaction.adoptRecoveredSummary(agent, input, signal)` 要求存在摘要专用的 `compaction/recovery-check` 监听器，并持有空闲维护保留。它要求可读取的 `sessionPersistence` 后端，验证完整持久历史、响应摘要、原始压缩身份、未变化的 surface 及原始摘要请求的确切消息和工具，然后复用普通的工具配对范围、缩减、替换和持久性事务。它不会创建 assistant 消息，也不会分派新的 LLM 调用。匹配的原始检查点或恢复回执会返回原事务，不再替换历史。缺少策略、产物损坏、历史变化、未解决的部分提交和持久化不可用都会停止恢复；调用方仍负责提供方身份、执行域限制及权限检查。
 +
@@ -2455,7 +2518,7 @@ index 88075500..96c06c57 100644
    }
  }
 diff --git a/packages/compaction/compaction-basic/src/index.ts b/packages/compaction/compaction-basic/src/index.ts
-index dc361d8f..f8348e1a 100644
+index dc361d8f..28744496 100644
 --- a/packages/compaction/compaction-basic/src/index.ts
 +++ b/packages/compaction/compaction-basic/src/index.ts
 @@ -7,15 +7,17 @@
@@ -2521,11 +2584,11 @@ index dc361d8f..f8348e1a 100644
   */
  export class BasicCompactionEngine extends CompactionEngine {
 +  override readonly hostPolicyCapabilities: Readonly<{
-+    summaryRoute: 1
++    summaryRoute: 2
 +    pressurePolicy: 1
 +    durableSummaryAck: 1
 +    recoveredSummary: 1
-+  }> = Object.freeze({ summaryRoute: 1, pressurePolicy: 1, durableSummaryAck: 1, recoveredSummary: 1 })
++  }> = Object.freeze({ summaryRoute: 2, pressurePolicy: 1, durableSummaryAck: 1, recoveredSummary: 1 })
    static inject = ['llm', 'tokenMeter', 'sessions', 'sessionProjections']
  
    static Config: z<BasicCompactionConfig> = z.object({
@@ -3010,7 +3073,7 @@ index 2623071d..730f958c 100644
  
  /**
 diff --git a/packages/compaction/compaction-basic/src/summarizer.ts b/packages/compaction/compaction-basic/src/summarizer.ts
-index c9184d1e..7603331c 100644
+index c9184d1e..a6cb6a0a 100644
 --- a/packages/compaction/compaction-basic/src/summarizer.ts
 +++ b/packages/compaction/compaction-basic/src/summarizer.ts
 @@ -8,9 +8,10 @@ import type { Context } from '@deepseek-ai/cordis'
@@ -3052,21 +3115,24 @@ index c9184d1e..7603331c 100644
   * @returns safe text-only summary blocks and the exact call envelope and output.
   */
  export async function summarizeWithLlm(
-@@ -128,11 +133,21 @@ export async function summarizeWithLlm(
+@@ -128,11 +133,22 @@ export async function summarizeWithLlm(
    agent: Agent,
    conversation: SummaryRoute | undefined,
    signal?: AbortSignal,
 +  context?: CompactionRequestContext,
  ): Promise<SummaryResult> {
-   const configured = config.summarizationProvider.length === 0
+-  const configured = config.summarizationProvider.length === 0
++  const configuredTarget = config.summarizationProvider.length === 0
      ? undefined
-     : { provider: config.summarizationProvider, model: config.summarizationModel }
+-    : { provider: config.summarizationProvider, model: config.summarizationModel }
 -  const target = configured ?? conversation
-+  const defaultTarget = configured ?? conversation
++    : deepFreeze({ provider: config.summarizationProvider, model: config.summarizationModel })
++  const defaultTarget = configuredTarget ?? conversation
 +  const proposedTarget = context?.proposedTarget
 +  const target = await ctx.waterfall('compaction/summary-route', {
 +    agent,
 +    ...proposedTarget === undefined ? {} : { proposedTarget },
++    ...configuredTarget === undefined ? {} : { configuredTarget },
 +    ...defaultTarget === undefined ? {} : { defaultTarget },
 +    maxTokens: config.maxTokens,
 +    ...signal === undefined ? {} : { signal },
@@ -3075,7 +3141,7 @@ index c9184d1e..7603331c 100644
    if (target === undefined) {
      throw new Error(
        'no provider/model available for summarization: set both BasicCompactionConfig summarization fields, route one request, or set both AgentOptions fields',
-@@ -148,17 +163,16 @@ export async function summarizeWithLlm(
+@@ -148,17 +164,16 @@ export async function summarizeWithLlm(
      }),
    ]
    const options: GenerateOptions = {
@@ -3096,7 +3162,7 @@ index c9184d1e..7603331c 100644
    const error = finishError(assembler.finish)
    if (error !== undefined) throw error
  
-@@ -167,13 +181,19 @@ export async function summarizeWithLlm(
+@@ -167,13 +182,19 @@ export async function summarizeWithLlm(
    if (!summary.some(block => block.text.trim().length > 0)) {
      throw new Error('summarization produced no text summary content')
    }
@@ -3136,10 +3202,10 @@ index a2ca2931..78653742 100644
        if (release === undefined) throw new Error('agent already has active work')
 diff --git a/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts b/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts
 new file mode 100644
-index 00000000..c4e2ff0c
+index 00000000..3bd1e03c
 --- /dev/null
 +++ b/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,273 @@
 +import { describe, expect, it, onTestFinished } from 'vitest'
 +import { mkdtemp, rm } from 'node:fs/promises'
 +import { tmpdir } from 'node:os'
@@ -3159,14 +3225,14 @@ index 00000000..c4e2ff0c
 +import { previousSummaryCommit, recoveredSummaryResult } from '../src/recovered-summary.ts'
 +import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 +
-+async function history(failedSummary = false) {
++async function history(failedSummary = false, summaryTarget?: { summarizationProvider: string; summarizationModel: string }) {
 +  const root = await mkdtemp(join(tmpdir(), 'dsh-summary-recovery-'))
 +  const ctx = new Context()
 +  onTestFinished(async () => { await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }) })
 +  await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
 +  await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
 +  await ctx.plugin(TokenMeter)
-+  await ctx.plugin(BasicCompactionEngine, { auto: false })
++  await ctx.plugin(BasicCompactionEngine, { auto: false, ...summaryTarget })
 +  await ctx.plugin(AgentLoop, { agents: [] })
 +  const pro = brandString<ReasoningEffortId>('pro')
 +  const summary: StreamChunk[] = [
@@ -3177,7 +3243,7 @@ index 00000000..c4e2ff0c
 +    textResponse('first answer '.repeat(300)), textResponse('second answer '.repeat(300)),
 +    failedSummary ? [{ type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'lost captured summary delivery' } } }] : summary,
 +  ], { efforts: [{ id: pro, name: 'Pro' }], defaultEffort: pro })
-+  ctx.llm.registerAdapter(['old', 'web'], adapter)
++  ctx.llm.registerAdapter(['old', 'web', 'summary'], adapter)
 +  const agent = await ctx.agentLoop.create(brandString<SessionId>('summary-policy'), { provider: 'old', model: 'old-model' })
 +  for (let i = 0; i < 2; i += 1) {
 +    agent.followup(createUserMessage({ content: [{ type: 'text', text: `task ${i} `.repeat(300) }], source: { kind: 'user' } }))
@@ -3216,12 +3282,17 @@ index 00000000..c4e2ff0c
 +    const { ctx, agent, adapter, pro } = await history()
 +    const order: string[] = []
 +    ctx.on('session/flush', () => { order.push('flush') })
-+    ctx.on('compaction/summary-route', async ({ proposedTarget, defaultTarget }) => {
++    ctx.on('compaction/summary-route', async ({ proposedTarget, defaultTarget, configuredTarget }) => {
++      expect(ctx.agents.currentInitiator()).toBe(agent)
++      await Promise.resolve()
++      expect(ctx.agents.currentInitiator()).toBe(agent)
 +      expect(defaultTarget).toMatchObject({ provider: 'old', model: 'old-model' })
++      expect(configuredTarget).toBeUndefined()
 +      expect(proposedTarget).toEqual({ provider: 'web', model: 'web-model', reasoningEffort: pro })
 +      return { ...proposedTarget!, maxTokens: 77 }
 +    })
 +    ctx.on('compaction/committed', ({ event, result, durable }) => {
++      expect(ctx.agents.currentInitiator()).toBe(agent)
 +      expect(durable).toBe(true)
 +      expect(agent.session.eventAt(result.endSeq)?.type).toBe('compaction/end')
 +      expect(event.data).toMatchObject({
@@ -3231,9 +3302,25 @@ index 00000000..c4e2ff0c
 +      order.push('ack')
 +    })
 +    await ctx.compaction.compactNow(agent, new AbortController().signal)
++    expect(ctx.agents.currentInitiator()).toBeUndefined()
 +    expect(adapter.requests.at(-1)).toMatchObject({ provider: 'web', model: 'web-model', reasoningEffort: pro, maxTokens: 77, purpose: 'compaction' })
 +    expect(order.at(-1)).toBe('ack')
 +    expect(order.filter(item => item === 'flush').length).toBeGreaterThanOrEqual(1)
++  })
++
++  it('distinguishes an explicit summary target from inherited history when the main model changes', async () => {
++    const { ctx, agent, adapter } = await history(false, {
++      summarizationProvider: 'summary', summarizationModel: 'summary-model',
++    })
++    ctx.on('compaction/summary-route', async ({ proposedTarget, defaultTarget, configuredTarget }, next) => {
++      expect(proposedTarget).toMatchObject({ provider: 'web', model: 'web-model' })
++      expect(defaultTarget).toEqual({ provider: 'summary', model: 'summary-model' })
++      expect(configuredTarget).toEqual(defaultTarget)
++      return next()
++    })
++    await ctx.compaction.compactNow(agent, new AbortController().signal)
++    expect(adapter.requests.at(-1)).toMatchObject({ provider: 'summary', model: 'summary-model', purpose: 'compaction' })
++    expect(ctx.compaction.hostPolicyCapabilities?.summaryRoute).toBe(2)
 +  })
 +
 +  it('does not send a summary after policy rejects the target', async () => {
@@ -3418,7 +3505,7 @@ index e202df1c..331f8dd4 100644
    ]
  }
 diff --git a/packages/compaction/compaction/src/index.ts b/packages/compaction/compaction/src/index.ts
-index c77e5e01..567291b6 100644
+index c77e5e01..65a306b6 100644
 --- a/packages/compaction/compaction/src/index.ts
 +++ b/packages/compaction/compaction/src/index.ts
 @@ -8,12 +8,14 @@
@@ -3455,7 +3542,7 @@ index c77e5e01..567291b6 100644
  /** Expected failure classes for an explicit idle-session compaction request. */
  export type ManualCompactionErrorCode =
    | 'busy'
-@@ -90,6 +101,32 @@ declare module '@deepseek-ai/cordis' {
+@@ -90,6 +101,34 @@ declare module '@deepseek-ai/cordis' {
      compaction: CompactionEngine
    }
    interface Events {
@@ -3463,11 +3550,13 @@ index c77e5e01..567291b6 100644
 +     * Select the actual summary route before constructing its LLM request.
 +     * Return next() when this policy does not own the proposed target. The
 +     * backend records the returned provider, model, effort, and output cap.
-+     * @param payload - owning Agent, frozen proposed route, and backend defaults.
++     * `configuredTarget` is present only for an explicit backend summary target;
++     * `defaultTarget` may instead be inherited from the answered conversation.
++     * @param payload - owning Agent, proposed route, explicit summary target, and backend defaults.
 +     * @param next - delegate to the next routing policy.
 +     * @mode waterfall
 +     */
-+    'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
++    'compaction/summary-route'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; configuredTarget?: Readonly<CompactionSummaryRoute>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>
 +    /**
 +     * A summary transaction and replacement have reached a persistence
 +     * checkpoint. `durable` is false without a persistence listener. The
@@ -3488,12 +3577,12 @@ index c77e5e01..567291b6 100644
      /**
       * Recover a failed summary request by synchronously recording a durable
       * change to its selected input. Return true only after making progress;
-@@ -117,10 +154,28 @@ declare module '@deepseek-ai/cordis' {
+@@ -117,10 +156,28 @@ declare module '@deepseek-ai/cordis' {
   * one implementation per context as `ctx.compaction`.
   */
  export abstract class CompactionEngine extends Service {
 +  /** Optional public summary lifecycle operations implemented by the backend. */
-+  readonly hostPolicyCapabilities?: Readonly<{ summaryRoute: 1; pressurePolicy?: 1; durableSummaryAck: 1; recoveredSummary?: 1 }>
++  readonly hostPolicyCapabilities?: Readonly<{ summaryRoute: 2; pressurePolicy?: 1; durableSummaryAck: 1; recoveredSummary?: 1 }>
    constructor(ctx: Context) {
      super(ctx, 'compaction')
    }
@@ -3517,7 +3606,7 @@ index c77e5e01..567291b6 100644
    /**
     * Consider automatic compaction for one explicit trigger. Pressure policy
     * uses the latest durable routed request, while context-overflow policy may
-@@ -131,12 +186,14 @@ export abstract class CompactionEngine extends Service {
+@@ -131,12 +188,14 @@ export abstract class CompactionEngine extends Service {
     * @param agent - agent context owning the session surface and routing options.
     * @param trigger - normal pressure or provider-confirmed context overflow.
     * @param signal - cancellation signal; model-backed implementations must forward it.
@@ -3532,7 +3621,7 @@ index c77e5e01..567291b6 100644
    ): Promise<CompactionResult | null>
  
    /**
-@@ -181,6 +238,7 @@ export abstract class CompactionEngine extends Service {
+@@ -181,6 +240,7 @@ export abstract class CompactionEngine extends Service {
     * @param end - last surface seq, inclusive.
     * @param agent - context whose session is mutated and whose routing options guide summarization.
     * @param signal - optional cancellation; model-backed implementations must forward it.
@@ -3540,7 +3629,7 @@ index c77e5e01..567291b6 100644
     * @throws when compaction is active or the range is missing, reversed, or unbalanced.
     * @returns the appended event seqs, summary, replaced range, and token accounting.
     */
-@@ -189,6 +247,7 @@ export abstract class CompactionEngine extends Service {
+@@ -189,6 +249,7 @@ export abstract class CompactionEngine extends Service {
      end: SessionSeq,
      agent: CompactionAgentContext,
      signal?: AbortSignal,
@@ -3598,7 +3687,7 @@ index b35dc283..482f9c37 100644
        maxTokens?: number
        /** Provider-reported token usage for the summarization request, when emitted. */
 diff --git a/packages/core/agent-loop/README.i18n.yaml b/packages/core/agent-loop/README.i18n.yaml
-index 53441930..83609a56 100644
+index 53441930..97846054 100644
 --- a/packages/core/agent-loop/README.i18n.yaml
 +++ b/packages/core/agent-loop/README.i18n.yaml
 @@ -24,8 +24,11 @@
@@ -3615,8 +3704,19 @@ index 53441930..83609a56 100644
  /deepseek-ai-dsh-agent-loop/understand-the-implementation:
    en: ce7e776e9d516bdb
    zh: 59d2751743db7795
+@@ -45,8 +48,8 @@
+   en: e796c442d8ce8fcf
+   zh: 051b43f5d3a94ad7
+ /deepseek-ai-dsh-agent-loop/understand-the-implementation/turn-and-step-flow:
+-  en: 4bd3c8b4a9ee8cf8
+-  zh: 2f4965a3197bed0e
++  en: b604a30989075c07
++  zh: 351c870c5f60a11b
+ /deepseek-ai-dsh-agent-loop/understand-the-implementation/failure-and-cancellation:
+   en: eea56903c4ff82f5
+   zh: c0d5abb5767780ed
 diff --git a/packages/core/agent-loop/README.md b/packages/core/agent-loop/README.md
-index 28a4fe8e..45e5530c 100644
+index 28a4fe8e..b3d8958b 100644
 --- a/packages/core/agent-loop/README.md
 +++ b/packages/core/agent-loop/README.md
 @@ -74,6 +74,14 @@ Every inbox mutation commits one normalized `agent/inbox/spliced` event. The pro
@@ -3634,8 +3734,17 @@ index 28a4fe8e..45e5530c 100644
  -----
  
  <a id="understand-the-implementation"></a>
+@@ -119,6 +127,8 @@ The loop is the production acquisition point for Session write handles. Fresh cr
+ 
+ ### Turn and step flow
+ 
++`agent.runMaintenance(task)` reserves the idle Agent before starting the task inside that Agent's initiator scope. Async callbacks for manual compaction and captured-response adoption therefore observe the same Agent and workspace as ordinary model turns. The caller's scope remains unchanged outside the task, including after rejection or cancellation; queued waking input runs only after maintenance settles.
++
+ The driver owns one agent for its lifetime and runs inside `ctx.agents.withInitiator(agent, ...)`. `AgentLoop` registers the standard `inbox` projection for its service lifetime, so cold reads work before any Agent exists and after all Agents unload. It also owns `modelSelection` and constructs an `AgentModel` for each Agent, with the public [Model API](../agent/README.md#model-selection). Its package-internal `ReactLoopInbox` uses that shared projection for structural commands and loop-only claims. At a turn boundary it opens the durable turn, then atomically claims pending next-step input plus one queued prompt; between steps it claims only next-step input. The driver assembles the prompt and tools and runs `agent/pre-step`; the fallback projects runtime context after listeners run. A rejected decision or empty first batch opens no step. On the first attempt after acceptance, `step/start` precedes the `agent/request` waterfall and `prepareCall()`; neither async phase sees the pending system prompt or accepted users committed to history, and cancellation during either commits neither. For every attempt, the loop then synchronously reconciles the rendered prompt against the surviving `system/message` nodes using the prepared call capability, refreshes registered runtime facts without reassembling the bound prompt or tools, appends the accepted `user/message` batch only on the first attempt with its owned context candidate replaced in place, and restores removed runtime context, logs the header and context as needed, and derives and freezes the request before streaming through that bound prepared call. Retries reuse the same rendered assembly without repeating assembly, `agent/pre-step`, or user admission. Reconciliation sees pre-step and retry compaction; a broken series consolidates the prompt at the head rather than appending an update after already-committed users. The request is `header.config`, `deriveMessages()`, and `header.tools`; it carries no `system` field. Each model attempt emits one process-local `start`, emits every `chunk` only after the matching durable assistant-frame settlement, and emits exactly one terminal `end`; final assembly or message-append failure settles it as `aborted`, while `committed` follows the durable `assistant/message`. Each successful model call appends one message anchor, and a cancelled stream appends an `interrupted: true` anchor with the delivered prefix so the next request contains what the user saw. Within a step, exclusive calls form barriers and parallel-safe calls use the bounded rolling pool; policy, durable results... (line truncated to 2000 chars)
+ 
+ Prompt admission uses the actual `prepareCall()` result, not the preceding `request/context`. With no system node, even an empty prompt is appended (reserving node 0 without a wire message). On an incapable route, or at a new request series whose effective text differs, a non-empty rendering is consolidated at the first system node: each non-empty later system node receives a logged per-node empty replacement, then the head is rewritten if needed. Dormant empty tails need no replacement and do not determine the effective text. A series start whose latest surviving node already holds the rendering produces no system event, so the request keeps the prefix it had. On a continuing `in-history` series, an unchanged effective prompt produces no event and a non-empty change appends. An empty rendering clears every non-empty later system node through a logged per-node empty replacement, then empties the head if needed, regardless of route or series state. No older instructions remain model-visible. An empty head with no active later system node means no prompt; repeated clears and resume leave it empty. A restored non-empty prompt follows the same route/series rule: a continuing capable route may append it, while an incapable route or a new series whose effective text differs refills the head. A step starts a series when the pre-step decision declares `startsRequestSeries` or `session.surface.contentGeneration` changed since attachment or the last request (a replacement or image-offload decision). Visible tool-schema changes force prompt consolidation only when the prepared route lacks `toolUpdate`. Routes supporting both tool and system-prompt updates can append a changed prompt and activate added tools without rewriting earlier messages. If another admission condition replaces a system node, the request starts a new series with current tool declarations. Resume and a provider or model swap alone continue the series; the prepared route still governs admission. Per-node empty replacements preserve intervening history without a surface delete operation.
 diff --git a/packages/core/agent-loop/README.zh.md b/packages/core/agent-loop/README.zh.md
-index 20f95875..f001de11 100644
+index 20f95875..8f99c8be 100644
 --- a/packages/core/agent-loop/README.zh.md
 +++ b/packages/core/agent-loop/README.zh.md
 @@ -74,6 +74,14 @@ const handle = await ctx.agents.create({
@@ -3653,8 +3762,17 @@ index 20f95875..f001de11 100644
  -----
  
  <a id="understand-the-implementation"></a>
+@@ -119,6 +127,8 @@ loop 在发布工厂前等待必需的注册完成。它对模型选择和 inbox
+ 
+ ### 轮次与步骤流程
+ 
++`agent.runMaintenance(task)` 先保留空闲 Agent，再在该 Agent 的发起者作用域内启动任务。因此，手动压缩和捕获响应接纳的异步回调会观察到与普通模型轮次相同的 Agent 和工作区。任务以外的调用方作用域保持不变，拒绝或取消后也是如此；已排队的唤醒输入只会在维护任务结算后运行。
++
+ 驱动器在其整个生命周期内拥有一个 agent，并在 `ctx.agents.withInitiator(agent, ...)` 内运行。`AgentLoop` 在服务生命周期内注册标准 `inbox` 投影，因此冷读取在没有 Agent 和所有 Agent 卸载后都可用。它还拥有 `modelSelection`，并为每个 Agent 构建 `AgentModel`，实现公开的 [Model API](../agent/README.zh.md#model-selection)。其包内部 `ReactLoopInbox` 使用该共享投影执行结构化命令与仅供 loop 使用的领取操作。在轮次边界，它先打开持久轮次，再原子领取待处理的 next-step 输入与一条排队提示词；在步骤之间则只领取 next-step 输入。驱动器组装提示词与工具，并运行 `agent/pre-step`；fallback 在监听器执行后投影运行时上下文。被拒绝的决定或空的首批输入不打开步骤。接纳后的首次尝试先记录 `step/start`，再运行 `agent/request` waterfall 与 `prepareCall()`；这两个异步阶段都看不到待提交的系统提示词与已接纳用户消息进入历史，在任一阶段取消都不会提交这两者。每次尝试时，循环随后依据已准备调用的能力，同步将渲染后的提示词与存活的 `system/message` 节点协调一致、刷新已注册运行时事实而不重新组装绑定的提示词或工具、仅在首次尝试追加已接纳的 `user/message` 批次并原位替换循环自有上下文候选、恢复被移除的运行时上下文、按需记录 header 与 context，再派生并冻结请求，通过该绑定的已准备调用发起流式请求。重试复用同一份已渲染组装结果，不重复组装、`agent/pre-step` 或用户消息准入。协调过程可见 pre-step 与重试中的压缩；序列中断时将提示词归并到头部，而非在已提交用户消息之后追加更新。请求由 `header.config`、`deriveMessages()` 与 `header.tools` 构成，不携带 `system` 字段。每次模型尝试会发出一个进程本地 `start`，仅在匹配的持久 assistant-frame 结算之后发出各个 `chunk`，并恰好发出一个终态 `end`；最终组装或消息追加失败时以 `aborted` 结算，`committed` 则出现在持久 `assistant/message` 之后。每次成功的模型调用都恰好追加一个 message 锚点，被取消的流则追加带 `interrupted: true` 的锚点并携带已交付前缀，使下一次请求包含用户看到的内容。在步骤内，独占调用形成屏障，并行安全调用使用有界滚动池；策略、持久结果与结果上下文保持模型顺序。
+ 
+ 提示词准入依据实际的 `prepareCall()` 结果，而非先前的 `request/context`。没有系统节点时，即使提示词为空也追加（预留第 0 号节点，但不产生协议消息）。在不具备能力的路由上，或有效文本不同的新请求序列开始时，非空渲染文本归并到首个系统节点：每个非空的后续系统节点分别收到有日志记录的空内容替换，随后按需重写头节点。未生效的空尾节点无需替换，也不决定有效文本。新序列开始时若最新存活节点已经持有该渲染文本，则不产生系统事件，请求保留原有前缀。延续中的 `in-history` 序列在有效提示词不变时不产生事件，非空变更则追加。无论路由或序列状态如何，空渲染文本都会通过有日志记录的逐节点空内容替换清除每个非空的后续系统节点，再按需清空头节点。模型不会继续看到旧指令。空头节点且没有生效的后续系统节点表示没有提示词；重复清除与恢复会话都保持为空。重新提供的非空提示词遵循同一路由／序列规则：延续中的具备能力路由可以追加它，不具备能力的路由或有效文本不同的新序列则重新填充头节点。以下情况开启序列：pre-step 决定声明 `startsRequestSeries`，或 `session.surface.contentGeneration` 自附接或上次请求以来发生变化（替换或图片省略决定）。仅当已准备路由未声明 `toolUpdate` 时，可见工具 schema 变化才强制归并提示词。同时支持工具和系统提示词更新的路由可以追加变更后的提示词并激活新增工具，无需改写此前消息。如果其他准入条件替换系统节点，请求会以当前工具声明开启新序列。恢复与单纯的提供方或模型切换都延续序列；准入仍由已准备的路由决定。逐节点的空内容替换保留其间历史，无需 surface 删除操作。
 diff --git a/packages/core/agent-loop/src/agent.ts b/packages/core/agent-loop/src/agent.ts
-index 7ec43dd1..db944acf 100644
+index 7ec43dd1..3098fcb3 100644
 --- a/packages/core/agent-loop/src/agent.ts
 +++ b/packages/core/agent-loop/src/agent.ts
 @@ -17,6 +17,8 @@ import type {
@@ -3674,17 +3792,26 @@ index 7ec43dd1..db944acf 100644
  
  /** Projected facts consumed by this driver; registration stays with the factory. */
  interface LoopProjections {
+@@ -214,7 +217,7 @@ export class ReactLoopAgent implements Agent {
+     this.activityDone = done.promise
+     return (async () => {
+       try {
+-        return await job(maintenance.abort.signal)
++        return await this.loopCtx.agents.withInitiator(this, () => job(maintenance.abort.signal))
+       } finally {
+         this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
+         const cause = abortedCancelCause(maintenance.abort.signal)
 @@ -224,6 +227,15 @@ export class ReactLoopAgent implements Agent {
      })()
    }
  
 +  /** Adopt an explicitly recovered response while this driver owns idle admission. */
 +  adoptRecoveredResponse(input: RecoveredAssistantResponse): Promise<RecoveredAssistantCommit> {
-+    return this.runMaintenance(signal => this.loopCtx.agents.withInitiator(this, () =>
++    return this.runMaintenance(signal =>
 +      adoptRecoveredAssistant(this.loopCtx, this, input, signal, () => {
 +        if (this.phase.kind !== 'maintenance') throw new Error('response recovery lost maintenance ownership')
 +        return ++this.phase.lastTurn
-+      }, () => abortedCancelCause(signal))))
++      }, () => abortedCancelCause(signal)))
 +  }
 +
    /**
@@ -4085,10 +4212,10 @@ index 00000000..d023d335
 +}
 diff --git a/packages/core/agent-loop/tests/host-policy.spec.ts b/packages/core/agent-loop/tests/host-policy.spec.ts
 new file mode 100644
-index 00000000..75c77eda
+index 00000000..27b05326
 --- /dev/null
 +++ b/packages/core/agent-loop/tests/host-policy.spec.ts
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,165 @@
 +import { describe, expect, it, onTestFinished, vi } from 'vitest'
 +import { Context } from '@deepseek-ai/cordis'
 +import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -4096,6 +4223,7 @@ index 00000000..75c77eda
 +import { brandString } from '@deepseek-ai/dsh-brand'
 +import { createUserMessage, LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 +import type { SessionId } from '@deepseek-ai/dsh-session'
++import type { Agent } from '@deepseek-ai/dsh-agent'
 +import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 +import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
 +import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
@@ -4118,6 +4246,42 @@ index 00000000..75c77eda
 +const failure = { code: 'TIMEOUT', message: 'provider dispatch outcome is unknown' }
 +
 +describe('provider host policy', () => {
++  it.each(['fulfilled', 'rejected', 'cancelled'] as const)('scopes %s maintenance to its owning Agent and restores the caller', async (settlement) => {
++    const { ctx, agent } = await harness(new MockAdapter([]))
++    const caller = await ctx.agentLoop.create(brandString<SessionId>('maintenance-caller'), { provider: 'mock', model: 'mock' })
++    const entered = Promise.withResolvers<undefined>()
++    const release = Promise.withResolvers<undefined>()
++    const observed: Array<Agent | undefined> = []
++    const failure = new Error('maintenance failed')
++    const cancellation = { kind: 'user' } as const
++    expect(ctx.agents.currentInitiator()).toBeUndefined()
++    await ctx.agents.withInitiator(caller, async () => {
++      const work = agent.runMaintenance(async (signal) => {
++        observed.push(ctx.agents.currentInitiator())
++        entered.resolve(undefined)
++        try {
++          await release.promise
++          observed.push(ctx.agents.currentInitiator())
++          if (settlement === 'rejected') throw failure
++          signal.throwIfAborted()
++          return 'checkpoint'
++        } finally {
++          observed.push(ctx.agents.currentInitiator())
++        }
++      })
++      await entered.promise
++      expect(ctx.agents.currentInitiator()).toBe(caller)
++      if (settlement === 'cancelled') agent.cancel(cancellation)
++      release.resolve(undefined)
++      if (settlement === 'fulfilled') await expect(work).resolves.toBe('checkpoint')
++      else await expect(work).rejects.toBe(settlement === 'rejected' ? failure : cancellation)
++      expect(ctx.agents.currentInitiator()).toBe(caller)
++    })
++    expect(observed.map(initiator => initiator === agent)).toEqual([true, true, true])
++    expect(ctx.agents.currentInitiator()).toBeUndefined()
++    await agent.whenIdle()
++  })
++
 +  it('vetoes always retries before recovery without changing the original failure', async () => {
 +    const adapter = new MockAdapter([
 +      [{ type: 'finish', reason: { kind: 'error', failure } }], textResponse('must not run'),
@@ -4219,10 +4383,10 @@ index 00000000..75c77eda
 +})
 diff --git a/packages/core/agent-loop/tests/recovered-response.spec.ts b/packages/core/agent-loop/tests/recovered-response.spec.ts
 new file mode 100644
-index 00000000..3952677a
+index 00000000..bc021b9a
 --- /dev/null
 +++ b/packages/core/agent-loop/tests/recovered-response.spec.ts
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,189 @@
 +import { describe, expect, it, onTestFinished } from 'vitest'
 +import { mkdtemp, rm } from 'node:fs/promises'
 +import { tmpdir } from 'node:os'
@@ -4285,6 +4449,7 @@ index 00000000..3952677a
 +    const { ctx, agent, adapter, input, writes } = await pendingResponse(true)
 +    ctx.on('session/flush', () => {})
 +    ctx.on('agent/recovery-check', ({ input: checked }) => {
++      expect(ctx.agents.currentInitiator()).toBe(agent)
 +      expect(checked.requestId).toBe('request-1')
 +    })
 +    const commit = await ctx.agentLoop.adoptRecoveredResponse(agent, input)
@@ -4292,6 +4457,7 @@ index 00000000..3952677a
 +    expect(writes()).toBe(1)
 +    expect(adapter.requests).toHaveLength(1)
 +    const duplicate = await ctx.agentLoop.adoptRecoveredResponse(agent, input)
++    expect(ctx.agents.currentInitiator()).toBeUndefined()
 +    expect(duplicate).toEqual({ ...commit, alreadyCommitted: true, needsContinuation: false })
 +    expect(writes()).toBe(1)
 +    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'continue' }], source: { kind: 'user' } }))
@@ -4456,7 +4622,7 @@ index 03fd952a..f91745f8 100644
        // oxlint-disable-next-line typescript/unbound-method -- the events mixin accessor returns a pre-bound function
        const waterfall = ctx.waterfall as (thisArg: Scoped<Agent>, name: string, ...args: unknown[]) => never
 diff --git a/packages/core/agent/src/runtime-types.ts b/packages/core/agent/src/runtime-types.ts
-index 7012dfdf..baf3491d 100644
+index 7012dfdf..e8db814e 100644
 --- a/packages/core/agent/src/runtime-types.ts
 +++ b/packages/core/agent/src/runtime-types.ts
 @@ -8,7 +8,8 @@
@@ -4505,7 +4671,16 @@ index 7012dfdf..baf3491d 100644
  /** Why a session lifecycle began; seeded creates are `startup`, while persisted loads are `resume`. */
  export type SessionStartSource = 'startup' | 'resume' | 'clear' | 'compact'
  
-@@ -388,6 +418,34 @@ declare module '@deepseek-ai/cordis' {
+@@ -224,6 +254,8 @@ declare module './types.ts' {
+    * Run one non-turn maintenance task from the true idle phase. The task starts
+    * synchronously after claiming that phase; later waking input remains in the
+    * inbox until the task settles, while public status stays `idle`.
++   * The task runs with this Agent as the initiator across awaits; the caller's
++   * initiator scope is preserved outside the task, including after failure.
+    * `whenIdle()` follows both the task and any waking work released behind it.
+    * @param task - operation whose fulfillment or rejection is preserved, with a signal aborted by {@link cancel}.
+    * @throws synchronously when turn-driving or another maintenance task already owns the agent.
+@@ -388,6 +420,34 @@ declare module '@deepseek-ai/cordis' {
       * @mode waterfall
       */
      'agent/request-error'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; provider: string; failure: LlmFailure; retryPolicy: ResolvedRetryPolicy | undefined; signal: AbortSignal }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>
@@ -4560,7 +4735,7 @@ index eddd8855..7a69da38 100644
      step: number
      message: AssistantMessage
 diff --git a/packages/extensions/tool-cordis/src/api-catalog.ts b/packages/extensions/tool-cordis/src/api-catalog.ts
-index f7a5c48f..17228c4e 100644
+index f7a5c48f..3b857bd9 100644
 --- a/packages/extensions/tool-cordis/src/api-catalog.ts
 +++ b/packages/extensions/tool-cordis/src/api-catalog.ts
 @@ -137,11 +137,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
@@ -4591,7 +4766,7 @@ index f7a5c48f..17228c4e 100644
      methods: [
        {
 -        signature: 'abstract compactIfNeeded( agent: CompactionAgentContext, trigger: CompactionTrigger, signal: AbortSignal, ): Promise<CompactionResult | null>',
-+        signature: 'readonly hostPolicyCapabilities?: Readonly<{ summaryRoute: 1; pressurePolicy?: 1; durableSummaryAck: 1; recoveredSummary?: 1 }>',
++        signature: 'readonly hostPolicyCapabilities?: Readonly<{ summaryRoute: 2; pressurePolicy?: 1; durableSummaryAck: 1; recoveredSummary?: 1 }>',
 +        description: 'Optional public summary lifecycle operations implemented by the backend.',
 +        parameters: [],
 +      },
@@ -4709,10 +4884,10 @@ index f7a5c48f..17228c4e 100644
 +  {
 +    name: 'compaction/summary-route',
 +    mode: 'waterfall',
-+    signature: '\'compaction/summary-route\'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>',
++    signature: '\'compaction/summary-route\'(payload: { agent: Agent; proposedTarget?: Readonly<LlmCallConfig>; configuredTarget?: Readonly<CompactionSummaryRoute>; defaultTarget?: CompactionSummaryRoute; maxTokens: number; signal?: AbortSignal }, next: () => Promise<CompactionSummaryRoute | undefined>): Promise<CompactionSummaryRoute | undefined>',
 +    summary: 'Select the actual summary route before constructing its LLM request.',
-+    description: 'Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap.',
-+    parameters: [{ name: 'payload', description: 'owning Agent, frozen proposed route, and backend defaults.' }, { name: 'next', description: 'delegate to the next routing policy.' }],
++    description: 'Select the actual summary route before constructing its LLM request. Return next() when this policy does not own the proposed target. The backend records the returned provider, model, effort, and output cap. `configuredTarget` is present only for an explicit backend summary target; `defaultTarget` may instead be inherited from the answered conversation.',
++    parameters: [{ name: 'payload', description: 'owning Agent, proposed route, explicit summary target, and backend defaults.' }, { name: 'next', description: 'delegate to the next routing policy.' }],
 +  },
    {
      name: 'connection/request',

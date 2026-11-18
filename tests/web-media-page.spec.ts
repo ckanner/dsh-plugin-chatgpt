@@ -20,7 +20,7 @@ test('production page uploads, rechecks account/model and binds each image to th
     const attachment = { attachmentId: 'screen', mediaType: 'image/png', bytes: png.length, width: 1, height: 1 }
     const options = { messages: [{ role: 'tool', toolCallId: 'host_screen', content: [{ type: 'image', attachment }] }] } as unknown as GenerateOptions
     const media = await prepareWebMedia(options, join(directory, 'images'), () => ({ async readImage() { return { ref: attachment, data: png } } }), Date.now() + 5000)
-    for (const scenario of ['complete', 'failed', 'navigation', 'staged-extra'] as const) {
+    for (const scenario of ['complete', 'failed', 'navigation', 'navigation-before-submit', 'staged-extra'] as const) {
       const { window, document } = parseHTML('<html><body></body></html>')
       let focus: HTMLTextAreaElement | undefined
       Object.defineProperty(window.HTMLElement.prototype, 'getClientRects', { configurable: true, value() { return [{}] } })
@@ -66,6 +66,7 @@ test('production page uploads, rechecks account/model and binds each image to th
       const request: WebTurnRequest = { requestId: scenario, executionDomainId: 'domain', sessionId: 'session', generation: 1, bindingDigest: digest('bound'), prompt: 'exact image prompt', media, title: 'Image test', deadlineMs: Date.now() + 5000, contextPolicy: 'personalized', maxPromptBytes: 1000, maxResponseBytes: 1000 }
       const page = new ChatGptPage(raw, connection, request)
       await page.prepare(request)
+      if (scenario === 'navigation-before-submit') location.href = 'https://chatgpt.com/c/unrelated-chat'
       if (scenario === 'staged-extra') {
         const extra = document.createElement('div'); extra.setAttribute('data-testid', 'file-upload'); document.querySelector('form')!.append(extra)
       }
@@ -78,7 +79,7 @@ test('production page uploads, rechecks account/model and binds each image to th
       } else {
         await assert.rejects(() => page.submit(request.prompt), /upload|attachments|conversation/i)
         assert.equal(submits, 0)
-        if (scenario === 'staged-extra') assert.equal(selected, 0)
+        if (scenario === 'staged-extra' || scenario === 'navigation-before-submit') assert.equal(selected, 0)
       }
     }
   } finally { await rm(directory, { recursive: true, force: true }) }

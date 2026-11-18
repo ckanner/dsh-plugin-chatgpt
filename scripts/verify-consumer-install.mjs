@@ -43,7 +43,7 @@ try {
     import assert from 'node:assert/strict'
     import { apply, HarnessAdapter } from 'dsh-plugin-chatgpt'
     import { LlmAdapter } from '@deepseek-ai/dsh-llm'
-    import { contentCapabilities } from 'dsh-plugin-chatgpt/capabilities'
+    import { contentCapabilities, webRequiredHostCapabilities } from 'dsh-plugin-chatgpt/capabilities'
     import { webHostCapabilities, ChatGptWebHost } from 'dsh-plugin-chatgpt/web-host'
     import { createWebRecoveryCheckpoint, readWebInvocationRecovery } from 'dsh-plugin-chatgpt/web-recovery'
     assert.equal(typeof apply, 'function')
@@ -51,6 +51,8 @@ try {
     assert.equal(contentCapabilities.version, 1)
     assert.deepEqual(contentCapabilities.imageInputRoles, ['user', 'tool'])
     assert.equal(webHostCapabilities.requiredHost.pressurePolicy, 1)
+    assert.deepEqual(webHostCapabilities.requiredHost, webRequiredHostCapabilities)
+    assert.equal(webRequiredHostCapabilities.summaryRoute, 2)
     assert.equal(webHostCapabilities.providerModel, 'gpt-6-pro-web')
     assert.equal(typeof ChatGptWebHost, 'function')
     assert.equal(typeof ChatGptWebHost.prototype.recoveryCheckpoint, 'function')

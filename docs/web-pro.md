@@ -49,7 +49,7 @@ ca33fd6843b205e279c7ccb6cb73a472c78f5760
 
 Apply the patch to an isolated checkout at that commit and build/run the resulting host as the compatibility guide describes. The version string alone does not establish compatibility. Installing this plugin into a stock SDK or Desktop build does not add the missing host hooks.
 
-Web admission requires version 1 of `replayVeto`, `durableResponseAck`, `summaryRoute`, `durableSummaryAck`, and `pressurePolicy`. Explicit recovery adoption additionally requires the matching `recoveredResponse` or `recoveredSummary` capability. Missing required capabilities cause a pre-dispatch error. Ordinary SIWC operation keeps its existing host requirements.
+Web admission requires **`summaryRoute` version 2** and version 1 of `replayVeto`, `durableResponseAck`, `durableSummaryAck`, and `pressurePolicy`. Summary-route v2 distinguishes the user's explicit summary configuration from an inherited conversation route. Older compatibility builds with summary-route v1 are rejected before dispatch; update the host with this candidate's matching patch. The settings card and runtime use the same capability requirements. Explicit recovery adoption additionally requires the matching `recoveredResponse` or `recoveredSummary` capability. Ordinary SIWC operation keeps its existing host requirements.
 
 Build a local candidate from this plugin checkout:
 
@@ -113,7 +113,9 @@ DSH's durable event history is the source of truth. Within a compatible generati
 
 Local history/turn pressure or a changed authoritative prefix can require a new browser generation. The next generation receives a bounded bootstrap from DSH's current history. A move cannot erase unresolved remote dispatch, uncommitted responses, or uncertain tool outcomes.
 
-There is **one DSH compaction engine**. The plugin contributes the Web summary route and `compaction/pressure-policy`; it does not run a second hidden summarizer. Automatic and manual compaction use the host's public transaction and durable summary acknowledgement. When the selected summary target is this Web model, the summary uses **Pro** in an independent auxiliary conversation. An explicitly configured different summary model keeps its own route and accounting.
+There is **one DSH compaction engine**. The plugin contributes the Web summary route and `compaction/pressure-policy`; it does not run a second hidden summarizer. Automatic and manual compaction use the host's public transaction and durable summary acknowledgement. The explicit `BasicCompactionConfig.summarizationProvider` / `summarizationModel` pair takes precedence over the main conversation model. A different configured summary model keeps its own route and accounting; explicitly selecting Web for summaries uses **Pro** in an independent auxiliary conversation, even when the main model is different. Without an explicit summary pair, the current proposed Web model takes precedence over an older route inherited from conversation history. Summary selection does not change the main model.
+
+Manual compaction retains the actual Agent as initiator throughout its maintenance reservation. Its workspace, original compaction transaction and selected history range remain attached to the summary. If delivery is interrupted after capture, the unresolved summary fences that workspace and can be explicitly adopted through the original summary transaction without another model call or an assistant-message append.
 
 The complete serialized prompt, including protocol and tool-schema overhead, must fit the Web byte policy before browser dispatch. A single input that cannot be safely compacted or split is rejected. Compaction is lossy, and changing browser conversations does not reset the account's quota or create an unlimited context window.
 
@@ -146,7 +148,7 @@ Use the provider card's **Image upload limits** fields, or `web.imagePolicy` in 
 | `maxImageBytes` | 20 MiB per image | 20 MiB |
 | `maxTotalBytes` | 32 MiB per upload | 64 MiB |
 
-Each image has a deterministic upload name linked to its original message position, role and, for tool output, `toolCallId`. The prompt carries this association and image metadata, without embedding image bytes in text. The browser sets the actual composer file input, checks exact attachment names and positive upload completion, then rechecks account, model and conversation ownership before Send. A local preview, preallocated file ID, disappearing spinner or enabled Send button alone is insufficient. Unsupported layouts that do not expose positive completion fail closed.
+Each image has a deterministic upload name linked to its original message position, role and, for tool output, `toolCallId`. The prompt carries this association and image metadata, without embedding image bytes in text. The browser freezes the prepared composer URL for both new and existing conversations and checks it before any image upload or prompt entry. A tab that moved to another chat is rejected before sending. It then sets the actual composer file input, checks exact attachment names and positive upload completion, and rechecks account, model and conversation ownership before Send. A local preview, preallocated file ID, disappearing spinner or enabled Send button alone is insufficient. Unsupported layouts that do not expose positive completion fail closed.
 
 After submission, the same image names must appear in the exact accepted user message. The durable receipt records that UI acceptance with `modelConsumption: 'unverified'`: it does not prove that the model interpreted the pixels. Capture/recovery retains the original private artifacts and attachment associations and does not re-upload an uncertain turn. Preserve the connection's recovery directory while a turn needs recovery; missing or altered bytes prevent adoption. Real signed-in account acceptance and visual task quality remain to be checked separately.
 
@@ -168,6 +170,8 @@ The provider card lists pending operations under **Recovery needed**. Preserve t
 4. Adoption does **not** automatically continue with another model request. Inspect the resulting session and explicitly choose the next action.
 
 Adoption cannot settle an unrelated uncertain tool, another pending response, a changed session surface, or missing original ownership. If those checks fail, the operation remains blocked. A process restart, fresh session, provider change, or a new browser conversation does not authorize replay of a workspace's unresolved execution domain.
+
+Recovery applies the same completion checks as a normal call. Visible generation errors prevent partial text or leftover Copy controls from becoming an adoptable answer. The original call remains unresolved; later inspection can observe a genuinely completed answer without sending the prompt again.
 
 | Fact | Question it answers |
 |---|---|

@@ -16,7 +16,7 @@ export interface TerminalState { key: string; stableSince: number; confirmations
 export function advanceTerminal(state: TerminalState | undefined, sample: WebPageSample, now: number): { state: TerminalState; complete: boolean } {
   const key = digest(JSON.stringify([sample.userMessageId, sample.responseId, sample.text]))
   const stable = state?.key === key
-  const eligible = Boolean(sample.userMessageId && sample.responseId && sample.text.length && sample.finishedActions && !sample.stopVisible && !sample.thinking)
+  const eligible = Boolean(sample.userMessageId && sample.responseId && sample.text.length && sample.finishedActions && !sample.stopVisible && !sample.thinking && !sample.error)
   const next = { key, stableSince: stable ? state.stableSince : now, confirmations: eligible && stable ? state.confirmations + 1 : 0 }
   return { state: next, complete: eligible && next.confirmations >= 3 && now - next.stableSince >= 1200 }
 }
@@ -263,7 +263,11 @@ export class WebTransport {
       await page.inspect(request)
       let terminal: TerminalState | undefined
       for (;;) {
+        checkDeadline(request.deadlineMs, request.signal)
         const sample = await page.sample()
+        // Copy controls can remain on a partial answer after the website reports
+        // a failed generation. Recovery must apply the same error gate as run().
+        if (sample.error) throw new WebTransportError(sample.error.code, sample.error.reason, journal.facts)
         if (journal.userMessageId && sample.userMessageId !== journal.userMessageId) throw new Error('Recovery prompt identity does not match the original invocation')
         if (journal.responseId && sample.responseId !== journal.responseId) throw new Error('Recovery response identity changed')
         if (sample.acceptedPrompt?.replace(/\r\n/g,'\n').trim() !== journal.request.prompt.replace(/\r\n/g,'\n').trim()) throw new Error('Recovery prompt body does not match the original invocation')

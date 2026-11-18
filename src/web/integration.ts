@@ -198,9 +198,11 @@ export function installWebHost(ctx: WebPluginContext, stateDir: string, route: s
     if (reference.kind !== 'main' || reference.sessionId !== payload.agent.id) throw new WebPolicyError('main host commit has mismatched Web ownership')
     await host.committed(reference, payload.message.content, `assistant:${payload.agent.id}:${payload.eventSeq}:${payload.message.id}`, payload.durable)
   })
-  listener(ctx, 'compaction/summary-route', async (payload: { proposedTarget?: { provider: string; model: string }; agent: Agent; maxTokens: number }, next: () => Promise<unknown>) => {
-    const proposed = payload.proposedTarget ?? payload.agent.model.current()
-    if (proposed?.provider !== route || proposed.model !== WEB_MODEL_ID) return next()
+  listener(ctx, 'compaction/summary-route', async (payload: { configuredTarget?: { provider: string; model: string }; proposedTarget?: { provider: string; model: string }; agent: Agent; maxTokens: number }, next: () => Promise<unknown>) => {
+    // An explicit summary model wins over the main model. In its absence the
+    // proposed route may be newer than the inherited conversation history.
+    const selected = payload.configuredTarget ?? payload.proposedTarget ?? payload.agent.model.current()
+    if (selected?.provider !== route || selected.model !== WEB_MODEL_ID) return next()
     await host.admitBinding({ provider: route, model: WEB_MODEL_ID, reasoningEffort: WEB_EFFORT })
     const { budget } = await host.settings.read()
     return { provider: route, model: WEB_MODEL_ID, reasoningEffort: WEB_EFFORT, maxTokens: Math.min(payload.maxTokens, Math.floor(budget.outputReserveBytes / 4)) }

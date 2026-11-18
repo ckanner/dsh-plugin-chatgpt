@@ -72,6 +72,8 @@ it('keeps static discovery separate from host/account admission and never opens 
     await assert.rejects(() => host.admitBinding({ provider: 'chatgpt', model: WEB_MODEL_ID, reasoningEffort: 'pro', requireIsolation: true }), /project-only/)
     const oldHost = new ChatGptWebHost(f.dir, 'chatgpt', { ...f.environment, capabilities: () => ({}) }, () => f.settings)
     await assert.rejects(() => oldHost.admitBinding({ provider: 'chatgpt', model: WEB_MODEL_ID, reasoningEffort: 'pro' }), /host extension/)
+    const ambiguousSummaryHost = new ChatGptWebHost(f.dir, 'chatgpt', { ...f.environment, capabilities: () => ({ ...webHostCapabilities.requiredHost, summaryRoute: 1 }) }, () => f.settings)
+    await assert.rejects(() => ambiguousSummaryHost.admitBinding({ provider: 'chatgpt', model: WEB_MODEL_ID, reasoningEffort: 'pro' }), /summaryRoute v2/)
     assert.deepEqual(f.counts(), { opens: 0, submits: 0 })
   } finally { await f.dispose() }
 })

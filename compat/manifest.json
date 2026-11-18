@@ -10,9 +10,9 @@
   },
   "patch": {
     "file": "dsh-web-host-ca33fd68.patch",
-    "sha256": "9718aaf2b8087dc953507347ef018f8fe6a8bbb181c7fa60aaadf32517c978b9",
-    "bytes": 334255,
-    "patchedTree": "333e1019f2333068ba4f6157705bf2d6d4b676cf",
+    "sha256": "d6f629762a2a7a7a3792eda1748f3942a222f9ebeeac99c3edec999ecc283fbb",
+    "bytes": 354986,
+    "patchedTree": "4086a378e17bc09b7fbfb19999e76be180664d94",
     "applyCheck": "git apply --cached --check against the exact upstream base passed"
   },
   "capabilities": {
@@ -22,7 +22,7 @@
       "recoveredResponse": 1
     },
     "compaction": {
-      "summaryRoute": 1,
+      "summaryRoute": 2,
       "pressurePolicy": 1,
       "durableSummaryAck": 1,
       "recoveredSummary": 1
@@ -43,7 +43,9 @@
       "compaction.adoptRecoveredSummary(agent, input, signal)",
       "llm.stream(options, observeResolved?)"
     ],
-    "recoveryStorage": "readable sessionPersistence backend plus successful session flush and current Agent maintenance reservation"
+    "recoveryStorage": "readable sessionPersistence backend plus successful session flush and current Agent maintenance reservation",
+    "summaryRouteTarget": "configuredTarget is present only for an explicitly configured summary provider/model; defaultTarget may instead inherit the prior conversation route",
+    "maintenanceOwnership": "runMaintenance reserves the idle Agent, then scopes its async task to that Agent via withInitiator; the caller scope is preserved outside the task"
   },
   "verification": {
     "focusedTestFiles": 19,
@@ -57,10 +59,10 @@
     "generatedCordisArtifacts": 133,
     "liveBrowserAcceptance": false,
     "fullBuild": "not completed in this runner: tsx CLI IPC denied; full host aggregate typecheck exceeded available memory. Affected source and test checks passed.",
-    "crossLayerCasesPassed": 6,
+    "crossLayerCasesPassed": 15,
     "crossLayerRuntime": "actual DSH source, JSONL persistence with native lease, plugin HarnessAdapter/transport/journals/public hooks, and actual Flywheel web-policy.js; only browser page scripted",
     "crossLayerCommand": "node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness /path/to/flywheel",
-    "focusedVerificationStage": "before the final summary identity correction; that correction reran the relevant summary-policy suite and the six cross-layer scenarios",
+    "focusedVerificationStage": "original host extension pass; later candidate checks are recorded in summaryIdentityFollowUp and summaryRouteAndMaintenanceFollowUp",
     "summaryIdentityFollowUp": {
       "testFiles": 1,
       "testsPassed": 18,
@@ -75,6 +77,30 @@
       ],
       "independentHelperReview": "passed ordinary mismatch/missing rejection, ordinary/recovered matched acceptance, and all five receipt mismatch rejections",
       "crossLayerCasesRerunPassed": 6
+    },
+    "summaryRouteAndMaintenanceFollowUp": {
+      "capabilityVersion": 2,
+      "focusedTestFiles": 11,
+      "focusedTestsPassed": 300,
+      "focusedTestsSkipped": 0,
+      "summaryPolicyTestsPassed": 19,
+      "maintenanceInitiatorSettlementCasesPassed": 3,
+      "negativeControls": [
+        "explicit summary target metadata was absent before the host payload fix",
+        "fulfilled, rejected, and cancelled maintenance tasks inherited the caller Agent before the ownership fix"
+      ],
+      "sourceTypecheck": "passed for affected source projects and test-support declarations",
+      "testTypecheck": "passed for summary-host-policy, host-policy, and recovered-response specs",
+      "lint": "passed for changed TypeScript files",
+      "publicJsdoc": "passed",
+      "typeEquivalentBlocks": 607,
+      "generatedCordisArtifacts": 133,
+      "bilingualPairing": "five named pairs passed",
+      "documentationBudgets": "all seven budgeted documents passed",
+      "crossLayerCasesPassed": 15,
+      "crossLayerManualSummaryRecovery": "actual DSH and plugin with separate provider state and Agent workspace; interrupted summary retained the original request and surface, fenced a fresh Agent in the same workspace, adopted without an assistant message or resubmit, and returned the same result on duplicate adoption",
+      "sessionFormatChanges": false,
+      "fullBuild": "not repeated; focused source and test builds only"
     }
   }
 }

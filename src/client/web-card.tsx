@@ -2,6 +2,7 @@ import { Button, Input, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useState } from 'react'
 import type { WebSettings } from '../web/config.ts'
 import { unwrap, type RemoteResult } from './result.ts'
+import { webRequiredHostCapabilities } from '../capabilities.ts'
 
 export interface WebStatusView {
   settings: WebSettings
@@ -45,8 +46,7 @@ export function ChatGptWebCard({ remote }: { remote: () => Promise<ChatGptWebRem
     finally { setBusy(false) }
   }
   const connection = draft?.connections[draft.activeConnection]
-  const required = ['replayVeto', 'durableResponseAck', 'summaryRoute', 'durableSummaryAck', 'pressurePolicy']
-  const hostReady = required.every(key => status?.hostCapabilities[key] === 1)
+  const hostReady = Object.entries(webRequiredHostCapabilities).every(([key, version]) => status?.hostCapabilities[key] === version)
   function field(name: 'browserPath' | 'profilePath' | 'stateDir', value: string) {
     if (!draft || !connection) return
     setDraft({ ...draft, connections: { ...draft.connections, [draft.activeConnection]: { ...connection, [name]: value, ...(name === 'profilePath' ? { accountFingerprint: '' } : {}) } } })

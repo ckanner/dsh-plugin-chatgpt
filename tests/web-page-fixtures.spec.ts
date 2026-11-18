@@ -132,19 +132,21 @@ test('project instructions require visible empty fields without contradictory co
   }
 })
 
-test('managed prepare drives real DOM creation/settings/share controls after account and WAL admission', async () => {
+test('managed prepare drives real DOM admission and rejects a moved composer before text submission', async () => {
   const f = dom('')
   let active: HTMLElement | undefined
   let intent = false
   let projectExists = false
   let creates = 0
+  let submits = 0
   const projectUrl = 'https://chatgpt.com/g/g-p-fixture/project'
   Object.defineProperty(f.document,'readyState',{value:'complete',configurable:true})
   Object.defineProperty(f.window.HTMLElement.prototype,'focus',{configurable:true,value(this:HTMLElement){active=this}})
   const append = (html:string):HTMLElement => { const holder=f.document.createElement('div');holder.innerHTML=html;const node=holder.firstElementChild as HTMLElement;f.document.body.append(node);return node }
   const render = ():void => {
-    f.document.body.innerHTML = `<nav><button id="new-project">New project</button></nav><header><button data-testid="project-menu-button">Project menu</button><button id="share">Share project</button></header><button data-testid="accounts-profile-button">Account</button><button data-codex-intelligence-trigger="true" aria-expanded="false">Model</button><main>${projectExists?'<p>No files added yet</p>':''}</main><textarea id="prompt-textarea"></textarea>`
+    f.document.body.innerHTML = `<nav><button id="new-project">New project</button></nav><header><button data-testid="project-menu-button">Project menu</button><button id="share">Share project</button></header><button data-testid="accounts-profile-button">Account</button><button data-codex-intelligence-trigger="true" aria-expanded="false">Model</button><main>${projectExists?'<p>No files added yet</p>':''}</main><form data-chatgpt-composer><textarea id="prompt-textarea"></textarea><button type="button" data-testid="send-button">Send</button></form>`
     f.document.querySelector('[data-testid="accounts-profile-button"]')!.addEventListener('click',()=>append('<div role="menu"><span>fixture@example.invalid</span></div>'))
+    f.document.querySelector('[data-testid="send-button"]')!.addEventListener('click',()=>{submits++})
     f.document.querySelector('[data-codex-intelligence-trigger]')!.addEventListener('click',(event)=>{
       (event.currentTarget as Element).setAttribute('aria-expanded','true')
       append('<div role="menu"><button role="menuitemradio" aria-checked="true">GPT-6</button><button role="menuitemradio" aria-checked="true">Pro</button></div>')
@@ -177,4 +179,7 @@ test('managed prepare drives real DOM creation/settings/share controls after acc
   assert.equal(prepared.conversation.projectUrl,projectUrl)
   assert.equal(prepared.evidence.model,'GPT-6');assert.equal(prepared.evidence.effort,'Pro')
   assert.equal(prepared.evidence.accountFingerprint,connection.accountFingerprint)
+  f.location.href = 'https://chatgpt.com/c/unrelated-personal-chat'
+  await assert.rejects(() => page.submit(request.prompt), /Owned conversation changed/)
+  assert.equal(submits, 0, 'a new managed project must remain bound before its first prompt, including text-only calls')
 })
