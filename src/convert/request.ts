@@ -43,6 +43,8 @@ export interface NeutralRequest {
   system?: string
   tools?: readonly NeutralTool[]
   reasoningEffort?: string
+  /** Responses service tier; Ultrafast is a tier, not a model id. */
+  serviceTier?: 'ultrafast'
   maxTokens?: number
   cacheKey?: string
 }
@@ -57,6 +59,7 @@ export interface ResponsesBody {
   include?: ['reasoning.encrypted_content']
   tools?: readonly { type: 'function', name: string, description: string, parameters: Record<string, unknown>, strict?: boolean }[]
   reasoning?: { effort: string, summary: 'concise' }
+  service_tier?: 'ultrafast'
 }
 
 function textOf(content: NeutralMessage['content']): string {
@@ -138,6 +141,7 @@ export function toResponsesBody(request: NeutralRequest): ResponsesBody {
     ...request.reasoningEffort === undefined ? {} : {
       reasoning: { effort: request.reasoningEffort, summary: 'concise' }, include: ['reasoning.encrypted_content'],
     },
+    ...request.serviceTier === undefined ? {} : { service_tier: request.serviceTier },
   }
 }
 

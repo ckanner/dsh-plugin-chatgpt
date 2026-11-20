@@ -27,6 +27,33 @@ patch; it has not been published or accepted on a signed-in user's Desktop.
   answer controls cannot become a completed artifact or release an unresolved
   invocation; observing the original answer later does not resend it.
 
+## 0.1.23
+
+Use the requested UltraFast display labels: **GPT-6.2-Astra · UltraFast** and
+**GPT-6.2-Sol · UltraFast**. Behavior and model IDs are unchanged.
+
+## 0.1.22
+
+Add explicit GPT-6.2 UltraFast service-tier variants.
+
+- When GPT-6.2 Astra or Sol is available, offer
+  `gpt-6.2-astra-ultrafast` and `gpt-6.2-sol-ultrafast` in the selector. Their
+  requests use the base model id with `service_tier: "ultrafast"`.
+- UltraFast is a speed tier, not a separate model; DSH's GenerateOptions has no
+  speed field, so the adapter exposes the tier as a selectable model variant.
+- UltraFast pricing is higher than Standard. Availability still follows the
+  account entitlement and the endpoint's response.
+
+## 0.1.21
+
+Add current GPT-6.2 model metadata.
+
+- Describe `gpt-6.2-astra` and `gpt-6.2-sol` with their 1,050,000-token context
+  window, 128,000-token output cap, image input and reasoning levels. The account
+  catalog remains authoritative for availability; these entries give selectable
+  models accurate metadata instead of the conservative fallback.
+- Accept the DSH 0.2.1-rc.5 through 0.3 compatibility window for host peers.
+
 ## 0.1.20
 
 Preserve durable images and tool output content on current DSH.

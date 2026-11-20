@@ -32,7 +32,7 @@ import type { ChatGptCredential } from './auth/credential.ts'
 import { RESOURCE } from './auth/protocol.ts'
 import type { ResponsesEvent } from './api/events.ts'
 import { describableModels, describeModel, effortLabel, type DescribedModel, type ListedModel } from './models/describe.ts'
-import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord } from './models/served.ts'
+import { ROUTE_MAX_CONTEXT_WINDOW, ROUTE_MAX_OUTPUT_TOKENS, SERVED_MODELS, servedRecord, ULTRAFAST_VARIANTS, ultrafastVariant } from './models/served.ts'
 import type { ChatGptAuth } from './auth/manager.ts'
 import { RefreshRefusedError } from './auth/refresh.ts'
 import { prepareImages } from './convert/images.ts'
@@ -469,7 +469,17 @@ export class ChatGptAdapter {
             }
           })
       : []
-    return [...advertised, ...extras]
+    const available = [...advertised, ...extras]
+    const presentIds = new Set(available.map(model => model.id))
+    const variants = ULTRAFAST_VARIANTS
+      .filter(entry => presentIds.has(entry.base) && !presentIds.has(entry.id))
+      .map(entry => {
+        const base = available.find(model => model.id === entry.base)
+        /* c8 ignore next -- the filter above guarantees the base is present */
+        if (base === undefined) throw new Error('UltraFast base model disappeared from the roster')
+        return { ...base, id: entry.id, name: entry.name }
+      })
+    return [...available, ...variants]
   }
 
   /**
@@ -513,10 +523,12 @@ export class ChatGptAdapter {
    * @returns the model's metadata.
    */
   async resolveModel(provider: string, model: string): Promise<HarnessResolvedModel> {
+    const variant = ultrafastVariant(model)
     const listed = (await this.listModels().catch(() => [])).find(entry => entry.id === model)
-    const described = listed ?? describableModels([{ slug: model }])[0]
+    const base = listed ?? describableModels([{ slug: variant?.base ?? model }])[0]
     /* c8 ignore next -- describableModels always answers for a non-empty slug */
-    if (described === undefined) throw new Error(`no model named "${model}"`)
+    if (base === undefined) throw new Error(`no model named "${model}"`)
+    const described = variant === undefined ? base : { ...base, id: model, name: variant.name }
     const overrides = typeof this.modelContextWindowLimits === 'function'
       ? this.modelContextWindowLimits() : this.modelContextWindowLimits
     if (overrides !== undefined && (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides))) {
@@ -562,7 +574,12 @@ export class ChatGptAdapter {
           assertNotAborted(request.signal)
           const scope = accountScope(this.baseUrl ?? RESOURCE, credential)
           const translator = new BlockTranslator(scope === undefined ? undefined : { provider: request.provider, model: request.model, scope })
+          const variant = ultrafastVariant(request.model)
           const neutral = toNeutralRequest(request, scope)
+          if (variant !== undefined) {
+            neutral.model = variant.base
+            neutral.serviceTier = 'ultrafast'
+          }
           const started = streamTurn({
             accessToken: credential.accessToken,
             request: neutral,

@@ -750,5 +750,43 @@
       "text",
       "image"
     ]
+  },
+  "gpt-6.2-astra": {
+    "name": "GPT-6.2 Astra",
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "off": null,
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": "max"
+    },
+    "input": [
+      "text",
+      "image"
+    ]
+  },
+  "gpt-6.2-sol": {
+    "name": "GPT-6.2 Sol",
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "off": null,
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": "max"
+    },
+    "input": [
+      "text",
+      "image"
+    ]
   }
 }

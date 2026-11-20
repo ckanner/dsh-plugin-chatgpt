@@ -57,31 +57,40 @@ async function endpoint(options: {
   frames?: string[]
   /** Answer one request directly, overriding the scripted reply. */
   onRequest?: (path: string) => { status: number, body: unknown } | undefined
-} = {}): Promise<{ url: string, paths: string[] }> {
+} = {}): Promise<{ url: string, paths: string[], bodies: unknown[] }> {
   const paths: string[] = []
+  const bodies: unknown[] = []
   const server = createServer((request, response) => {
     const path = request.url ?? '/'
     paths.push(path)
-    const override = options.onRequest?.(path)
-    if (override !== undefined) {
-      response.writeHead(override.status, { 'content-type': 'application/json' })
-      response.end(JSON.stringify(override.body))
-      return
-    }
-    if (path.startsWith('/models')) {
-      response.writeHead(options.listingStatus ?? 200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify(options.listing ?? { models: [] }))
-      return
-    }
-    response.writeHead(200, { 'content-type': 'text/event-stream' })
-    for (const frame of options.frames ?? []) response.write(frame)
-    response.end()
+    let raw = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => { raw += chunk })
+    request.on('end', () => {
+      if (raw.length > 0) {
+        try { bodies.push(JSON.parse(raw)) } catch { bodies.push(raw) }
+      }
+      const override = options.onRequest?.(path)
+      if (override !== undefined) {
+        response.writeHead(override.status, { 'content-type': 'application/json' })
+        response.end(JSON.stringify(override.body))
+        return
+      }
+      if (path.startsWith('/models')) {
+        response.writeHead(options.listingStatus ?? 200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify(options.listing ?? { models: [] }))
+        return
+      }
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      for (const frame of options.frames ?? []) response.write(frame)
+      response.end()
+    })
   })
   servers.push(server)
   await new Promise<void>(resolve => { server.listen(0, '127.0.0.1', resolve) })
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('endpoint bound no port')
-  return { url: `http://127.0.0.1:${address.port}`, paths }
+  return { url: `http://127.0.0.1:${address.port}`, paths, bodies }
 }
 
 /** Frame one SSE event. */
@@ -809,6 +818,48 @@ describe('ChatGptAdapter', () => {
     assert.equal(resolved.id, 'gpt-6-sol')
     assert.ok(resolved.context.contextWindow > 0)
     assert.ok((resolved.reasoning?.efforts.length ?? 0) > 0)
+  })
+
+  it('lists GPT-6.2 Astra and Sol when the account catalog advertises them', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [
+        { slug: 'gpt-6.2-astra', display_name: 'GPT-6.2 Astra', visibility: 'list' },
+        { slug: 'gpt-6.2-sol', display_name: 'GPT-6.2 Sol', visibility: 'list' },
+      ] },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const models = await adapter.listModels()
+    assert.deepEqual(models.slice(0, 2).map(model => model.id), ['gpt-6.2-astra', 'gpt-6.2-sol'])
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.2-astra')
+    assert.equal(resolved.context.contextWindow, 1_050_000)
+    assert.equal(resolved.name, 'GPT-6.2 Astra')
+    assert.deepEqual(resolved.reasoning?.efforts.map(effort => effort.id), ['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
+  it('offers UltraFast as a GPT-6.2 service-tier variant and sends service_tier on the wire', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [{ slug: 'gpt-6.2-astra', display_name: 'GPT-6.2 Astra', visibility: 'list' }] },
+      frames: [frame({ type: 'response.output_text.delta', delta: 'ok' }), frame({ type: 'response.completed' })],
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const models = await adapter.listModels()
+    assert.ok(models.some(model => model.id === 'gpt-6.2-astra-ultrafast'))
+    assert.ok(!models.some(model => model.id === 'gpt-6.2-sol-ultrafast'), 'no UltraFast Sol without Sol in the account roster')
+
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.2-astra-ultrafast')
+    assert.equal(resolved.name, 'GPT-6.2-Astra · UltraFast')
+    assert.equal(resolved.context.contextWindow, 1_050_000)
+
+    for await (const _chunk of adapter.stream('chatgpt', {
+      provider: 'chatgpt',
+      model: 'gpt-6.2-astra-ultrafast',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      reasoningEffort: 'high',
+    })) { /* consume */ }
+    const wire = endpointUrl.bodies.find(body => typeof body === 'object' && body !== null
+      && (body as Record<string, unknown>)['model'] === 'gpt-6.2-astra') as Record<string, unknown> | undefined
+    assert.ok(wire)
+    assert.equal(wire['service_tier'], 'ultrafast')
   })
 
   it('serves a model the account does offer', async () => {
