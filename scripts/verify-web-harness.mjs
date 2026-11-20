@@ -32,7 +32,7 @@ try {
   const source = `
     import assert from 'node:assert/strict';
     import { createHash } from 'node:crypto';
-    import { mkdir, readFile, writeFile } from 'node:fs/promises';
+    import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
     import { join } from 'node:path';
     import { Context } from '@deepseek-ai/cordis';
     import AgentRegistry from '@deepseek-ai/dsh-agent';
