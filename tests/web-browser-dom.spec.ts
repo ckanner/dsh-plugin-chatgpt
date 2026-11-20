@@ -14,7 +14,13 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
   if (!executable) { t.skip('Set CHATGPT_WEB_TEST_CHROMIUM to run the isolated real browser fixture'); return }
   await access(executable)
   const root=await mkdtemp(join(tmpdir(),'dsh-web-dom-'))
-  const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${root}`,'about:blank'],{stdio:['ignore','ignore','pipe']})
+  const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${root}`,'about:blank'],{stdio:['ignore','ignore','pipe'],detached:process.platform!=='win32'})
+  const terminate=async(signal:NodeJS.Signals):Promise<void>=>{
+    try {
+      if(process.platform==='win32'||!child.pid) child.kill(signal)
+      else process.kill(-child.pid,signal)
+    } catch { child.kill(signal) }
+  }
   let closed=false
   const childClosed=new Promise<void>(resolve=>child.once('close',()=>{closed=true;resolve()}))
   const awaitClose=async(milliseconds:number):Promise<boolean>=>{
@@ -150,9 +156,9 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
         cdp.close()
       }
       if(!await awaitClose(5_000)){
-        child.kill('SIGTERM')
+        await terminate('SIGTERM')
         if(!await awaitClose(5_000)){
-          child.kill('SIGKILL')
+          await terminate('SIGKILL')
           if(!await awaitClose(5_000))throw new Error('Owned fixture browser did not close after termination')
         }
       }
