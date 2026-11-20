@@ -6,7 +6,7 @@
 
 ## 精确源码与安装边界
 
-补丁针对 `deepseek-ai/deepseek-harness` 提交 `ca33fd6843b205e279c7ccb6cb73a472c78f5760`，其包版本为 `0.2.2-rc.4`。补丁不修改 DSH 发布版本，也不代表已经发布的 DSH 版本。[manifest.json](manifest.json) 记录精确基线、SHA-256、应用后的源码树、能力和验证边界。请将补丁与 manifest 一起维护。
+补丁针对 `deepseek-ai/deepseek-harness` 提交 `9c2670d3bce5275e0d1610272958121af87787bb`，其包版本为 `0.2.2-rc.5`。补丁不修改 DSH 发布版本，也不代表已经发布的 DSH 版本。[manifest.json](manifest.json) 记录精确基线、SHA-256、应用后的源码树、能力和验证边界。请将补丁与 manifest 一起维护。
 
 使用精确提交的干净 checkout、Node.js 24.9 或更新版本，以及上游 `pnpm@11.28.5` 工具链。随包提供的验证器先核对补丁摘要、基线提交和完整目标源码树，再将补丁应用到干净 checkout：
 
@@ -25,7 +25,7 @@ pnpm run build
 
 ### 升级先前的兼容候选
 
-先前候选声明 `summaryRoute: 1`，当前插件要求 `summaryRoute: 2`。请从上述精确基线的干净 checkout 开始，应用当前补丁，并同时重新构建 DSH 宿主和更新插件。不要将当前补丁叠加到旧补丁上。DSH 包版本仍为 `0.2.2-rc.4`，因此应通过 manifest 与运行时能力标志识别这个候选。本次修复调整路由元数据和维护任务归属，不更改会话格式。
+先前候选声明 `summaryRoute: 1`，当前插件要求 `summaryRoute: 2`。请从上述精确基线的干净 checkout 开始，应用当前补丁，并同时重新构建 DSH 宿主和更新插件。不要将当前补丁叠加到旧补丁上。DSH 包版本仍为 `0.2.2-rc.5`，因此应通过 manifest 与运行时能力标志识别这个候选。本次修复调整路由元数据和维护任务归属，不更改会话格式。
 
 ## 公开运行时契约
 

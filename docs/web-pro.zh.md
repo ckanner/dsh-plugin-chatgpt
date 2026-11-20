@@ -38,13 +38,13 @@ SIWC 登录或登出不会替专用浏览器登录或登出。SIWC 的 `contextW
 
 ## 3. 安装兼容宿主与候选插件
 
-先按[兼容环境安装说明](../compat/README.zh.md)操作。维护的补丁文件为 [dsh-web-host-ca33fd68.patch](../compat/dsh-web-host-ca33fd68.patch)，准确基线和验证元数据记录在 [manifest.json](../compat/manifest.json)。
+先按[兼容环境安装说明](../compat/README.zh.md)操作。维护的补丁文件为 [dsh-web-host-9c2670d3.patch](../compat/dsh-web-host-9c2670d3.patch)，准确基线和验证元数据记录在 [manifest.json](../compat/manifest.json)。
 
 DSH 的精确基线为：
 
 ```text
-ca33fd6843b205e279c7ccb6cb73a472c78f5760
-0.2.2-rc.4
+9c2670d3bce5275e0d1610272958121af87787bb
+0.2.2-rc.5
 ```
 
 在该 commit 的独立 checkout 上应用补丁，然后按兼容说明构建并运行生成的宿主。版本字符串本身不能证明兼容。只把插件安装进原版 SDK 或 Desktop，不会补出缺失的宿主接缝。

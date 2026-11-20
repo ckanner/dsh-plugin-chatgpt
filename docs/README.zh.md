@@ -93,7 +93,7 @@ auth.adopt(credential)
 <a id="chatgpt-web-pro"></a>
 ## 实验性 ChatGPT Web Pro
 
-`0.2.0-alpha.1` 开发候选版本将 `chatgpt` / `gpt-6-pro-web` / `pro` 接入 DSH 原生模型和档位控件，尚未发布到 npm。Web 模型默认关闭，需要针对 commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760`（`0.2.2-rc.4`）维护的精确基线 [DSH 兼容补丁](../compat/README.zh.md)；只在原版 SDK 中安装插件不会补出这些宿主扩展。
+`0.2.0-alpha.1` 开发候选版本将 `chatgpt` / `gpt-6-pro-web` / `pro` 接入 DSH 原生模型和档位控件，尚未发布到 npm。Web 模型默认关闭，需要针对 commit `9c2670d3bce5275e0d1610272958121af87787bb`（`0.2.2-rc.5`）维护的精确基线 [DSH 兼容补丁](../compat/README.zh.md)；只在原版 SDK 中安装插件不会补出这些宿主扩展。
 
 在现有 ChatGPT Provider 卡片中，为 Chrome、专用浏览器 profile 和单独的私有恢复目录配置绝对路径。保存后点击 **Connect / verify login**，在该浏览器中手动完成网页登录，再次点击 **Connect / verify login**。启用 **GPT-6 Pro · Web**，并在普通模型选择器中选择 **Pro**。这条连接与 SIWC 登录及其账号目录模型相互独立。
 

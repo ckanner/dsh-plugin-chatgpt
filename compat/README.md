@@ -6,7 +6,7 @@ This directory contains a source compatibility candidate for DeepSeek Harness. T
 
 ## Exact source and installation boundary
 
-The patch targets `deepseek-ai/deepseek-harness` commit `ca33fd6843b205e279c7ccb6cb73a472c78f5760`, whose package version is `0.2.2-rc.4`. It does not change DSH's release version and is not a published DSH release. [manifest.json](manifest.json) records the exact base, SHA-256, resulting source tree, capabilities, and verification limits. Keep the patch and manifest together.
+The patch targets `deepseek-ai/deepseek-harness` commit `9c2670d3bce5275e0d1610272958121af87787bb`, whose package version is `0.2.2-rc.5`. It does not change DSH's release version and is not a published DSH release. [manifest.json](manifest.json) records the exact base, SHA-256, resulting source tree, capabilities, and verification limits. Keep the patch and manifest together.
 
 Use a clean checkout at that exact commit, Node.js 24.9 or newer, and the upstream `pnpm@11.28.5` toolchain. The packaged verifier checks the patch hash, base commit and complete resulting tree before applying it to a clean checkout:
 
@@ -25,7 +25,7 @@ The patch includes source, focused tests, bilingual API references, generated ca
 
 ### Upgrade an earlier compatibility candidate
 
-An earlier candidate advertises `summaryRoute: 1`; this plugin requires `summaryRoute: 2`. Start from a clean checkout of the exact base above, apply the current patch, and rebuild the DSH host together with the updated plugin. Do not layer the current patch over the earlier patch. The DSH package version stays `0.2.2-rc.4`, so use the manifest and runtime capability markers to identify this candidate. This follow-up changes route metadata and maintenance ownership without changing session formats.
+An earlier candidate advertises `summaryRoute: 1`; this plugin requires `summaryRoute: 2`. Start from a clean checkout of the exact base above, apply the current patch, and rebuild the DSH host together with the updated plugin. Do not layer the current patch over the earlier patch. The DSH package version stays `0.2.2-rc.5`, so use the manifest and runtime capability markers to identify this candidate. This follow-up changes route metadata and maintenance ownership without changing session formats.
 
 ## Public runtime contract
 

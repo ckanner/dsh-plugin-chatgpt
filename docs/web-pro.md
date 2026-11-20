@@ -38,13 +38,13 @@ This implementation owns its browser transport and recovery protocol. It does no
 
 ## 3. Install a compatible host and this candidate
 
-Follow [the compatibility installation guide](../compat/README.md). The maintained patch is [dsh-web-host-ca33fd68.patch](../compat/dsh-web-host-ca33fd68.patch), with its base and verification metadata in [manifest.json](../compat/manifest.json).
+Follow [the compatibility installation guide](../compat/README.md). The maintained patch is [dsh-web-host-9c2670d3.patch](../compat/dsh-web-host-9c2670d3.patch), with its base and verification metadata in [manifest.json](../compat/manifest.json).
 
 The exact DSH base is:
 
 ```text
-ca33fd6843b205e279c7ccb6cb73a472c78f5760
-0.2.2-rc.4
+9c2670d3bce5275e0d1610272958121af87787bb
+0.2.2-rc.5
 ```
 
 Apply the patch to an isolated checkout at that commit and build/run the resulting host as the compatibility guide describes. The version string alone does not establish compatibility. Installing this plugin into a stock SDK or Desktop build does not add the missing host hooks.

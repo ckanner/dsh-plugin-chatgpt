@@ -3,17 +3,18 @@
   "status": "source-compatibility-candidate-not-an-upstream-release",
   "upstream": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness",
-    "commit": "ca33fd6843b205e279c7ccb6cb73a472c78f5760",
-    "packageVersion": "0.2.2-rc.4",
+    "commit": "9c2670d3bce5275e0d1610272958121af87787bb",
+    "packageVersion": "0.2.2-rc.5",
     "node": ">=24.9.0",
     "packageManager": "pnpm@11.28.5"
   },
   "patch": {
-    "file": "dsh-web-host-ca33fd68.patch",
-    "sha256": "d6f629762a2a7a7a3792eda1748f3942a222f9ebeeac99c3edec999ecc283fbb",
-    "bytes": 354986,
-    "patchedTree": "4086a378e17bc09b7fbfb19999e76be180664d94",
-    "applyCheck": "git apply --cached --check against the exact upstream base passed"
+    "file": "dsh-web-host-9c2670d3.patch",
+    "sha256": "84e0bcd582d7312075d0a8086a7057504245f82b2d0c2594c78f3fb054875343",
+    "bytes": 294333,
+    "patchedTree": "5220a241b7ec302151ae799db9227bbefec60409",
+    "applyCheck": "git apply --cached --check against the exact upstream 0.2.2-rc.5 base passed",
+    "baseTree": "6ec0fcdcaf38bdf8ffa6675e30b036dc104a1ece"
   },
   "capabilities": {
     "agentLoop": {
@@ -48,59 +49,13 @@
     "maintenanceOwnership": "runMaintenance reserves the idle Agent, then scopes its async task to that Agent via withInitiator; the caller scope is preserved outside the task"
   },
   "verification": {
-    "focusedTestFiles": 19,
-    "focusedTestsPassed": 512,
-    "recoveryUsesRealJsonl": true,
-    "sourceTypecheck": "passed for affected source projects",
-    "testTypecheck": "passed for affected test files",
-    "lint": "passed for changed TypeScript files",
-    "publicJsdoc": "passed",
-    "typeEquivalentBlocks": 607,
-    "generatedCordisArtifacts": 133,
+    "focusedTestFiles": 3,
+    "focusedTestsPassed": 38,
+    "sourceTypecheck": "passed for affected compaction, agent-loop, agent, session and llm source projects",
+    "testTypecheck": "passed for summary-host-policy, host-policy and recovered-response specs",
+    "publicJsdoc": "not rerun for this base",
     "liveBrowserAcceptance": false,
-    "fullBuild": "not completed in this runner: tsx CLI IPC denied; full host aggregate typecheck exceeded available memory. Affected source and test checks passed.",
-    "crossLayerCasesPassed": 15,
-    "crossLayerRuntime": "actual DSH source, JSONL persistence with native lease, plugin HarnessAdapter/transport/journals/public hooks, and actual Flywheel web-policy.js; only browser page scripted",
-    "crossLayerCommand": "node scripts/verify-web-harness.mjs /path/to/patched/deepseek-harness /path/to/flywheel",
-    "focusedVerificationStage": "original host extension pass; later candidate checks are recorded in summaryIdentityFollowUp and summaryRouteAndMaintenanceFollowUp",
-    "summaryIdentityFollowUp": {
-      "testFiles": 1,
-      "testsPassed": 18,
-      "newRejectionCases": 8,
-      "ordinaryReplayIdentity": "requires a present exact opaque replayState match",
-      "recoveredReceiptIdentity": [
-        "executionDomainId",
-        "requestId",
-        "providerResponseId",
-        "responseDigest",
-        "originalCompactionId"
-      ],
-      "independentHelperReview": "passed ordinary mismatch/missing rejection, ordinary/recovered matched acceptance, and all five receipt mismatch rejections",
-      "crossLayerCasesRerunPassed": 6
-    },
-    "summaryRouteAndMaintenanceFollowUp": {
-      "capabilityVersion": 2,
-      "focusedTestFiles": 11,
-      "focusedTestsPassed": 300,
-      "focusedTestsSkipped": 0,
-      "summaryPolicyTestsPassed": 19,
-      "maintenanceInitiatorSettlementCasesPassed": 3,
-      "negativeControls": [
-        "explicit summary target metadata was absent before the host payload fix",
-        "fulfilled, rejected, and cancelled maintenance tasks inherited the caller Agent before the ownership fix"
-      ],
-      "sourceTypecheck": "passed for affected source projects and test-support declarations",
-      "testTypecheck": "passed for summary-host-policy, host-policy, and recovered-response specs",
-      "lint": "passed for changed TypeScript files",
-      "publicJsdoc": "passed",
-      "typeEquivalentBlocks": 607,
-      "generatedCordisArtifacts": 133,
-      "bilingualPairing": "five named pairs passed",
-      "documentationBudgets": "all seven budgeted documents passed",
-      "crossLayerCasesPassed": 15,
-      "crossLayerManualSummaryRecovery": "actual DSH and plugin with separate provider state and Agent workspace; interrupted summary retained the original request and surface, fenced a fresh Agent in the same workspace, adopted without an assistant message or resubmit, and returned the same result on duplicate adoption",
-      "sessionFormatChanges": false,
-      "fullBuild": "not repeated; focused source and test builds only"
-    }
+    "fullBuild": "not completed in this runner; affected source projects and focused tests passed",
+    "crossLayerCasesPassed": 0
   }
 }

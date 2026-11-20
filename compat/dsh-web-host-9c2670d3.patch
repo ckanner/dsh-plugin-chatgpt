@@ -1,20 +1,5 @@
-diff --git a/docs/architecture.i18n.yaml b/docs/architecture.i18n.yaml
-index c4549ec1..8e10768c 100644
---- a/docs/architecture.i18n.yaml
-+++ b/docs/architecture.i18n.yaml
-@@ -21,8 +21,8 @@
-   en: 20ef882e44b06a10
-   zh: c10c3934ed5570e9
- /deepseek-harness-architecture/events:
--  en: 0d4481070a0ba352
--  zh: 026be77a9f3db68e
-+  en: b49d86a1406ade0b
-+  zh: 5307f52df947d7eb
- /deepseek-harness-architecture/turn-flow:
-   en: 96ad2d8611fd5b88
-   zh: 0a6bb22b3b0e1335
 diff --git a/docs/architecture.md b/docs/architecture.md
-index 9661ac7a..dac2ca24 100644
+index c7c036016b..65c315b675 100644
 --- a/docs/architecture.md
 +++ b/docs/architecture.md
 @@ -74,7 +74,7 @@ Events provide extension points in three domains.
@@ -27,7 +12,7 @@ index 9661ac7a..dac2ca24 100644
  [Event producers and consumers](event-producer-consumer.md).
  
 diff --git a/docs/architecture.zh.md b/docs/architecture.zh.md
-index 41595f1b..0f27c280 100644
+index 2eae113769..e7aee23d4c 100644
 --- a/docs/architecture.zh.md
 +++ b/docs/architecture.zh.md
 @@ -76,7 +76,7 @@ Electron 使用 Electron Node 模式启动私有 Desktop Host。Host 调用共
@@ -39,79 +24,10 @@ index 41595f1b..0f27c280 100644
  
  [事件生产者与消费者](event-producer-consumer.zh.md)。
  
-diff --git a/docs/module-graph.md b/docs/module-graph.md
-index 6cf46b78..fa78fe89 100644
---- a/docs/module-graph.md
-+++ b/docs/module-graph.md
-@@ -1452,6 +1452,7 @@ flowchart TD
-   pkg_compaction_basic --> pkg_compaction_tool_result_pruner
-   pkg_compaction_basic --> pkg_llm
-   pkg_compaction_basic --> pkg_session
-+  pkg_compaction_basic --> pkg_session_persistence
-   pkg_compaction_basic --> pkg_session_projection
-   pkg_compaction_basic --> pkg_token_meter
-   pkg_session_reference --> pkg_agent
-@@ -1977,7 +1978,7 @@ flowchart TD
- | [`api-session-controller`](../packages/api/session-controller) | `api` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`api-gateway`](../packages/api/gateway), [`attachment`](../packages/attachment/attachment), [`client-connection`](../packages/client/connection), [`client-file-upload`](../packages/client/file-upload), [`commands`](../packages/interaction/commands), [`credentials`](../packages/credentials/credentials), [`file-reference`](../packages/context/file-reference), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`native-command`](../packages/util/native-command), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`session-projection-cache`](../packages/session/session-projection-cache), [`session-query`](../packages/session-query/session-query), [`session-title`](../packages/session/session-title), [`settings`](../packages/settings/settings), [`skill`](../packages/skill/skill), [`subagent`](../packages/subagent/subagent), [`typert-protocol`](../packages/typert/protocol), [`typert-registry`](../packages/typert/registry), [`util-time`](../packages/util/time), [`util-values`](../packages/util/values), [`util-workspace-path`](../packages/util/workspace-path), [`working-directory`](../packages/session/working-directory), [`workspace`](../packages/workspace/workspace) |
- | [`plugin-market`](../packages/boot/plugin-market) | `boot` | [`error`](../packages/util/error), [`plugin-manager`](../packages/boot/plugin-manager), [`settings`](../packages/settings/settings), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |
- | [`headless`](../packages/bundle/headless) | `bundle` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`permission-presets`](../packages/interaction/permission-presets), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`session-query`](../packages/session-query/session-query), [`subagent`](../packages/subagent/subagent), [`user-approval`](../packages/interaction/user-approval) |
--| [`compaction-basic`](../packages/compaction/compaction-basic) | `compaction` | [`agent`](../packages/core/agent), [`commands`](../packages/interaction/commands), [`compaction`](../packages/compaction/compaction), [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`token-meter`](../packages/llm/token-meter) |
-+| [`compaction-basic`](../packages/compaction/compaction-basic) | `compaction` | [`agent`](../packages/core/agent), [`commands`](../packages/interaction/commands), [`compaction`](../packages/compaction/compaction), [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`token-meter`](../packages/llm/token-meter) |
- | [`session-reference`](../packages/context/session-reference) | `context` | [`agent`](../packages/core/agent), [`compaction`](../packages/compaction/compaction), [`llm`](../packages/llm/llm), [`output-retention`](../packages/util/output-retention), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`session-projection-cache`](../packages/session/session-projection-cache), [`session-query`](../packages/session-query/session-query), [`session-title`](../packages/session/session-title), [`spill`](../packages/spill/spill), [`subagent`](../packages/subagent/subagent), [`system-prompt`](../packages/core/system-prompt), [`typert-protocol`](../packages/typert/protocol) |
- | [`tool-office`](../packages/document/tool-office) | `document` | [`agent`](../packages/core/agent), [`attachment`](../packages/attachment/attachment), [`error`](../packages/util/error), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`office-kit`](../packages/document/office-kit), [`skill`](../packages/skill/skill), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
- | [`experimental-client-ui-forge`](../packages/experimental/client-ui-forge) | `experimental` | [`experimental-forge`](../packages/experimental/forge), [`experimental-worktree`](../packages/experimental/worktree), [`fs`](../packages/fs/fs), [`session`](../packages/core/session), [`timeout`](../packages/util/timeout) |
-diff --git a/docs/module-graph.zh.md b/docs/module-graph.zh.md
-index 835643c0..d2bc6dc8 100644
---- a/docs/module-graph.zh.md
-+++ b/docs/module-graph.zh.md
-@@ -1454,6 +1454,7 @@ flowchart TD
-   pkg_compaction_basic --> pkg_compaction_tool_result_pruner
-   pkg_compaction_basic --> pkg_llm
-   pkg_compaction_basic --> pkg_session
-+  pkg_compaction_basic --> pkg_session_persistence
-   pkg_compaction_basic --> pkg_session_projection
-   pkg_compaction_basic --> pkg_token_meter
-   pkg_session_reference --> pkg_agent
-@@ -1979,7 +1980,7 @@ flowchart TD
- | [`api-session-controller`](../packages/api/session-controller) | `api` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`api-gateway`](../packages/api/gateway), [`attachment`](../packages/attachment/attachment), [`client-connection`](../packages/client/connection), [`client-file-upload`](../packages/client/file-upload), [`commands`](../packages/interaction/commands), [`credentials`](../packages/credentials/credentials), [`file-reference`](../packages/context/file-reference), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`native-command`](../packages/util/native-command), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`session-projection-cache`](../packages/session/session-projection-cache), [`session-query`](../packages/session-query/session-query), [`session-title`](../packages/session/session-title), [`settings`](../packages/settings/settings), [`skill`](../packages/skill/skill), [`subagent`](../packages/subagent/subagent), [`typert-protocol`](../packages/typert/protocol), [`typert-registry`](../packages/typert/registry), [`util-time`](../packages/util/time), [`util-values`](../packages/util/values), [`util-workspace-path`](../packages/util/workspace-path), [`working-directory`](../packages/session/working-directory), [`workspace`](../packages/workspace/workspace) |
- | [`plugin-market`](../packages/boot/plugin-market) | `boot` | [`error`](../packages/util/error), [`plugin-manager`](../packages/boot/plugin-manager), [`settings`](../packages/settings/settings), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |
- | [`headless`](../packages/bundle/headless) | `bundle` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`permission-presets`](../packages/interaction/permission-presets), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`session-query`](../packages/session-query/session-query), [`subagent`](../packages/subagent/subagent), [`user-approval`](../packages/interaction/user-approval) |
--| [`compaction-basic`](../packages/compaction/compaction-basic) | `compaction` | [`agent`](../packages/core/agent), [`commands`](../packages/interaction/commands), [`compaction`](../packages/compaction/compaction), [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`token-meter`](../packages/llm/token-meter) |
-+| [`compaction-basic`](../packages/compaction/compaction-basic) | `compaction` | [`agent`](../packages/core/agent), [`commands`](../packages/interaction/commands), [`compaction`](../packages/compaction/compaction), [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`token-meter`](../packages/llm/token-meter) |
- | [`session-reference`](../packages/context/session-reference) | `context` | [`agent`](../packages/core/agent), [`compaction`](../packages/compaction/compaction), [`llm`](../packages/llm/llm), [`output-retention`](../packages/util/output-retention), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`session-projection-cache`](../packages/session/session-projection-cache), [`session-query`](../packages/session-query/session-query), [`session-title`](../packages/session/session-title), [`spill`](../packages/spill/spill), [`subagent`](../packages/subagent/subagent), [`system-prompt`](../packages/core/system-prompt), [`typert-protocol`](../packages/typert/protocol) |
- | [`tool-office`](../packages/document/tool-office) | `document` | [`agent`](../packages/core/agent), [`attachment`](../packages/attachment/attachment), [`error`](../packages/util/error), [`fs`](../packages/fs/fs), [`llm`](../packages/llm/llm), [`office-kit`](../packages/document/office-kit), [`skill`](../packages/skill/skill), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
- | [`experimental-client-ui-forge`](../packages/experimental/client-ui-forge) | `experimental` | [`experimental-forge`](../packages/experimental/forge), [`experimental-worktree`](../packages/experimental/worktree), [`fs`](../packages/fs/fs), [`session`](../packages/core/session), [`timeout`](../packages/util/timeout) |
 diff --git a/docs/persistence-catalog.i18n.yaml b/docs/persistence-catalog.i18n.yaml
-index 73ca9368..cac9efb4 100644
+index f2294edff6..8c11504e1f 100644
 --- a/docs/persistence-catalog.i18n.yaml
 +++ b/docs/persistence-catalog.i18n.yaml
-@@ -9,11 +9,11 @@
-   en: 1387c4505dde2faf
-   zh: 48570fa1c13d6910
- /session-persistence-event-catalog/persistence-type-fingerprints:
--  en: 3de1bc82a91b1fda
--  zh: e4268205f18b81e8
-+  en: 38542c726ba002cc
-+  zh: e9eea238b913cfc1
- /session-persistence-event-catalog/event-envelope:
--  en: 5cae0233560db4d6
--  zh: c8f5efc48be52095
-+  en: 7b7caed05ef68351
-+  zh: 07ea9ddacce164d1
- /session-persistence-event-catalog/events:
-   en: f4776ba3d0fd53ce
-   zh: e86769f50a69055a
-@@ -45,8 +45,8 @@
-   en: 44426b6cd0dc01cf
-   zh: 44426b6cd0dc01cf
- /session-persistence-event-catalog/events/assistant/assistant-attempt-log-only:
--  en: 70e451c323143cc6
--  zh: da3d9431dcdf6f72
-+  en: 18f2d9a5ef34fe0c
-+  zh: 4ec3f58ac0a00b8b
- /session-persistence-event-catalog/events/assistant/assistant-message-surface:
-   en: 20a219d6bec394b5
-   zh: 8e736cc1a9cb91eb
 @@ -63,17 +63,17 @@
    en: 880f15be2fc5852a
    zh: 880f15be2fc5852a
@@ -138,56 +54,7 @@ index 73ca9368..cac9efb4 100644
  /session-persistence-event-catalog/events/deliverables:
    en: 501dcee7db8f8117
    zh: 501dcee7db8f8117
-@@ -159,11 +159,11 @@
-   en: a8df82440ebdf5f8
-   zh: a8df82440ebdf5f8
- /session-persistence-event-catalog/events/request/request-context-log-only:
--  en: 1a3b4a851c4fcd5f
--  zh: 6b04d16c3b887bb9
-+  en: ff6f8e209d08201f
-+  zh: 2de4a87075db8c77
- /session-persistence-event-catalog/events/request/request-header-log-only:
--  en: 76b36e4dd1ddbbb9
--  zh: fd33cc82251a53e1
-+  en: 54a991244b88419e
-+  zh: 4ce0ed7700432285
- /session-persistence-event-catalog/events/sandbox:
-   en: ec841ab8439335b0
-   zh: ec841ab8439335b0
-@@ -180,8 +180,8 @@
-   en: a1ac8f2660a4f61e
-   zh: a1ac8f2660a4f61e
- /session-persistence-event-catalog/events/session/session-end-seed-log-only:
--  en: 0ba9c67eb5a991ed
--  zh: 9500b1e7ef982308
-+  en: c75c5f08b9eaba5b
-+  zh: f170f346dc54d40b
- /session-persistence-event-catalog/events/session/session-title-log-only:
-   en: 5775e52a72c0ce94
-   zh: fa211a35b4660c10
-@@ -249,8 +249,8 @@
-   en: 28a24430609494b2
-   zh: 28a24430609494b2
- /session-persistence-event-catalog/events/tool/tool-call-log-only:
--  en: 1a037457c37eee87
--  zh: 83b4ecf3a566010c
-+  en: 46c3dca0ed166d1d
-+  zh: 332d7d29699c5f18
- /session-persistence-event-catalog/events/tool/tool-ptc-dispatch-log-only:
-   en: a62b38c00afed655
-   zh: 793bef93e856eafa
-@@ -258,8 +258,8 @@
-   en: da841b1ed3b22c87
-   zh: 4c9a4d4bc5bd76b6
- /session-persistence-event-catalog/events/tool/tool-result-surface:
--  en: fab9aa908584968a
--  zh: 689883ffd34869e1
-+  en: 6056d82fcc0bf636
-+  zh: 9f41109adb747a5f
- /session-persistence-event-catalog/events/tool-workflow:
-   en: 1eac7deac6af15f3
-   zh: 1eac7deac6af15f3
-@@ -1203,8 +1203,11 @@
+@@ -1191,8 +1191,11 @@
    en: aca35dac4f9d2add
    zh: 6a4bdb95e3c7b0ce
  /session-persistence-event-catalog/resolved-persistence-types/reasoningblock:
@@ -201,18 +68,7 @@ index 73ca9368..cac9efb4 100644
  /session-persistence-event-catalog/resolved-persistence-types/replayenvelope:
    en: 34cbedee7bc95921
    zh: f7deeddb8d60152a
-@@ -1269,8 +1272,8 @@
-   en: e6d9113dc09f4098
-   zh: 3426e4f2f3cc5612
- /session-persistence-event-catalog/resolved-persistence-types/surfaceop:
--  en: 26f3d59c80d9abbe
--  zh: 90a9ba58ff06d197
-+  en: 6a095f385d7ac5a9
-+  zh: 8a4077e1365c1890
- /session-persistence-event-catalog/resolved-persistence-types/systemmessage:
-   en: f689bc49f7561a5d
-   zh: c5eeb6590dcdf42d
-@@ -1404,11 +1407,11 @@
+@@ -1392,11 +1395,11 @@
    en: 4a1acf31ea15d403
    zh: d1ebe94ffd308763
  /session-persistence-event-catalog/resolved-persistence-types/union-2-variants~3:
@@ -228,128 +84,7 @@ index 73ca9368..cac9efb4 100644
  /session-persistence-event-catalog/resolved-persistence-types/union-3-variants:
    en: ab07ee7c506483d4
    zh: 299e31a106d93dfe
-@@ -1449,8 +1452,8 @@
-   en: a117573a5d58cb3c
-   zh: d5ad59e17a3a815d
- /session-persistence-event-catalog/resolved-persistence-types/arguments-callid-name-step:
--  en: 0762eb6df9be91ea
--  zh: 06f6c1641ab6e0a2
-+  en: 2ef79dc54f7c4b25
-+  zh: 80576f38955c2b98
- /session-persistence-event-catalog/resolved-persistence-types/callid-files-turn:
-   en: 5f4d3f66ed86a14d
-   zh: 7c729360fa1279e6
-@@ -1488,23 +1491,23 @@
-   en: a1f188c9058cf621
-   zh: eb43c0f045fb9afb
- /session-persistence-event-catalog/resolved-persistence-types/code-name-reason:
--  en: 7ae42d830651c83c
--  zh: 1387de7f803d9f08
-+  en: c94f1c16851d86ee
-+  zh: 09bdf2dfa54a4214
- /session-persistence-event-catalog/resolved-persistence-types/commandid-kind-sourceeventseq-text:
-   en: 87b03e1c73d2a326
-   zh: d7b9f06863cad891
- /session-persistence-event-catalog/resolved-persistence-types/compactionid-error-sourcecommandid-turn:
--  en: 96152fe81878819f
--  zh: 4500b4175f1a75f1
-+  en: 703e989f85b72ac6
-+  zh: f37b602a2cb9a21a
- /session-persistence-event-catalog/resolved-persistence-types/compactionid-llmstreamcall-maxtokens-model:
--  en: e09878c92be35a9e
--  zh: cfae949bc46d026a
-+  en: 530063f9d9208647
-+  zh: af72ca85f0c09e36
- /session-persistence-event-catalog/resolved-persistence-types/compactionid-maxtokens-model-provider:
--  en: 45f1d815198508e1
--  zh: 5c2818b0e38e1356
-+  en: 097c4ae58a155c38
-+  zh: 9f2b988eaa00741f
- /session-persistence-event-catalog/resolved-persistence-types/compactionid-sourcecommandid-turn:
--  en: bef51e0442ebb903
--  zh: 240ebeb160533d8c
-+  en: e455f3edfce5ceaf
-+  zh: a0eba822634e37fe
- /session-persistence-event-catalog/resolved-persistence-types/cwd:
-   en: dfc595f52f794ea2
-   zh: ae9754ae00a97b5f
-@@ -1533,17 +1536,20 @@
-   en: cc0470d67a4b8745
-   zh: b7d54c9b9a89feef
- /session-persistence-event-catalog/resolved-persistence-types/end-start:
--  en: 4b7a8793663d3fef
--  zh: 249459c825d330c3
-+  en: c19f387981c97e7d
-+  zh: 31f8f07643ed5d76
- /session-persistence-event-catalog/resolved-persistence-types/endseq-op-startseq:
--  en: 1b7de272fcc24627
--  zh: 1464f7df891db98b
-+  en: 4fae032f9564961e
-+  zh: 8be6e9bfb7a3537b
- /session-persistence-event-catalog/resolved-persistence-types/error-kind-error:
-   en: 1abf274246674789
-   zh: 3d8c38c4240f7e3c
- /session-persistence-event-catalog/resolved-persistence-types/error-message-meta-step:
--  en: 20db789d8ae2101c
--  zh: 77e21bc4380a7033
-+  en: 08cc5d74e7f90630
-+  zh: 30aaaecc09053020
-+/session-persistence-event-catalog/resolved-persistence-types/executiondomainid-providerresponseid-requestheaderseq-requestid:
-+  en: 6bc15f08bd0ee4df
-+  zh: 3b46563e47af4b7f
- /session-persistence-event-catalog/resolved-persistence-types/failure-kind-aborted:
-   en: 7dddcbc923491531
-   zh: bbdaea7d433b6fda
-@@ -1551,8 +1557,8 @@
-   en: 4cb1c48095df98dc
-   zh: 5a03e44761af559e
- /session-persistence-event-catalog/resolved-persistence-types/header-reason-startsseries:
--  en: 025df3bb1bbc5369
--  zh: 52015f4decd2f1e5
-+  en: 8fefcad1bb2cd46a
-+  zh: 696fe07273e2febb
- /session-persistence-event-catalog/resolved-persistence-types/headerseq-message-step-turn:
-   en: e06f7b64a1665de2
-   zh: cc2280a56d63cb50
-@@ -1572,14 +1578,14 @@
-   en: 41f73c58a77dfa28
-   zh: af77f4aee3cb4a40
- /session-persistence-event-catalog/resolved-persistence-types/inherited:
--  en: 828241cf325d2bec
--  zh: f53b66d8e6e8a41c
-+  en: 62abf5336bc26d17
-+  zh: 8c31d4bdbf3de9e9
- /session-persistence-event-catalog/resolved-persistence-types/inserted-outcome-removedcount-start:
--  en: cdd4832101b8d5c1
--  zh: a98f9c6cb6701d78
--/session-persistence-event-catalog/resolved-persistence-types/interrupted-message-step-stream:
--  en: 35e45d462a41e963
--  zh: 89953d22ddada652
-+  en: 60bcb20a27939e59
-+  zh: 0b204af1be55ecb1
-+/session-persistence-event-catalog/resolved-persistence-types/interrupted-message-recovered-step:
-+  en: e00bdadf8add25cb
-+  zh: e23b4d708721a617
- /session-persistence-event-catalog/resolved-persistence-types/kind-aborted-reason:
-   en: ee4118da9df6d1e5
-   zh: 0c6ef48c9a1f8ed2
-@@ -1980,11 +1986,11 @@
-   en: 8063597183ef767f
-   zh: b064698c54089f07
- /session-persistence-event-catalog/resolved-persistence-types/shadowedrange-shadowedseqs-shadowedtokencount:
--  en: 7a2ab7b62244f43b
--  zh: 1084e3f8876feebc
-+  en: a41bb277f4431b73
-+  zh: f7674eb2e6e10c18
- /session-persistence-event-catalog/resolved-persistence-types/step-stream-turn:
--  en: 034511416374bd90
--  zh: baa4945de30bb0f5
-+  en: 46f4c0c46d17894f
-+  zh: 445457102783a9fe
- /session-persistence-event-catalog/resolved-persistence-types/step-turn:
-   en: 6b52ead32f8457f6
-   zh: db9f15511b123e7d
-@@ -2016,11 +2022,11 @@
+@@ -2001,11 +2004,11 @@
    en: 93fd7b4fd905626a
    zh: fce49536f66811a6
  /session-persistence-event-catalog/resolved-persistence-types/type-assistant-attempt:
@@ -365,61 +100,11 @@ index 73ca9368..cac9efb4 100644
  /session-persistence-event-catalog/resolved-persistence-types/type-block-end:
    en: 7513d6a33f4ad113
    zh: 652201059a3de858
-@@ -2043,11 +2049,11 @@
-   en: 65d2a09449403f70
-   zh: 7aa4063a4f997092
- /session-persistence-event-catalog/resolved-persistence-types/type-compaction-start:
--  en: 184ea1eef46cb0cc
--  zh: ad2a7b77040a0448
-+  en: 844ea4f8dc87d279
-+  zh: 28e9cb754d19755f
- /session-persistence-event-catalog/resolved-persistence-types/type-compaction-summary:
--  en: ba73fb10b7e2ffc9
--  zh: 8d5c97e63e5f16da
-+  en: 301dde5c3f7081e7
-+  zh: 67f95ae40099589f
- /session-persistence-event-catalog/resolved-persistence-types/type-deliverables-presented:
-   en: dee59c4cab27840e
-   zh: d2203a7a79799d1d
 diff --git a/docs/persistence-catalog.md b/docs/persistence-catalog.md
-index ea4be01a..d839a14a 100644
+index 33d9aa4395..c7c91e3f10 100644
 --- a/docs/persistence-catalog.md
 +++ b/docs/persistence-catalog.md
-@@ -28,13 +28,13 @@ The [format references](persistence-changes/historical-formats/README.md) cover
- | `event:approval/decided` | event | `bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3` | [`{ type: "approval/decided" }`](#persistence-type-sha256-bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3) |
- | `event:approval/policy` | event | `26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78` | [`{ type: "approval/policy" }`](#persistence-type-sha256-26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78) |
- | `event:assistant/attempt` | event | `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4` | [`{ type: "assistant/attempt" }`](#persistence-type-sha256-15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4) |
--| `event:assistant/message` | event | `1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625` | [`{ type: "assistant/message" }`](#persistence-type-sha256-1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625) |
-+| `event:assistant/message` | event | `6f158a795f2c5b6624b7c06a1cdebd18c7f65912ba425fa77fb68f5dedba3638` | [`{ type: "assistant/message" }`](#persistence-type-sha256-6f158a795f2c5b6624b7c06a1cdebd18c7f65912ba425fa77fb68f5dedba3638) |
- | `event:command/done` | event | `15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff` | [`{ type: "command/done" }`](#persistence-type-sha256-15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff) |
- | `event:command/run` | event | `37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006` | [`{ type: "command/run" }`](#persistence-type-sha256-37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006) |
- | `event:compaction/end` | event | `b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d` | [`{ type: "compaction/end" }`](#persistence-type-sha256-b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d) |
- | `event:compaction/prune` | event | `7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04` | [`{ type: "compaction/prune" }`](#persistence-type-sha256-7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04) |
- | `event:compaction/start` | event | `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965` | [`{ type: "compaction/start" }`](#persistence-type-sha256-db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965) |
--| `event:compaction/summary` | event | `e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602` | [`{ type: "compaction/summary" }`](#persistence-type-sha256-e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602) |
-+| `event:compaction/summary` | event | `180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0` | [`{ type: "compaction/summary" }`](#persistence-type-sha256-180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0) |
- | `event:deliverables/presented` | event | `13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176` | [`{ type: "deliverables/presented" }`](#persistence-type-sha256-13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176) |
- | `event:developer/message` | event | `7ee5a828196d9e4b1672f94f977e68f37125da4297c23029dd682823c09e12fd` | [`{ type: "developer/message" }`](#persistence-type-sha256-7ee5a828196d9e4b1672f94f977e68f37125da4297c23029dd682823c09e12fd) |
- | `event:feedback/message-delete` | event | `3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796` | [`{ type: "feedback/message-delete" }`](#persistence-type-sha256-3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796) |
-@@ -162,7 +162,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- }[T]
- ```
- 
--Sources: [`packages/core/session/src/types.ts:443`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:451`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:474`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:510`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:451`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:459`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:482`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:518`](../packages/core/session/src/types.ts)
- 
- ## Events
- 
-@@ -291,7 +291,7 @@ Source: [`packages/interaction/user-approval/src/index.ts:41`](../packages/inter
- 'assistant/attempt': { turn: number; step: number; stream: AssistantStreamRecord[] }
- ```
- 
--Source: [`packages/core/session/src/types.ts:367`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:375`](../packages/core/session/src/types.ts)
- 
- <a id="assistantmessage--surface"></a>
- 
-@@ -309,6 +309,14 @@ Source: [`packages/core/session/src/types.ts:367`](../packages/core/session/src/
+@@ -308,6 +308,14 @@ Source: [`packages/core/session/src/types.ts:363`](../packages/core/session/src/
   * boundaries. An aborted turn with no such event streamed no visible content.
   */
  'assistant/message': {
@@ -434,7 +119,7 @@ index ea4be01a..d839a14a 100644
    turn: number
    step: number
    message: AssistantMessage
-@@ -380,7 +388,7 @@ Source: [`packages/interaction/commands/src/types.ts:105`](../packages/interacti
+@@ -379,7 +387,7 @@ Source: [`packages/interaction/commands/src/types.ts:105`](../packages/interacti
  'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
  ```
  
@@ -443,7 +128,7 @@ index ea4be01a..d839a14a 100644
  
  <a id="compactionprune--log-only"></a>
  
-@@ -406,7 +414,7 @@ Source: [`packages/compaction/compaction/src/types.ts:72`](../packages/compactio
+@@ -405,7 +413,7 @@ Source: [`packages/compaction/compaction/src/types.ts:72`](../packages/compactio
  }
  ```
  
@@ -452,7 +137,7 @@ index ea4be01a..d839a14a 100644
  
  <a id="compactionstart--log-only"></a>
  
-@@ -421,7 +429,7 @@ Source: [`packages/compaction/compaction/src/types.ts:82`](../packages/compactio
+@@ -420,7 +428,7 @@ Source: [`packages/compaction/compaction/src/types.ts:82`](../packages/compactio
  'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
  ```
  
@@ -461,7 +146,7 @@ index ea4be01a..d839a14a 100644
  
  <a id="compactionsummary--log-only"></a>
  
-@@ -453,6 +461,12 @@ Source: [`packages/compaction/compaction/src/types.ts:24`](../packages/compactio
+@@ -452,6 +460,12 @@ Source: [`packages/compaction/compaction/src/types.ts:24`](../packages/compactio
     * this summary" has a durable answer (the reconstructability Agent Note).
     */
    model: string
@@ -474,7 +159,7 @@ index ea4be01a..d839a14a 100644
    /** The generation cap the summarize call sent, when one applied. */
    maxTokens?: number
    /** Provider-reported token usage for the summarization request, when emitted. */
-@@ -475,7 +489,7 @@ Source: [`packages/compaction/compaction/src/types.ts:24`](../packages/compactio
+@@ -474,7 +488,7 @@ Source: [`packages/compaction/compaction/src/types.ts:24`](../packages/compactio
  
  Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
  
@@ -483,52 +168,7 @@ index ea4be01a..d839a14a 100644
  
  ### `deliverables/*`
  
-@@ -754,7 +768,7 @@ Source: [`packages/plan/plan-mode/src/index.ts:55`](../packages/plan/plan-mode/s
- 'request/context': RequestContext
- ```
- 
--Source: [`packages/core/session/src/types.ts:414`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:422`](../packages/core/session/src/types.ts)
- 
- <a id="requestheader--log-only"></a>
- 
-@@ -773,7 +787,7 @@ Source: [`packages/core/session/src/types.ts:414`](../packages/core/session/src/
- }
- ```
- 
--Source: [`packages/core/session/src/types.ts:402`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:410`](../packages/core/session/src/types.ts)
- 
- ### `sandbox/*`
- 
-@@ -850,7 +864,7 @@ Source: [`packages/schedule/schedule/src/types.ts:625`](../packages/schedule/sch
- 'session/end-seed': { inherited?: true }
- ```
- 
--Source: [`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:447`](../packages/core/session/src/types.ts)
- 
- <a id="sessiontitle--log-only"></a>
- 
-@@ -1104,7 +1118,7 @@ Source: [`packages/todo/tool-todo/src/types.ts:33`](../packages/todo/tool-todo/s
- 
- Types: [ToolCallId](subsystems/core.md)
- 
--Source: [`packages/core/session/src/types.ts:373`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:381`](../packages/core/session/src/types.ts)
- 
- <a id="toolptc-dispatch--log-only"></a>
- 
-@@ -1185,7 +1199,7 @@ Source: [`packages/core/tool-executor-ptc/src/types.ts:45`](../packages/core/too
- }
- ```
- 
--Source: [`packages/core/session/src/types.ts:387`](../packages/core/session/src/types.ts)
-+Source: [`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts)
- 
- ### `tool-workflow/*`
- 
-@@ -4593,6 +4607,26 @@ Sources: [`packages/llm/llm/src/types.ts:75`](../packages/llm/llm/src/types.ts)
+@@ -4554,6 +4568,26 @@ Sources: [`packages/llm/llm/src/types.ts:75`](../packages/llm/llm/src/types.ts)
  | `text` | required | `string` |
  | `type` | required | `"reasoning"` |
  
@@ -555,16 +195,7 @@ index ea4be01a..d839a14a 100644
  <a id="persistence-type-sha256-0acd94fe8794574c9ae72c7855ee16d29c546096d4af760d16d1225385764555"></a>
  
  <a id="persistence-type-packagesllmllmsrctypestsreplayenvelope"></a>
-@@ -4999,7 +5033,7 @@ Sources: [`packages/subagent/subagent/src/continuation-messages.ts:29`](../packa
- 
- SHA-256: `335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5`
- 
--Sources: [`packages/core/session/src/types.ts:474`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:482`](../packages/core/session/src/types.ts)
- 
- One of:
- 
-@@ -5779,16 +5813,16 @@ SHA-256: `824a4aad44a54e245c67196817d67946734a2dc0eee0b0b6834a5b2a6ef352ce`
+@@ -5742,16 +5776,16 @@ SHA-256: `824a4aad44a54e245c67196817d67946734a2dc0eee0b0b6834a5b2a6ef352ce`
  | `owner` | not declared | none | [`{ kind: "owner" }`](#persistence-type-sha256-deebfc7c62177ea840f23c6362b8615bc78ffa93377dd5d243c04e541c413af5) |
  | `share-viewer` | not declared | `actor`: [`{ displayName?, providerId, subjectId, tenantId }`](#persistence-type-sha256-0a92c5bdfa06c2e2615b777728f3aa95f408d43b9012e7b754568311251db623); `shareId`: `string` | [`ShareViewerPrincipal`](#persistence-type-sha256-4d60dddaa65d3da8d4cd014d85ce3d2c2875664dd0433e331d8e9d395289686b) |
  
@@ -585,25 +216,7 @@ index ea4be01a..d839a14a 100644
  
  <a id="persistence-type-sha256-5776e5553ff2dfe3f5bc202dbb1e7c9f93e35a531aebb7764c23b2b6153b2ccc"></a>
  
-@@ -5958,7 +5992,7 @@ Sources: [`packages/interaction/commands/src/types.ts:105`](../packages/interact
- 
- SHA-256: `e4c18e294232c3ba6c9f1999f168263cc55956147cfe4121720899be8e52edd1`
- 
--Sources: [`packages/core/session/src/types.ts:373`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:381`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6147,7 +6181,7 @@ SHA-256: `cbbe8377ee744964537dbafd83607219e58ba79a13f6db0d0645c7ad3d5e8a09`
- 
- SHA-256: `a81059ca06999da1e712414520c2c65e491d052fcf9640fae20aa38f0a5dc735`
- 
--Sources: [`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts) · [`packages/core/tool-executor-ptc/src/types.ts:27`](../packages/core/tool-executor-ptc/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:403`](../packages/core/session/src/types.ts) · [`packages/core/tool-executor-ptc/src/types.ts:27`](../packages/core/tool-executor-ptc/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6176,7 +6210,7 @@ Sources: [`packages/interaction/commands/src/types.ts:112`](../packages/interact
+@@ -6139,7 +6173,7 @@ Sources: [`packages/interaction/commands/src/types.ts:112`](../packages/interact
  
  SHA-256: `ca59530d1a4f3e191b4032bc4a20eded0d827db8b5a7efb27b3af9e9b456c6f2`
  
@@ -612,7 +225,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -6185,11 +6219,11 @@ Sources: [`packages/compaction/compaction/src/types.ts:72`](../packages/compacti
+@@ -6148,11 +6182,11 @@ Sources: [`packages/compaction/compaction/src/types.ts:72`](../packages/compacti
  | `sourceCommandId` | optional | `string` |
  | `turn` | required | [`OptionalSessionSeq`](#persistence-type-sha256-3bd652ebfa8726b3ce3937a4f1bd2759e02f86b3a08a20f9e41a8513656fbc5f) |
  
@@ -626,7 +239,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -6199,6 +6233,9 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
+@@ -6162,6 +6196,9 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
  | `model` | required | `string` |
  | `provider` | required | `string` |
  | `rawOutput` | required | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
@@ -636,7 +249,7 @@ index ea4be01a..d839a14a 100644
  | `shadowedRange` | required | [`{ end, start }`](#persistence-type-sha256-9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2) |
  | `shadowedSeqs` | required | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
  | `shadowedTokenCount` | required | `number` |
-@@ -6206,11 +6243,11 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
+@@ -6169,11 +6206,11 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
  | `summary` | required | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
  | `usage` | optional | [`TokenUsage`](#persistence-type-sha256-fec5442b9ee4122e10514d81d5a43648003fe8bfb7ee2ba50c0cdbdd383ed394) |
  
@@ -650,7 +263,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -6219,6 +6256,9 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
+@@ -6182,6 +6219,9 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
  | `model` | required | `string` |
  | `provider` | required | `string` |
  | `rawOutput` | optional | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
@@ -660,7 +273,7 @@ index ea4be01a..d839a14a 100644
  | `shadowedRange` | required | [`{ end, start }`](#persistence-type-sha256-9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2) |
  | `shadowedSeqs` | required | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
  | `shadowedTokenCount` | required | `number` |
-@@ -6232,7 +6272,7 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
+@@ -6195,7 +6235,7 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
  
  SHA-256: `3e4e7683b0192c9f0e6a75c59076108f017892cdb302a98032c2632fd79c356f`
  
@@ -669,7 +282,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -6381,7 +6421,7 @@ Sources: [`packages/team/agent-team/src/types.ts:177`](../packages/team/agent-te
+@@ -6344,7 +6384,7 @@ Sources: [`packages/team/agent-team/src/types.ts:177`](../packages/team/agent-te
  
  SHA-256: `9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2`
  
@@ -678,25 +291,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -6394,7 +6434,7 @@ Sources: [`packages/compaction/compaction/src/types.ts:38`](../packages/compacti
- 
- SHA-256: `bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825`
- 
--Sources: [`packages/core/session/src/types.ts:476`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:484`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6421,7 +6461,7 @@ Sources: [`packages/core/session/src/types.ts:222`](../packages/core/session/src
- 
- SHA-256: `5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777`
- 
--Sources: [`packages/core/session/src/types.ts:387`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6431,6 +6471,22 @@ Sources: [`packages/core/session/src/types.ts:387`](../packages/core/session/src
+@@ -6394,6 +6434,22 @@ Sources: [`packages/core/session/src/types.ts:383`](../packages/core/session/src
  | `step` | required | `number` |
  | `turn` | required | `number` |
  
@@ -719,40 +314,7 @@ index ea4be01a..d839a14a 100644
  <a id="persistence-type-sha256-8e31bb958e9b015e6f8407eaade32217068159e816f3cc99c3ad76eb889732e0"></a>
  
  ### `{ failure, kind: "aborted" }`
-@@ -6463,7 +6519,7 @@ Sources: [`packages/llm/llm/src/types.ts:168`](../packages/llm/llm/src/types.ts)
- 
- SHA-256: `ad0c38a0adb82a94c925456df41586d9b5f9202fca18593eae2213d4445b4585`
- 
--Sources: [`packages/core/session/src/types.ts:402`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:410`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6560,7 +6616,7 @@ SHA-256: `e3e77b26f0148755a505f5b8ea843a3be117827d4703bb5754d9dc8ddbef521f`
- 
- SHA-256: `17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3`
- 
--Sources: [`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:447`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -6582,11 +6638,11 @@ Sources: [`packages/core/agent/src/types.ts:110`](../packages/core/agent/src/typ
- | `start` | required | `number` |
- | `target` | required | [`InboxTarget`](#persistence-type-sha256-96f4a9c81fc0f940ef71528a8cc66731ae4cf1f40d79680c5fe3c39f96d7723c) |
- 
--<a id="persistence-type-sha256-1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d"></a>
-+<a id="persistence-type-sha256-283f7819aa4c27f725f402e12ba3ba0577068379a3e4cd4acc42a5eab4f17180"></a>
- 
--### `{ interrupted?, message, step, stream, … }`
-+### `{ interrupted?, message, recovered?, step, … }`
- 
--SHA-256: `1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d`
-+SHA-256: `283f7819aa4c27f725f402e12ba3ba0577068379a3e4cd4acc42a5eab4f17180`
- 
- Sources: [`packages/core/session/src/types.ts:353`](../packages/core/session/src/types.ts)
- 
-@@ -6594,6 +6650,7 @@ Sources: [`packages/core/session/src/types.ts:353`](../packages/core/session/src
+@@ -6557,6 +6613,7 @@ Sources: [`packages/core/session/src/types.ts:349`](../packages/core/session/src
  |---|---|---|
  | `interrupted` | optional | `true` |
  | `message` | required | [`AssistantMessage`](#persistence-type-sha256-fa87537f4a9c1e25602990a8bf686b383e9e00352ec8946e16ae24ba7c1625be) |
@@ -760,7 +322,7 @@ index ea4be01a..d839a14a 100644
  | `step` | required | `number` |
  | `stream` | required | [`AssistantStreamRecord[]`](#persistence-type-sha256-84bbfdce7d2eab5b0c53e72ff7406db856c8bfd621b965b72fd86598ba493bf7) |
  | `turn` | required | `number` |
-@@ -8163,7 +8220,7 @@ Sources: [`packages/session/session-log-deepseek/src/types.ts:96`](../packages/s
+@@ -8112,7 +8169,7 @@ Sources: [`packages/session/session-log-deepseek/src/types.ts:96`](../packages/s
  
  SHA-256: `5dd766ccd1702a1142ad8b4bd44f2242f8e8a6752669ad3de0a5d224329b1438`
  
@@ -769,16 +331,7 @@ index ea4be01a..d839a14a 100644
  
  | Property | Presence | Type |
  |---|---|---|
-@@ -8177,7 +8234,7 @@ Sources: [`packages/compaction/compaction/src/types.ts:82`](../packages/compacti
- 
- SHA-256: `54f9276a1617d7c12594722c89cfe864bcbe4517e9a6f9c98bab14f199a135e0`
- 
--Sources: [`packages/core/session/src/types.ts:367`](../packages/core/session/src/types.ts)
-+Sources: [`packages/core/session/src/types.ts:375`](../packages/core/session/src/types.ts)
- 
- | Property | Presence | Type |
- |---|---|---|
-@@ -8344,17 +8401,17 @@ SHA-256: `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4`
+@@ -8293,17 +8350,17 @@ SHA-256: `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4`
  | `time` | required | `number` |
  | `type` | required | `"assistant/attempt"` |
  
@@ -799,7 +352,7 @@ index ea4be01a..d839a14a 100644
  | `ignorable` | optional | `true` |
  | `seq` | required | `number` |
  | `surfaceOp` | required | [`SurfaceOp`](#persistence-type-sha256-335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5) |
-@@ -8483,17 +8540,17 @@ SHA-256: `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965`
+@@ -8432,17 +8489,17 @@ SHA-256: `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965`
  | `time` | required | `number` |
  | `type` | required | `"compaction/start"` |
  
@@ -821,44 +374,10 @@ index ea4be01a..d839a14a 100644
  | `seq` | required | `number` |
  | `time` | required | `number` |
 diff --git a/docs/persistence-catalog.zh.md b/docs/persistence-catalog.zh.md
-index aa7a5f1a..9208743c 100644
+index 5047ebc659..5fa95f14e8 100644
 --- a/docs/persistence-catalog.zh.md
 +++ b/docs/persistence-catalog.zh.md
-@@ -30,13 +30,13 @@
- | `event:approval/decided` | event | `bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3` | [`{ type: "approval/decided" }`](#persistence-type-sha256-bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3) |
- | `event:approval/policy` | event | `26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78` | [`{ type: "approval/policy" }`](#persistence-type-sha256-26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78) |
- | `event:assistant/attempt` | event | `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4` | [`{ type: "assistant/attempt" }`](#persistence-type-sha256-15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4) |
--| `event:assistant/message` | event | `1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625` | [`{ type: "assistant/message" }`](#persistence-type-sha256-1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625) |
-+| `event:assistant/message` | event | `6f158a795f2c5b6624b7c06a1cdebd18c7f65912ba425fa77fb68f5dedba3638` | [`{ type: "assistant/message" }`](#persistence-type-sha256-6f158a795f2c5b6624b7c06a1cdebd18c7f65912ba425fa77fb68f5dedba3638) |
- | `event:command/done` | event | `15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff` | [`{ type: "command/done" }`](#persistence-type-sha256-15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff) |
- | `event:command/run` | event | `37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006` | [`{ type: "command/run" }`](#persistence-type-sha256-37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006) |
- | `event:compaction/end` | event | `b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d` | [`{ type: "compaction/end" }`](#persistence-type-sha256-b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d) |
- | `event:compaction/prune` | event | `7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04` | [`{ type: "compaction/prune" }`](#persistence-type-sha256-7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04) |
- | `event:compaction/start` | event | `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965` | [`{ type: "compaction/start" }`](#persistence-type-sha256-db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965) |
--| `event:compaction/summary` | event | `e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602` | [`{ type: "compaction/summary" }`](#persistence-type-sha256-e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602) |
-+| `event:compaction/summary` | event | `180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0` | [`{ type: "compaction/summary" }`](#persistence-type-sha256-180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0) |
- | `event:deliverables/presented` | event | `13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176` | [`{ type: "deliverables/presented" }`](#persistence-type-sha256-13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176) |
- | `event:developer/message` | event | `7ee5a828196d9e4b1672f94f977e68f37125da4297c23029dd682823c09e12fd` | [`{ type: "developer/message" }`](#persistence-type-sha256-7ee5a828196d9e4b1672f94f977e68f37125da4297c23029dd682823c09e12fd) |
- | `event:feedback/message-delete` | event | `3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796` | [`{ type: "feedback/message-delete" }`](#persistence-type-sha256-3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796) |
-@@ -164,7 +164,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- }[T]
- ```
- 
--来源：[`packages/core/session/src/types.ts:443`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:451`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:474`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:510`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:451`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:459`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:482`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:518`](../packages/core/session/src/types.ts)
- 
- ## 事件
- 
-@@ -293,7 +293,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- 'assistant/attempt': { turn: number; step: number; stream: AssistantStreamRecord[] }
- ```
- 
--来源：[`packages/core/session/src/types.ts:367`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:375`](../packages/core/session/src/types.ts)
- 
- <a id="assistantmessage--surface"></a>
- 
-@@ -311,6 +311,14 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -310,6 +310,14 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
   * boundaries. An aborted turn with no such event streamed no visible content.
   */
  'assistant/message': {
@@ -873,7 +392,7 @@ index aa7a5f1a..9208743c 100644
    turn: number
    step: number
    message: AssistantMessage
-@@ -382,7 +390,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -381,7 +389,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
  ```
  
@@ -882,7 +401,7 @@ index aa7a5f1a..9208743c 100644
  
  <a id="compactionprune--log-only"></a>
  
-@@ -408,7 +416,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -407,7 +415,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  }
  ```
  
@@ -891,7 +410,7 @@ index aa7a5f1a..9208743c 100644
  
  <a id="compactionstart--log-only"></a>
  
-@@ -423,7 +431,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -422,7 +430,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
  ```
  
@@ -900,7 +419,7 @@ index aa7a5f1a..9208743c 100644
  
  <a id="compactionsummary--log-only"></a>
  
-@@ -455,6 +463,12 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -454,6 +462,12 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
     * this summary" has a durable answer (the reconstructability Agent Note).
     */
    model: string
@@ -913,7 +432,7 @@ index aa7a5f1a..9208743c 100644
    /** The generation cap the summarize call sent, when one applied. */
    maxTokens?: number
    /** Provider-reported token usage for the summarization request, when emitted. */
-@@ -477,7 +491,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
+@@ -476,7 +490,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  
  类型：[ContentBlock](subsystems/core.zh.md) · [TokenUsage](subsystems/llm-streaming.zh.md)
  
@@ -922,52 +441,7 @@ index aa7a5f1a..9208743c 100644
  
  ### `deliverables/*`
  
-@@ -756,7 +770,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- 'request/context': RequestContext
- ```
- 
--来源：[`packages/core/session/src/types.ts:414`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:422`](../packages/core/session/src/types.ts)
- 
- <a id="requestheader--log-only"></a>
- 
-@@ -775,7 +789,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- }
- ```
- 
--来源：[`packages/core/session/src/types.ts:402`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:410`](../packages/core/session/src/types.ts)
- 
- ### `sandbox/*`
- 
-@@ -852,7 +866,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- 'session/end-seed': { inherited?: true }
- ```
- 
--来源：[`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:447`](../packages/core/session/src/types.ts)
- 
- <a id="sessiontitle--log-only"></a>
- 
-@@ -1106,7 +1120,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- 
- 类型：[ToolCallId](subsystems/core.zh.md)
- 
--来源：[`packages/core/session/src/types.ts:373`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:381`](../packages/core/session/src/types.ts)
- 
- <a id="toolptc-dispatch--log-only"></a>
- 
-@@ -1187,7 +1201,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
- }
- ```
- 
--来源：[`packages/core/session/src/types.ts:387`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts)
- 
- ### `tool-workflow/*`
- 
-@@ -4595,6 +4609,26 @@ SHA-256: `814d9434e1ddf9078612b3b34322f26e9363b469213335007f7e9ba7fee9464e`
+@@ -4556,6 +4570,26 @@ SHA-256: `814d9434e1ddf9078612b3b34322f26e9363b469213335007f7e9ba7fee9464e`
  | `text` | 必需 | `string` |
  | `type` | 必需 | `"reasoning"` |
  
@@ -994,16 +468,7 @@ index aa7a5f1a..9208743c 100644
  <a id="persistence-type-sha256-0acd94fe8794574c9ae72c7855ee16d29c546096d4af760d16d1225385764555"></a>
  
  <a id="persistence-type-packagesllmllmsrctypestsreplayenvelope"></a>
-@@ -5001,7 +5035,7 @@ SHA-256: `848639f8787f035b480ec53cb5686850897c5e8006d87ca231cd8a9ee8634936`
- 
- SHA-256: `335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5`
- 
--来源：[`packages/core/session/src/types.ts:474`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:482`](../packages/core/session/src/types.ts)
- 
- 以下类型之一：
- 
-@@ -5781,16 +5815,16 @@ SHA-256: `824a4aad44a54e245c67196817d67946734a2dc0eee0b0b6834a5b2a6ef352ce`
+@@ -5744,16 +5778,16 @@ SHA-256: `824a4aad44a54e245c67196817d67946734a2dc0eee0b0b6834a5b2a6ef352ce`
  | `owner` | 未声明 | 无 | [`{ kind: "owner" }`](#persistence-type-sha256-deebfc7c62177ea840f23c6362b8615bc78ffa93377dd5d243c04e541c413af5) |
  | `share-viewer` | 未声明 | `actor`: [`{ displayName?, providerId, subjectId, tenantId }`](#persistence-type-sha256-0a92c5bdfa06c2e2615b777728f3aa95f408d43b9012e7b754568311251db623); `shareId`: `string` | [`ShareViewerPrincipal`](#persistence-type-sha256-4d60dddaa65d3da8d4cd014d85ce3d2c2875664dd0433e331d8e9d395289686b) |
  
@@ -1024,25 +489,7 @@ index aa7a5f1a..9208743c 100644
  
  <a id="persistence-type-sha256-5776e5553ff2dfe3f5bc202dbb1e7c9f93e35a531aebb7764c23b2b6153b2ccc"></a>
  
-@@ -5960,7 +5994,7 @@ SHA-256: `a853902cfab417b8f08aa51ad6855fea46f34ed4588a74e47403035111d0fb86`
- 
- SHA-256: `e4c18e294232c3ba6c9f1999f168263cc55956147cfe4121720899be8e52edd1`
- 
--来源：[`packages/core/session/src/types.ts:373`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:381`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6149,7 +6183,7 @@ SHA-256: `cbbe8377ee744964537dbafd83607219e58ba79a13f6db0d0645c7ad3d5e8a09`
- 
- SHA-256: `a81059ca06999da1e712414520c2c65e491d052fcf9640fae20aa38f0a5dc735`
- 
--来源：[`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts) · [`packages/core/tool-executor-ptc/src/types.ts:27`](../packages/core/tool-executor-ptc/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:403`](../packages/core/session/src/types.ts) · [`packages/core/tool-executor-ptc/src/types.ts:27`](../packages/core/tool-executor-ptc/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6178,7 +6212,7 @@ SHA-256: `5b6fb1f226ff56402db08a6aae82af76100b14056271875f69ec526a1ae05d51`
+@@ -6141,7 +6175,7 @@ SHA-256: `5b6fb1f226ff56402db08a6aae82af76100b14056271875f69ec526a1ae05d51`
  
  SHA-256: `ca59530d1a4f3e191b4032bc4a20eded0d827db8b5a7efb27b3af9e9b456c6f2`
  
@@ -1051,7 +498,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -6187,11 +6221,11 @@ SHA-256: `ca59530d1a4f3e191b4032bc4a20eded0d827db8b5a7efb27b3af9e9b456c6f2`
+@@ -6150,11 +6184,11 @@ SHA-256: `ca59530d1a4f3e191b4032bc4a20eded0d827db8b5a7efb27b3af9e9b456c6f2`
  | `sourceCommandId` | 可选 | `string` |
  | `turn` | 必需 | [`OptionalSessionSeq`](#persistence-type-sha256-3bd652ebfa8726b3ce3937a4f1bd2759e02f86b3a08a20f9e41a8513656fbc5f) |
  
@@ -1065,7 +512,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -6201,6 +6235,9 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
+@@ -6164,6 +6198,9 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
  | `model` | 必需 | `string` |
  | `provider` | 必需 | `string` |
  | `rawOutput` | 必需 | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
@@ -1075,7 +522,7 @@ index aa7a5f1a..9208743c 100644
  | `shadowedRange` | 必需 | [`{ end, start }`](#persistence-type-sha256-9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2) |
  | `shadowedSeqs` | 必需 | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
  | `shadowedTokenCount` | 必需 | `number` |
-@@ -6208,11 +6245,11 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
+@@ -6171,11 +6208,11 @@ SHA-256: `a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d`
  | `summary` | 必需 | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
  | `usage` | 可选 | [`TokenUsage`](#persistence-type-sha256-fec5442b9ee4122e10514d81d5a43648003fe8bfb7ee2ba50c0cdbdd383ed394) |
  
@@ -1089,7 +536,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -6221,6 +6258,9 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
+@@ -6184,6 +6221,9 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
  | `model` | 必需 | `string` |
  | `provider` | 必需 | `string` |
  | `rawOutput` | 可选 | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
@@ -1099,7 +546,7 @@ index aa7a5f1a..9208743c 100644
  | `shadowedRange` | 必需 | [`{ end, start }`](#persistence-type-sha256-9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2) |
  | `shadowedSeqs` | 必需 | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
  | `shadowedTokenCount` | 必需 | `number` |
-@@ -6234,7 +6274,7 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
+@@ -6197,7 +6237,7 @@ SHA-256: `576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796`
  
  SHA-256: `3e4e7683b0192c9f0e6a75c59076108f017892cdb302a98032c2632fd79c356f`
  
@@ -1108,7 +555,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -6383,7 +6423,7 @@ SHA-256: `c2a13242efc3bea4b36a843ddf1524ff4d33c765a71b582fa1fdbfa4fa148434`
+@@ -6346,7 +6386,7 @@ SHA-256: `c2a13242efc3bea4b36a843ddf1524ff4d33c765a71b582fa1fdbfa4fa148434`
  
  SHA-256: `9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2`
  
@@ -1117,25 +564,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -6396,7 +6436,7 @@ SHA-256: `9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2`
- 
- SHA-256: `bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825`
- 
--来源：[`packages/core/session/src/types.ts:476`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:484`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6423,7 +6463,7 @@ SHA-256: `79650cfa10aa3c52440328d85e8a25f0ffadc8d7efd784e3c0819d8bb74a1985`
- 
- SHA-256: `5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777`
- 
--来源：[`packages/core/session/src/types.ts:387`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:395`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6433,6 +6473,22 @@ SHA-256: `5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777`
+@@ -6396,6 +6436,22 @@ SHA-256: `5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777`
  | `step` | 必需 | `number` |
  | `turn` | 必需 | `number` |
  
@@ -1158,40 +587,7 @@ index aa7a5f1a..9208743c 100644
  <a id="persistence-type-sha256-8e31bb958e9b015e6f8407eaade32217068159e816f3cc99c3ad76eb889732e0"></a>
  
  ### `{ failure, kind: "aborted" }`
-@@ -6465,7 +6521,7 @@ SHA-256: `693f4952fb5565da96c06bace8924b098ac2fbc915fde0ff8019701183abc057`
- 
- SHA-256: `ad0c38a0adb82a94c925456df41586d9b5f9202fca18593eae2213d4445b4585`
- 
--来源：[`packages/core/session/src/types.ts:402`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:410`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6562,7 +6618,7 @@ SHA-256: `e3e77b26f0148755a505f5b8ea843a3be117827d4703bb5754d9dc8ddbef521f`
- 
- SHA-256: `17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3`
- 
--来源：[`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:447`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -6584,11 +6640,11 @@ SHA-256: `261128de68865c1f92f2bfa2ccd21f362d6e624cb00fc0cf5558d9d7b82302c5`
- | `start` | 必需 | `number` |
- | `target` | 必需 | [`InboxTarget`](#persistence-type-sha256-96f4a9c81fc0f940ef71528a8cc66731ae4cf1f40d79680c5fe3c39f96d7723c) |
- 
--<a id="persistence-type-sha256-1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d"></a>
-+<a id="persistence-type-sha256-283f7819aa4c27f725f402e12ba3ba0577068379a3e4cd4acc42a5eab4f17180"></a>
- 
--### `{ interrupted?, message, step, stream, … }`
-+### `{ interrupted?, message, recovered?, step, … }`
- 
--SHA-256: `1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d`
-+SHA-256: `283f7819aa4c27f725f402e12ba3ba0577068379a3e4cd4acc42a5eab4f17180`
- 
- 来源：[`packages/core/session/src/types.ts:353`](../packages/core/session/src/types.ts)
- 
-@@ -6596,6 +6652,7 @@ SHA-256: `1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d`
+@@ -6559,6 +6615,7 @@ SHA-256: `1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d`
  |---|---|---|
  | `interrupted` | 可选 | `true` |
  | `message` | 必需 | [`AssistantMessage`](#persistence-type-sha256-fa87537f4a9c1e25602990a8bf686b383e9e00352ec8946e16ae24ba7c1625be) |
@@ -1199,7 +595,7 @@ index aa7a5f1a..9208743c 100644
  | `step` | 必需 | `number` |
  | `stream` | 必需 | [`AssistantStreamRecord[]`](#persistence-type-sha256-84bbfdce7d2eab5b0c53e72ff7406db856c8bfd621b965b72fd86598ba493bf7) |
  | `turn` | 必需 | `number` |
-@@ -8165,7 +8222,7 @@ SHA-256: `8bb8c3751a6ce64b61aba1ec7ae798c00a5803c4d868a0430873216c6569ed52`
+@@ -8114,7 +8171,7 @@ SHA-256: `8bb8c3751a6ce64b61aba1ec7ae798c00a5803c4d868a0430873216c6569ed52`
  
  SHA-256: `5dd766ccd1702a1142ad8b4bd44f2242f8e8a6752669ad3de0a5d224329b1438`
  
@@ -1208,16 +604,7 @@ index aa7a5f1a..9208743c 100644
  
  | 属性 | 存在性 | 类型 |
  |---|---|---|
-@@ -8179,7 +8236,7 @@ SHA-256: `5dd766ccd1702a1142ad8b4bd44f2242f8e8a6752669ad3de0a5d224329b1438`
- 
- SHA-256: `54f9276a1617d7c12594722c89cfe864bcbe4517e9a6f9c98bab14f199a135e0`
- 
--来源：[`packages/core/session/src/types.ts:367`](../packages/core/session/src/types.ts)
-+来源：[`packages/core/session/src/types.ts:375`](../packages/core/session/src/types.ts)
- 
- | 属性 | 存在性 | 类型 |
- |---|---|---|
-@@ -8346,17 +8403,17 @@ SHA-256: `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4`
+@@ -8295,17 +8352,17 @@ SHA-256: `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4`
  | `time` | 必需 | `number` |
  | `type` | 必需 | `"assistant/attempt"` |
  
@@ -1238,7 +625,7 @@ index aa7a5f1a..9208743c 100644
  | `ignorable` | 可选 | `true` |
  | `seq` | 必需 | `number` |
  | `surfaceOp` | 必需 | [`SurfaceOp`](#persistence-type-sha256-335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5) |
-@@ -8485,17 +8542,17 @@ SHA-256: `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965`
+@@ -8434,17 +8491,17 @@ SHA-256: `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965`
  | `time` | 必需 | `number` |
  | `type` | 必需 | `"compaction/start"` |
  
@@ -1261,7 +648,7 @@ index aa7a5f1a..9208743c 100644
  | `time` | 必需 | `number` |
 diff --git a/docs/persistence-changes/2026-11-18-provider-recovery-receipts.i18n.yaml b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.i18n.yaml
 new file mode 100644
-index 00000000..0807ef4e
+index 0000000000..0807ef4ea9
 --- /dev/null
 +++ b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.i18n.yaml
 @@ -0,0 +1,28 @@
@@ -1295,7 +682,7 @@ index 00000000..0807ef4e
 +  zh: 003ba4e17b4b5269
 diff --git a/docs/persistence-changes/2026-11-18-provider-recovery-receipts.md b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.md
 new file mode 100644
-index 00000000..eff38c1c
+index 0000000000..eff38c1c6d
 --- /dev/null
 +++ b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.md
 @@ -0,0 +1,52 @@
@@ -1353,7 +740,7 @@ index 00000000..eff38c1c
 +None.
 diff --git a/docs/persistence-changes/2026-11-18-provider-recovery-receipts.schema.json b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.schema.json
 new file mode 100644
-index 00000000..fefaa32c
+index 0000000000..fefaa32cd2
 --- /dev/null
 +++ b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.schema.json
 @@ -0,0 +1,101 @@
@@ -1460,7 +847,7 @@ index 00000000..fefaa32c
 +}
 diff --git a/docs/persistence-changes/2026-11-18-provider-recovery-receipts.zh.md b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.zh.md
 new file mode 100644
-index 00000000..49053248
+index 0000000000..49053248e5
 --- /dev/null
 +++ b/docs/persistence-changes/2026-11-18-provider-recovery-receipts.zh.md
 @@ -0,0 +1,52 @@
@@ -1517,26 +904,10 @@ index 00000000..49053248
 +
 +无。
 diff --git a/docs/persistence-schema.json b/docs/persistence-schema.json
-index cc446efc..93d40fb1 100644
+index a2832eb98c..ca9fc0599b 100644
 --- a/docs/persistence-schema.json
 +++ b/docs/persistence-schema.json
-@@ -10,13 +10,13 @@
-     {"key":"event:approval/decided","kind":"event","event":"approval/decided","surface":false,"digest":"bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3"},
-     {"key":"event:approval/policy","kind":"event","event":"approval/policy","surface":false,"digest":"26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78"},
-     {"key":"event:assistant/attempt","kind":"event","event":"assistant/attempt","surface":false,"digest":"15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4"},
--    {"key":"event:assistant/message","kind":"event","event":"assistant/message","surface":true,"digest":"1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625"},
-+    {"key":"event:assistant/message","kind":"event","event":"assistant/message","surface":true,"digest":"6f158a795f2c5b6624b7c06a1cdebd18c7f65912ba425fa77fb68f5dedba3638"},
-     {"key":"event:command/done","kind":"event","event":"command/done","surface":false,"digest":"15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff"},
-     {"key":"event:command/run","kind":"event","event":"command/run","surface":false,"digest":"37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006"},
-     {"key":"event:compaction/end","kind":"event","event":"compaction/end","surface":false,"digest":"b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d"},
-     {"key":"event:compaction/prune","kind":"event","event":"compaction/prune","surface":false,"digest":"7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04"},
-     {"key":"event:compaction/start","kind":"event","event":"compaction/start","surface":false,"digest":"db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965"},
--    {"key":"event:compaction/summary","kind":"event","event":"compaction/summary","surface":false,"digest":"e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602"},
-+    {"key":"event:compaction/summary","kind":"event","event":"compaction/summary","surface":false,"digest":"180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0"},
-     {"key":"event:deliverables/presented","kind":"event","event":"deliverables/presented","surface":false,"digest":"13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176"},
-     {"key":"event:developer/message","kind":"event","event":"developer/message","surface":true,"digest":"7ee5a828196d9e4b1672f94f977e68f37125da4297c23029dd682823c09e12fd"},
-     {"key":"event:feedback/message-delete","kind":"event","event":"feedback/message-delete","surface":false,"digest":"3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796"},
-@@ -108,7 +108,6 @@
+@@ -104,7 +104,6 @@
      {"digest":"0f46153645c297846a3fad3911636659ca4717a5e7d71c9f50bffacd312115ef","names":[],"sources":["packages/attachment/attachment/src/types.ts:28"]},
      {"digest":"0f8512903d94f57a4748fa1a2092e64342856796684e6b8343db685b192745ce","names":[],"sources":[]},
      {"digest":"0fe52387f65052702ed9d7cd59db826468936595d1b3eec207e7a823adc719db","names":[],"sources":[]},
@@ -1544,25 +915,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"10e386801903f9d424602c31d3ff837a94aef623c8b391376d8d9e253525fabe","names":[],"sources":[]},
      {"digest":"11638dc58a31496fb6706ced3e23e3a2db1f3b2a8845968c810827a72b5fc811","names":[],"sources":[]},
      {"digest":"119abe2b9c0b2f46ecb31d82b9acba4d4b30e049f655e2475e8b4ae12d5a9e25","names":[],"sources":["packages/experimental/hook-protocol/src/types.ts:19"]},
-@@ -129,7 +128,8 @@
-     {"digest":"15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4","names":[],"sources":[]},
-     {"digest":"16d0507cb94b4cfc84a87446b1ba7652d6ec1d65ee1684789e747e30d542800e","names":[],"sources":[]},
-     {"digest":"17aae616ef020b8b9f011ec398ec935450fb06d3e2a0722c456f63aeaf5ff728","names":[],"sources":[]},
--    {"digest":"17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3","names":[],"sources":["packages/core/session/src/types.ts:439"]},
-+    {"digest":"17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3","names":[],"sources":["packages/core/session/src/types.ts:447"]},
-+    {"digest":"180a7f0870d63d8b44d88e0bc38ccff5da4ae31471801ff748bbce6c49583cf0","names":[],"sources":[]},
-     {"digest":"18dc21f12bbac8ade8377e6fbb54179e20c3d955d73fba3244c57fb6bf001df0","names":["packages/schedule/schedule/src/types.ts#ScheduleDeleteChange"],"sources":["packages/schedule/schedule/src/types.ts:206"]},
-     {"digest":"18ee62b8900a4c3d046700f05d7a4d49d6cab2a660a020c87481d1603dd8bd4f","names":["packages/session/session-persistence-jsonl/src/format.ts#HeaderLine"],"sources":["packages/session/session-persistence-jsonl/src/format.ts:83"]},
-     {"digest":"18fcdd273a2f2f9d813a3be5e71df5903a963a5c88e46b90b14de6e2db890da0","names":[],"sources":[]},
-@@ -144,7 +144,6 @@
-     {"digest":"1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5","names":[],"sources":[]},
-     {"digest":"1c2686c0682e7bc51d61117b2652bd4a80707e331aa276d6ef915ae32534a330","names":[],"sources":[]},
-     {"digest":"1c5a58f4599bd4a9711712551ffe2442a5e5fcd0758bafe630cc4ead850bdaa7","names":[],"sources":[]},
--    {"digest":"1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d","names":[],"sources":["packages/core/session/src/types.ts:353"]},
-     {"digest":"1cde1bedde79c5e8a56aee9c05c8e0a579cf5bc611deb85b93fa331a16ca978f","names":["packages/compaction/compaction-image-offload/src/projection.ts#ImageOffloadTarget"],"sources":["packages/compaction/compaction-image-offload/src/projection.ts:9"]},
-     {"digest":"1d5f04a03ea75fc8eeece544129eba0f49f0c82046e9c404461920390135c7b2","names":[],"sources":[]},
-     {"digest":"1d76406cbb2ddadb0dbbb51e9d8bc6cf678fed455cf8eb512f36f7c86d37a62f","names":[],"sources":["packages/llm/llm/src/types.ts:164"]},
-@@ -178,6 +177,7 @@
+@@ -173,6 +172,7 @@
      {"digest":"26c879bdd130e8b8683a6ce588414fad2244783d6573ca399fa0de184a2b0bb1","names":[],"sources":[]},
      {"digest":"2765e9119edf5816ac1ab4c95c5ee32c90403f3742962eff11544f7752d59d2e","names":[],"sources":[]},
      {"digest":"277b61f9c6f8170425fa6ffe06cfa14376757a896a4749cb82a687d7364c4fc9","names":[],"sources":[]},
@@ -1570,32 +923,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"287211846beea1eccb5f9acee00d20388a38fcb2e95858fa2332d6f58529379a","names":[],"sources":["packages/llm/llm/src/types.ts:165"]},
      {"digest":"28936c614bd4e7e2774806edcbb3cbfd3ee643ac1cbf0bbdff43d915505a8fe3","names":[],"sources":[]},
      {"digest":"290f32bfd81ff85a8095886a8066fae06e885942b63a8bcd6a8d66d328445808","names":[],"sources":[]},
-@@ -190,6 +190,7 @@
-     {"digest":"2c64d4bc7264fd3f8bed47e96ab8a593bce05a1e4e1c436dcd244a3b7e0c2a9d","names":[],"sources":[]},
-     {"digest":"2d11ca7b0d4493e244b74eba093227866b33249841e59a1e9bf56afed38604c3","names":[],"sources":["packages/web/web-search-deepseek/src/provider.ts:72"]},
-     {"digest":"2da725e554cd89301d829ed9dc45a572c3cd1b93b5e91d0d71f007976d8a0863","names":[],"sources":[]},
-+    {"digest":"2dc155037b5f403d55e7313d8734e06e918b6f52b1a9d0d8d4820eec7da2fb76","names":[],"sources":["packages/core/session/src/types.ts:355"]},
-     {"digest":"2e3523541e942ef6cc9fbc5b91f242e0ca4c6ada479b79b96025b797f6e41f3f","names":["packages/schedule/schedule/src/types.ts#ScheduleChange"],"sources":["packages/schedule/schedule/src/types.ts:232"]},
-     {"digest":"2e4debca12f2c449f96dc6574f3fbf2fb346193443114a241d01a236362ec48c","names":[],"sources":[]},
-     {"digest":"2eafefdc6f79a4922d68a787a09eaf4dd2b2369c3777fba4c05e800b5678ac8e","names":["packages/team/agent-team/src/types.ts#TeamMessageSnapshot"],"sources":["packages/team/agent-team/src/types.ts:112"]},
-@@ -204,7 +205,7 @@
-     {"digest":"326a9bfda27dda5882fb3cbe6e715df41dae2298fdae3d66437457268a665693","names":["packages/llm/llm/src/call-config.ts#LlmCallConfigAdapterDefaults"],"sources":["packages/llm/llm/src/call-config.ts:53"]},
-     {"digest":"3305a4bb6b6c29b482ba91d59c60b47e8f98282d3dacc8c29e4a4c2712209bdd","names":[],"sources":[]},
-     {"digest":"33341aac09312300de5a178e6cc6f6544a4876f7f710cfea55eda473c8d329ef","names":["packages/llm/llm/src/assistant-stream.ts#AssistantStreamRecord"],"sources":["packages/llm/llm/src/assistant-stream.ts:19"]},
--    {"digest":"335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5","names":["packages/core/session/src/types.ts#SurfaceOp"],"sources":["packages/core/session/src/types.ts:474"]},
-+    {"digest":"335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5","names":["packages/core/session/src/types.ts#SurfaceOp"],"sources":["packages/core/session/src/types.ts:482"]},
-     {"digest":"347de3380f2da308d0c74e08821f9e85559f55af4c5010795b110d00f7fc9dbd","names":[],"sources":[]},
-     {"digest":"34d1ab5c5df378186d6054b1a1beea9a41e41965d6f336f0bc0025c441a82e66","names":[],"sources":[]},
-     {"digest":"35203ba7ad5ef6f97d556b85df20ae98f04f09c65748cecdf8eefdb8b6405ffc","names":[],"sources":[]},
-@@ -213,6 +214,7 @@
-     {"digest":"374fdd68aee5ff844e378c0cbdd961d247a0f22e4ade0bb03d800cd2a46a2b8b","names":[],"sources":["packages/llm/llm-retry/src/types.ts:30"]},
-     {"digest":"378f90f9f6022a0991928a1eaf7991094ea1920fe89a9248358a1da106e1a970","names":[],"sources":[]},
-     {"digest":"37cbc9cf06d494cfe5c67f078af1605eacb8e4c2c853e9e26455b73de0ee7ccf","names":[],"sources":[]},
-+    {"digest":"37eee23b6cc84ca06f176dcb34f14ff9284945f0d5e7a6907ec93aff0835dd9e","names":[],"sources":[]},
-     {"digest":"37ff65426bcf130f045d3a59ef2a4648eb170cd30280cbd024108a2e9b4401d1","names":[],"sources":["packages/web/web-search-deepseek/src/provider.ts:83"]},
-     {"digest":"383cf73ae4748e5beb281ae74857ba1ffb92ae01075b9fbf51af78b666007a8f","names":[],"sources":[]},
-     {"digest":"3860b4757d512a2869be833acb0faf834335b1b056bf3f83df5474dce95f8fa6","names":[],"sources":["packages/llm/llm/src/assistant-stream.ts:34"]},
-@@ -233,7 +235,7 @@
+@@ -227,7 +227,7 @@
      {"digest":"3d7d07060a7be77984feb651ea2bf1925d3e0477911d9d3ed86330d1e8ca6182","names":["packages/feedback/message-feedback/src/types.ts#MessageFeedbackItem"],"sources":["packages/feedback/message-feedback/src/types.ts:20"]},
      {"digest":"3e0eff5946255ff05d88a10839c60305135801f97794ea48d409f8503303317e","names":[],"sources":[]},
      {"digest":"3e2ece4967cfebe95f450a93f45523dff99d6749f6269f2f60f84dfecfcf3693","names":[],"sources":[]},
@@ -1604,26 +932,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796","names":[],"sources":[]},
      {"digest":"3f74ba74acd10644c1ed6947a411d8088bd2cfac74f61bb8540f96d68e31f004","names":[],"sources":[]},
      {"digest":"3fdf9582c3b5597df104d32d97dab6c6ee3a93794f3034ec6ada6272404ea27f","names":["packages/schedule/schedule/src/types.ts#LegacyAfterScheduleRecord"],"sources":["packages/schedule/schedule/src/types.ts:161"]},
-@@ -281,15 +283,15 @@
-     {"digest":"525254db03b1d1e6b74cf55aced52817568331ac1f96c0818728910b6692e336","names":[],"sources":[]},
-     {"digest":"529e0ccd0e34079ab4ff21ed87f810cee0388246263bf22e8aba5986b56fae05","names":[],"sources":["packages/util/values/src/index.ts:4"]},
-     {"digest":"52c6113cb0e53f345324bf84f01928bea5d5df57ee80bc0dd65407b8bc5a3734","names":[],"sources":[]},
--    {"digest":"5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777","names":[],"sources":["packages/core/session/src/types.ts:387"]},
-+    {"digest":"5302e763151277614b97e77f00e3b326694c6c1247b916a20503c344dc970777","names":[],"sources":["packages/core/session/src/types.ts:395"]},
-     {"digest":"530da6c0267813bb4511af72883cc518834e624e3b3220a7062955fd57a788a6","names":["packages/core/session/src/types.ts#RequestHeaderReason"],"sources":["packages/core/session/src/types.ts:283"]},
-     {"digest":"53cf1704ae0709c7678bcf070c83c619fc48ca1b5c173b74cfa8702f22a8e492","names":[],"sources":[]},
--    {"digest":"54f9276a1617d7c12594722c89cfe864bcbe4517e9a6f9c98bab14f199a135e0","names":[],"sources":["packages/core/session/src/types.ts:367"]},
-+    {"digest":"54ce71bff6b2d7a36669458289a21b6c4f28386c48df82e3fc12a692cfc23b24","names":["packages/compaction/compaction/src/types.ts#RecoveredSummaryReceipt"],"sources":["packages/compaction/compaction/src/types.ts:18"]},
-+    {"digest":"54f9276a1617d7c12594722c89cfe864bcbe4517e9a6f9c98bab14f199a135e0","names":[],"sources":["packages/core/session/src/types.ts:375"]},
-     {"digest":"557e148d30b79ee48645850832b30c717d7c3b64641deb5d6133b8b4e91ee0b8","names":[],"sources":[]},
-     {"digest":"5654685d7557ec747e74887237065e626a5bdfa426ca43f7fbb0b6fee9b0916c","names":[],"sources":[]},
-     {"digest":"56b7c047694875a843ba020dfea3c8380d54ae4ff88ab349e72004dc21e07c23","names":[],"sources":["packages/core/session/src/types.ts:231"]},
-     {"digest":"570e85022434613394418ad33e77e9f1f7a05699b33d0b62eae0677a638c3833","names":[],"sources":[]},
--    {"digest":"576a2de8355eb09850963ff5953420b172e274d9283666eb7d889097db120796","names":[],"sources":[]},
-     {"digest":"5776e5553ff2dfe3f5bc202dbb1e7c9f93e35a531aebb7764c23b2b6153b2ccc","names":[],"sources":[]},
-     {"digest":"57f3f606ff8b6c84d9c443faace9d1dd10cca0354f37a4f515ef075f7c351b90","names":[],"sources":[]},
-     {"digest":"58015da1c1950a66daf66ae24913d6a1fc6d1d9ac441b155f8847f7f8584ba8e","names":[],"sources":[]},
-@@ -310,7 +312,7 @@
+@@ -305,7 +305,7 @@
      {"digest":"5d17f27a1ef9f7026c0232714adf7573961536d75f3303ca97973975f5af170e","names":[],"sources":[]},
      {"digest":"5d542ac7bdf13310c46e1a884dec9fb18ad8c6e153cff207e639cd7bf9d7e694","names":[],"sources":[]},
      {"digest":"5d7a64ed6aac5551ebf998dc25e1e7b48a144769913f89702840180e61dc3995","names":[],"sources":[]},
@@ -1632,7 +941,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e","names":[],"sources":[]},
      {"digest":"5ebce1317eacd2c148456627a09668e927ee15c204f0643f5ea76b46b54a2647","names":[],"sources":[]},
      {"digest":"5f2117d1856a5ab43c28371faa978ebfaa48f8c7d734ea3fc94842210df83dca","names":["packages/llm/llm/src/types.ts#LlmFailure"],"sources":["packages/llm/llm/src/types.ts:48"]},
-@@ -353,6 +355,7 @@
+@@ -347,6 +347,7 @@
      {"digest":"6ea608bdc8a7a63d3d23b84c49721325094db88d136482e43a820945295eee3e","names":[],"sources":[]},
      {"digest":"6ebcc2dbec9f2dabca9f668ae6d39e877899b180740570f453409db339221df3","names":[],"sources":[]},
      {"digest":"6f091fe32ab24407236090ca9d710bbaf59bb57466e9f3b8f1f6e4862bc863c6","names":[],"sources":[]},
@@ -1640,15 +949,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"6f22a9d02b9a1f1157f3b0e7bdccd7e7b12b085c4efdb709dfc74a465cd4e590","names":["packages/context/agent-instructions/src/state.ts#AgentInstructionSource"],"sources":["packages/context/agent-instructions/src/state.ts:40"]},
      {"digest":"6f44f32be9bcd9a8bf075c3b575b06c8ed63446386e5b0995c7b73762e68ddae","names":[],"sources":[]},
      {"digest":"6f611bed14b2106542480c4a230b4a83baf76dc0d8ac0cd13319a7cb8dae7675","names":[],"sources":[]},
-@@ -422,6 +425,7 @@
-     {"digest":"8a9c990773f798eac10ca8878e6bcc531ee080bc589cac956730e462cc6a09ad","names":[],"sources":["packages/interaction/permission-presets/src/index.ts:61"]},
-     {"digest":"8ad45ad053b4d89f8865c17cc9ff3b8748e86045f3f0fb816269a34af2619141","names":[],"sources":["packages/experimental/hook-protocol/src/types.ts:31"]},
-     {"digest":"8af841fc9b265ade3441caf9fe40dd24db24226befba48150e6d0eeccc1389c3","names":[],"sources":[]},
-+    {"digest":"8b8ce009cbc090bc44c0c0168b9175411a9c948ba815ca2e35a184b5c02e1b61","names":[],"sources":[]},
-     {"digest":"8bb8c3751a6ce64b61aba1ec7ae798c00a5803c4d868a0430873216c6569ed52","names":[],"sources":["packages/session/session-log-deepseek/src/types.ts:96"]},
-     {"digest":"8c1c4f72755a78ea163523a46565316e36e9b644382eb48e6635c71a6f412dd2","names":[],"sources":[]},
-     {"digest":"8c627d7a45fa406cea879a3922105e27ed4c3c7966e264afaf11ea7a330f2dd1","names":[],"sources":[]},
-@@ -448,11 +452,11 @@
+@@ -444,11 +445,11 @@
      {"digest":"95a3ffccbf3c8afcf9a2f3b355f724da8e07e98dc47ee741166dde7f9ea058bd","names":[],"sources":[]},
      {"digest":"95c0e88fcf0bafb2087f912ad9e2369de6ae6530cc0c4c2772c96205b57f7f60","names":[],"sources":[]},
      {"digest":"9645cf93769a6dfb227bd400bd6cb9fa7bab9140f4a851e4ae92514ade6e3114","names":[],"sources":[]},
@@ -1661,49 +962,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"998f22585a5d73ec005365e203f07fc3b3a029e82323fdda3fd7f13b0a9639d0","names":[],"sources":[]},
      {"digest":"99e7e7d7fed55ae6a3a648b35192f16ab1248ddcb0179a0e275128ac1487d7c7","names":[],"sources":[]},
      {"digest":"99f0e98184709ad10f27bfdeaafb4457d9d2b413f402331764798cdb7d3cbe4d","names":[],"sources":[]},
-@@ -466,7 +470,7 @@
-     {"digest":"9d80129e13edfb6feb03ed327e6085c6ef60b97ad074244b2f5fd4667424a6a4","names":[],"sources":[]},
-     {"digest":"9e07693fd7cd9babe0688c22c986e4d519ae1c0e40eeea13b2dc583bed2abc86","names":[],"sources":[]},
-     {"digest":"9e2c06d8653585b33d72d5c1a80da79c8a24a88c284409bca15cc0f0ead5ebfb","names":[],"sources":[]},
--    {"digest":"9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2","names":[],"sources":["packages/compaction/compaction/src/types.ts:38","packages/compaction/compaction/src/types.ts:84"]},
-+    {"digest":"9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2","names":[],"sources":["packages/compaction/compaction/src/types.ts:107","packages/compaction/compaction/src/types.ts:55"]},
-     {"digest":"9edc162949abf93bd5ff049191b345454ba104f583937ce5580fb50f067d2b94","names":[],"sources":["packages/experimental/webhook/src/types.ts:75"]},
-     {"digest":"9f65c43e340bba31cdc0fc37bd93ccb68d5e9b36f47a68c207e95a8e68620a5d","names":[],"sources":[]},
-     {"digest":"a0a2e5c42e1c929445ecd1cd70f49be6b66441894ec72c08e8ae332821d4a3cb","names":[],"sources":[]},
-@@ -490,13 +494,12 @@
-     {"digest":"a6da9ad5d42ae83a6833a8288b076688e8e0801633ea36cbdd8a30a6d9f3160c","names":["packages/workflow/tool-workflow/src/types.ts#ToolWorkflowRunStartData"],"sources":["packages/workflow/tool-workflow/src/types.ts:14"]},
-     {"digest":"a720757f704a2512e9d2f20da4a093e582472176236a75ab8b8eb7aaff17d85a","names":[],"sources":[]},
-     {"digest":"a7cf43ce7c2a4c038feed1885cd7a00d5c6ee2d90a7e0d56b46f78a3e1ca327f","names":[],"sources":[]},
--    {"digest":"a81059ca06999da1e712414520c2c65e491d052fcf9640fae20aa38f0a5dc735","names":[],"sources":["packages/core/session/src/types.ts:395","packages/core/tool-executor-ptc/src/types.ts:27"]},
-+    {"digest":"a81059ca06999da1e712414520c2c65e491d052fcf9640fae20aa38f0a5dc735","names":[],"sources":["packages/core/session/src/types.ts:403","packages/core/tool-executor-ptc/src/types.ts:27"]},
-     {"digest":"a853902cfab417b8f08aa51ad6855fea46f34ed4588a74e47403035111d0fb86","names":[],"sources":["packages/interaction/commands/src/types.ts:105"]},
-     {"digest":"a8a2b9011fc067862df7ce40748868467e5778283d7ac193c13f77684a914c57","names":[],"sources":[]},
-     {"digest":"a9059a81430b320792bbb7c2ee1f8f6c77ff71e40ee44c18aec72e157c522694","names":[],"sources":[]},
-     {"digest":"a926dc71814edd01a4f041eb5fc766d153db3407ef4704e98f4c1b6527309ebb","names":["packages/schedule/schedule/src/types.ts#LegacyEveryScheduleRecord"],"sources":["packages/schedule/schedule/src/types.ts:173"]},
-     {"digest":"a9427866376b691aace0ce25aa0e1bdec2a14156a05152947a467da3f7967cb9","names":[],"sources":["packages/team/agent-team/src/types.ts:181"]},
--    {"digest":"a99ec0993c62c058e50af9f68922202a3b54f5e259bc2abf1915a73381d2316d","names":[],"sources":[]},
-     {"digest":"a99f76fd149051c363f960bfeeb5b9509587ecaf7591a42797e4bfe810d8987a","names":["packages/todo/tool-todo/src/types.ts#TodoItem"],"sources":["packages/todo/tool-todo/src/types.ts:23"]},
-     {"digest":"aa0957eca50aeb28bcd2e6930b95809926edacb550c8c340ba526ba6b861b3d8","names":[],"sources":[]},
-     {"digest":"aa2bf9e82b9fdeb94a42af20031fffa30e4e23f01f4ac39757427d4c64c407f0","names":[],"sources":[]},
-@@ -507,7 +510,7 @@
-     {"digest":"ab7ec5f9eb2c6dfacca5da4c37cf7ba85d04172053ee6b1ebf1709ffcd99c1a7","names":[],"sources":["packages/core/session/src/types.ts:224","packages/llm/llm/src/types.ts:166"]},
-     {"digest":"aba175fb20ffc71112c55efe70458ff5d7dbfb83501892b4ba8d077f0ea5d7ba","names":[],"sources":[]},
-     {"digest":"abd6ca62a5ab166553848324a23fef90eed7f59c8021bd63e7ea5bc6fd666b0c","names":["packages/web/web-search-deepseek/src/provider.ts#DeepSeekSearchLlmRequest"],"sources":["packages/web/web-search-deepseek/src/provider.ts:56"]},
--    {"digest":"ad0c38a0adb82a94c925456df41586d9b5f9202fca18593eae2213d4445b4585","names":[],"sources":["packages/core/session/src/types.ts:402"]},
-+    {"digest":"ad0c38a0adb82a94c925456df41586d9b5f9202fca18593eae2213d4445b4585","names":[],"sources":["packages/core/session/src/types.ts:410"]},
-     {"digest":"ad22a5ca5bbaab2e1440779cd3648e85ddfc6f73b5207394eda699555cf31430","names":[],"sources":[]},
-     {"digest":"ad3b56aa2fc1ad4250e7399295d34a8eae592e1907e85852e2291b2e498a30bc","names":[],"sources":[]},
-     {"digest":"ad92f473a03ae72599ff26c86e897c25e16269519ad2a87340f0bea946517af8","names":[],"sources":[]},
-@@ -564,7 +567,7 @@
-     {"digest":"bb94f3217aa56c8876bbff0b8460d6a73cbead545659abb29e76cd0cf2cb92d6","names":[],"sources":[]},
-     {"digest":"bbc5696e3f13c758237b316e3cf08cda0b9fd51ffe672539883457769faa185d","names":[],"sources":[]},
-     {"digest":"bca0f9cb63d8620b6954bb045b07bb07cb557513a7f0e2e177f5e87f704e7ba7","names":[],"sources":[]},
--    {"digest":"bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825","names":[],"sources":["packages/core/session/src/types.ts:476"]},
-+    {"digest":"bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825","names":[],"sources":["packages/core/session/src/types.ts:484"]},
-     {"digest":"bd499eac047efe091a4df7382eadd06d25cf0cb31fee3981e8b24d85762841cd","names":[],"sources":[]},
-     {"digest":"bf16d2e98a7f13894ded2cffe5ce857bf473954a0e3c0ed9bc7739e2e1c7b78a","names":[],"sources":[]},
-     {"digest":"c0ea97bc89dfc46fa94eab956f5c3ee6af2f964aa7db6327cb18b451f207bef7","names":["packages/workflow/tool-workflow/src/types.ts#ToolWorkflowAgentEndData"],"sources":["packages/workflow/tool-workflow/src/types.ts:29"]},
-@@ -586,7 +589,7 @@
+@@ -583,7 +584,7 @@
      {"digest":"c8e6f48878cc2a2f0dc59682280d81f407943fb503f32c64bf9ff3d9393c3eff","names":[],"sources":[]},
      {"digest":"c99e20441bf15341e9db54385e558e5c03d21dff2eb1ac08ccbf47c2d8747954","names":[],"sources":[]},
      {"digest":"ca085dba2c877feceebf3c62f9d39c6c2a4d2314d97b94b3927a780fe8fe2bb2","names":[],"sources":[]},
@@ -1712,7 +971,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"cb1c8959e1726f82f9a3d2ef2bc90bf8c451a98fd56175e956022124c770c818","names":[],"sources":[]},
      {"digest":"cbbe8377ee744964537dbafd83607219e58ba79a13f6db0d0645c7ad3d5e8a09","names":[],"sources":[]},
      {"digest":"cbca49bde16b656d5b8fbe4a8a507769f7b594c6287782b809c03814941bc5e3","names":[],"sources":[]},
-@@ -633,7 +636,6 @@
+@@ -630,7 +631,6 @@
      {"digest":"e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05","names":[],"sources":[]},
      {"digest":"e2ad8f5bcd813f268ffef1b10a12d7ddd2b8ced8b9b6d0275b3f6b7ed094a187","names":[],"sources":[]},
      {"digest":"e2d0367e5716bc188435e51718ebff8ce873190625fa93b1c5331102d98758fa","names":[],"sources":[]},
@@ -1720,16 +979,7 @@ index cc446efc..93d40fb1 100644
      {"digest":"e3056e0dda3a379e895386e368c3ce42131460ea65e410e1d091cca98a347305","names":["packages/jobs/jobs/src/types.ts#JobRegisteredData"],"sources":["packages/jobs/jobs/src/types.ts:24"]},
      {"digest":"e308ccf867a5398e316e0af8cb6ce238a8d33a63b9b384c8250a686786285f72","names":[],"sources":[]},
      {"digest":"e31572180d6b28b73f073ad30ae19d5d82982d3daf984723984e23da1e7c459a","names":[],"sources":[]},
-@@ -642,7 +644,7 @@
-     {"digest":"e42b0f40b5d0b628c6e1c44a8fb9eda0780037a81959e1b93d2dfb47b46b0e87","names":[],"sources":[]},
-     {"digest":"e438a9d4fb883b3e4a8d9fc8913aa1550ed50eb384bfbf943100a5605b537498","names":[],"sources":[]},
-     {"digest":"e481c46af3813e0010558e93f578b2986acd658404cec2d1679e3ac2a6c48654","names":[],"sources":["packages/core/session/src/types.ts:307"]},
--    {"digest":"e4c18e294232c3ba6c9f1999f168263cc55956147cfe4121720899be8e52edd1","names":[],"sources":["packages/core/session/src/types.ts:373"]},
-+    {"digest":"e4c18e294232c3ba6c9f1999f168263cc55956147cfe4121720899be8e52edd1","names":[],"sources":["packages/core/session/src/types.ts:381"]},
-     {"digest":"e4cac694f8b6e1d52e48c699464f1c4c26111ef87e558f7931040d00fdc8d486","names":[],"sources":[]},
-     {"digest":"e5d3828df1ec3e2a66879de0659e0f4866d9cfffc00825ee731a66f8a0c03d98","names":[],"sources":[]},
-     {"digest":"e6063d0451dc02026fd9b54ad3f77c7b1b6392ad3e872a7737ac84e13ca72344","names":["packages/schedule/schedule/src/types.ts#EveryScheduleDispatchChange"],"sources":["packages/schedule/schedule/src/types.ts:220"]},
-@@ -750,7 +752,6 @@
+@@ -742,7 +742,6 @@
      "0f46153645c29784": {"kind":"object","properties":[{"name":"height","type":"0657d3ca5ac4e7bf","optional":false},{"name":"width","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "0f8512903d94f57a": {"kind":"object","properties":[{"name":"data","type":"e481c46af3813e00","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"4312134fc6f9cad5","optional":false}],"indices":[]},
      "0fe52387f6505270": {"kind":"literal","value":"plan-mode"},
@@ -1737,7 +987,7 @@ index cc446efc..93d40fb1 100644
      "10e386801903f9d4": {"kind":"literal","value":"compaction/prune"},
      "11638dc58a31496f": {"kind":"object","properties":[{"name":"form","type":"6f9e00383836275e","optional":false},{"name":"kind","type":"2f3f201c8846e19c","optional":false},{"name":"sections","type":"c748fb42c80a1200","optional":false}],"indices":[]},
      "119abe2b9c0b2f46": {"kind":"object","properties":[{"name":"dialect","type":"a6b41f5bede8094d","optional":false},{"name":"handlerId","type":"4cd48f3e5108bd6e","optional":false},{"name":"matcher","type":"4cd48f3e5108bd6e","optional":true},{"name":"point","type":"4cd48f3e5108bd6e","optional":false},{"name":"turn","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
-@@ -772,6 +773,7 @@
+@@ -764,6 +763,7 @@
      "16d0507cb94b4cfc": {"kind":"literal","value":"relay"},
      "17aae616ef020b8b": {"kind":"literal","value":"at"},
      "17d1afb770d99419": {"kind":"object","properties":[{"name":"inherited","type":"dacf3d5f3e4ff619","optional":true}],"indices":[]},
@@ -1745,7 +995,7 @@ index cc446efc..93d40fb1 100644
      "18dc21f12bbac8ad": {"kind":"object","properties":[{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"operation","type":"d0fbb0ca1bbba059","optional":false},{"name":"version","type":"f88f1b7b6bb733f6","optional":false}],"indices":[]},
      "18ee62b8900a4c3d": {"kind":"object","properties":[{"name":"agentPreset","type":"4cd48f3e5108bd6e","optional":true},{"name":"createdAt","type":"0657d3ca5ac4e7bf","optional":false},{"name":"cwd","type":"4cd48f3e5108bd6e","optional":true},{"name":"delegationDepth","type":"0657d3ca5ac4e7bf","optional":false},{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"isSeeded","type":"aa93010d0e521ad7","optional":false},{"name":"origin","type":"aacda84a69739238","optional":true},{"name":"parentSession","type":"4cd48f3e5108bd6e","optional":true},{"name":"type","type":"e41bdebe246abe17","optional":false},{"name":"version","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "18fcdd273a2f2f9d": {"kind":"literal","value":"team/member"},
-@@ -786,7 +788,6 @@
+@@ -778,7 +778,6 @@
      "1b912703e2d64f91": {"kind":"object","properties":[{"name":"data","type":"b56f6a885da3dc39","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"7a651f3b672c52fb","optional":false}],"indices":[]},
      "1c2686c0682e7bc5": {"kind":"literal","value":"session/end-seed"},
      "1c5a58f4599bd4a9": {"kind":"literal","value":"system/message"},
@@ -1753,7 +1003,7 @@ index cc446efc..93d40fb1 100644
      "1cde1bedde79c5e8": {"kind":"object","properties":[{"name":"imageIndexes","type":"5d03ba38734809bc","optional":false},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "1d5f04a03ea75fc8": {"kind":"literal","value":"model/selection"},
      "1d76406cbb2ddadb": {"kind":"object","properties":[{"name":"kind","type":"57f3f606ff8b6c84","optional":false}],"indices":[]},
-@@ -820,6 +821,7 @@
+@@ -811,6 +810,7 @@
      "26c879bdd130e8b8": {"kind":"literal","value":"dispatch"},
      "2765e9119edf5816": {"kind":"literal","value":"model"},
      "277b61f9c6f81704": {"kind":"literal","value":"file"},
@@ -1761,7 +1011,7 @@ index cc446efc..93d40fb1 100644
      "287211846beea1ec": {"kind":"object","properties":[{"name":"kind","type":"6c1cccb433ddc153","optional":false}],"indices":[]},
      "28936c614bd4e7e2": {"kind":"object","properties":[{"name":"form","type":"6f9e00383836275e","optional":false},{"name":"kind","type":"d9edf1862e4471d6","optional":false},{"name":"sections","type":"c748fb42c80a1200","optional":false}],"indices":[]},
      "290f32bfd81ff85a": {"kind":"object","properties":[{"name":"kind","type":"23af3759678a30de","optional":false}],"indices":[]},
-@@ -832,6 +834,7 @@
+@@ -824,6 +824,7 @@
      "2c64d4bc7264fd3f": {"kind":"literal","value":"step/start"},
      "2d11ca7b0d4493e2": {"kind":"object","properties":[{"name":"max_uses","type":"0657d3ca5ac4e7bf","optional":false},{"name":"name","type":"935c8d486292b13c","optional":false},{"name":"type","type":"0116b1f89c05221d","optional":false}],"indices":[]},
      "2da725e554cd8930": {"kind":"literal","value":"fork"},
@@ -1769,7 +1019,7 @@ index cc446efc..93d40fb1 100644
      "2e3523541e942ef6": {"kind":"union","types":["18dc21f12bbac8ad","8e8e91646a5cae3f","e6063d0451dc0202","eea687d437880bd5"]},
      "2e4debca12f2c449": {"kind":"literal","value":"team-message"},
      "2eafefdc6f79a492": {"kind":"object","properties":[{"name":"content","type":"b52f215a6cd69105","optional":false},{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"senderId","type":"4cd48f3e5108bd6e","optional":false},{"name":"senderName","type":"4cd48f3e5108bd6e","optional":false},{"name":"targetId","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
-@@ -855,6 +858,7 @@
+@@ -846,6 +847,7 @@
      "374fdd68aee5ff84": {"kind":"object","properties":[{"name":"delayMs","type":"0657d3ca5ac4e7bf","optional":false},{"name":"failure","type":"5f2117d1856a5ab4","optional":false},{"name":"mode","type":"142c37d302aa22a0","optional":false},{"name":"policyKey","type":"4cd48f3e5108bd6e","optional":false},{"name":"provider","type":"4cd48f3e5108bd6e","optional":false},{"name":"retry","type":"0657d3ca5ac4e7bf","optional":false},{"name":"retryId","type":"4cd48f3e5108bd6e","optional":false},{"name":"step","type":"0657d3ca5ac4e7bf","optional":false},{"name":"turn","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "378f90f9f6022a09": {"kind":"literal","value":"approval/decided"},
      "37cbc9cf06d494cf": {"kind":"object","properties":[{"name":"data","type":"b158f3ff69237148","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"70b082fe78991edf","optional":false}],"indices":[]},
@@ -1777,7 +1027,7 @@ index cc446efc..93d40fb1 100644
      "37ff65426bcf130f": {"kind":"object","properties":[{"name":"type","type":"0b9b8facbe2c1977","optional":false}],"indices":[]},
      "383cf73ae4748e5b": {"kind":"literal","value":"recall"},
      "3860b4757d512a28": {"kind":"object","properties":[{"name":"args","type":"93c33d9687613293","optional":false},{"name":"dt","type":"5d03ba38734809bc","optional":false},{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"index","type":"0657d3ca5ac4e7bf","optional":false},{"name":"name","type":"4cd48f3e5108bd6e","optional":true},{"name":"time0","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"616f93a5047de668","optional":false}],"indices":[]},
-@@ -926,12 +930,12 @@
+@@ -917,12 +919,12 @@
      "5302e76315127761": {"kind":"object","properties":[{"name":"error","type":"a81059ca06999da1","optional":true},{"name":"message","type":"4b259f7f8f0a44ad","optional":false},{"name":"meta","type":"c592ce75aab73fca","optional":true},{"name":"step","type":"0657d3ca5ac4e7bf","optional":false},{"name":"turn","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "530da6c0267813bb": {"kind":"union","types":["34d1ab5c5df37818","4f507598cf476214","e7ce49f12953583f","f789af5ab844827e"]},
      "53cf1704ae0709c7": {"kind":"object","properties":[{"name":"form","type":"fee1caf8ab6a65c1","optional":false},{"name":"kind","type":"99e7e7d7fed55ae6","optional":false}],"indices":[]},
@@ -1791,7 +1041,7 @@ index cc446efc..93d40fb1 100644
      "5776e5553ff2dfe3": {"kind":"union","types":["7af85bf70d4eafce","998f22585a5d73ec","e3e77b26f0148755"]},
      "57f3f606ff8b6c84": {"kind":"literal","value":"stop"},
      "58015da1c1950a66": {"kind":"object","properties":[{"name":"form","type":"aec150797b655c5f","optional":false},{"name":"kind","type":"24b10f7cdae64928","optional":false}],"indices":[]},
-@@ -995,6 +999,7 @@
+@@ -985,6 +987,7 @@
      "6ea608bdc8a7a63d": {"kind":"object","properties":[{"name":"form","type":"16d0507cb94b4cfc","optional":false},{"name":"kind","type":"a9059a81430b3207","optional":false}],"indices":[]},
      "6ebcc2dbec9f2dab": {"kind":"literal","value":"skill-catalog"},
      "6f091fe32ab24407": {"kind":"literal","value":"reasoning-delta"},
@@ -1799,7 +1049,7 @@ index cc446efc..93d40fb1 100644
      "6f22a9d02b9a1f11": {"kind":"object","properties":[{"name":"baseline","type":"dacf3d5f3e4ff619","optional":true},{"name":"baselineIdentity","type":"4cd48f3e5108bd6e","optional":true},{"name":"changes","type":"2ab12a0e345658f9","optional":false},{"name":"form","type":"fee1caf8ab6a65c1","optional":false},{"name":"kind","type":"fbd2c74b346a1595","optional":false}],"indices":[]},
      "6f44f32be9bcd9a8": {"kind":"object","properties":[{"name":"form","type":"fee1caf8ab6a65c1","optional":false},{"name":"kind","type":"1f1385dbc3e875c0","optional":false}],"indices":[]},
      "6f611bed14b21065": {"kind":"literal","value":"web/deepseek-search-llm-request"},
-@@ -1064,6 +1069,7 @@
+@@ -1056,6 +1059,7 @@
      "8a9c990773f798ea": {"kind":"object","properties":[{"name":"preset","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
      "8ad45ad053b4d89f": {"kind":"object","properties":[{"name":"decision","type":"4cd48f3e5108bd6e","optional":false},{"name":"durationMs","type":"0657d3ca5ac4e7bf","optional":false},{"name":"exitCode","type":"0657d3ca5ac4e7bf","optional":true},{"name":"handlerId","type":"4cd48f3e5108bd6e","optional":false},{"name":"point","type":"4cd48f3e5108bd6e","optional":false},{"name":"stderrSummary","type":"4cd48f3e5108bd6e","optional":true},{"name":"turn","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "8af841fc9b265ade": {"kind":"literal","value":"system"},
@@ -1807,7 +1057,7 @@ index cc446efc..93d40fb1 100644
      "8bb8c3751a6ce64b": {"kind":"object","properties":[{"name":"sessionFormatVersion","type":"0657d3ca5ac4e7bf","optional":true},{"name":"sessionId","type":"4cd48f3e5108bd6e","optional":false},{"name":"throughSeq","type":"0657d3ca5ac4e7bf","optional":false}],"indices":[]},
      "8c1c4f72755a78ea": {"kind":"object","properties":[{"name":"form","type":"6f9e00383836275e","optional":false},{"name":"kind","type":"0fe52387f6505270","optional":false},{"name":"sections","type":"c748fb42c80a1200","optional":false}],"indices":[]},
      "8c627d7a45fa406c": {"kind":"object","properties":[{"name":"form","type":"e8de0f457fed5b9f","optional":false},{"name":"kind","type":"2f3f201c8846e19c","optional":false},{"name":"summary","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
-@@ -1090,11 +1096,11 @@
+@@ -1082,11 +1086,11 @@
      "95a3ffccbf3c8afc": {"kind":"literal","value":"owner"},
      "95c0e88fcf0bafb2": {"kind":"literal","value":"assistant"},
      "9645cf93769a6dfb": {"kind":"literal","value":"user-question-reply"},
@@ -1820,7 +1070,7 @@ index cc446efc..93d40fb1 100644
      "998f22585a5d73ec": {"kind":"object","properties":[{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"sourceEventSeqs","type":"5d03ba38734809bc","optional":true},{"name":"surfaceOp","type":"335e242de1fcc17b","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"4cd48f3e5108bd6e","optional":false}],"indices":[]},
      "99e7e7d7fed55ae6": {"kind":"literal","value":"tool-jobs"},
      "99f0e98184709ad1": {"kind":"object","properties":[{"name":"form","type":"aec150797b655c5f","optional":false},{"name":"kind","type":"bb94f3217aa56c88","optional":false}],"indices":[]},
-@@ -1138,7 +1144,6 @@
+@@ -1130,7 +1134,6 @@
      "a9059a81430b3207": {"kind":"literal","value":"hooks-claude-code"},
      "a926dc71814edd01": {"kind":"object","properties":[{"name":"everySeconds","type":"0657d3ca5ac4e7bf","optional":false},{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"kind","type":"e42b0f40b5d0b628","optional":false},{"name":"prompt","type":"4cd48f3e5108bd6e","optional":false},{"name":"scheduledAt","type":"4cd48f3e5108bd6e","optional":false},{"name":"title","type":"4cd48f3e5108bd6e","optional":true}],"indices":[]},
      "a9427866376b691a": {"kind":"object","properties":[{"name":"task","type":"4018a00144474b6c","optional":false},{"name":"teamId","type":"4cd48f3e5108bd6e","optional":false},{"name":"version","type":"a0f906856fc06f1c","optional":false}],"indices":[]},
@@ -1828,7 +1078,7 @@ index cc446efc..93d40fb1 100644
      "a99f76fd149051c3": {"kind":"object","properties":[{"name":"content","type":"4cd48f3e5108bd6e","optional":false},{"name":"status","type":"fd0d91a1f9dd2efb","optional":false}],"indices":[]},
      "aa0957eca50aeb28": {"kind":"object","properties":[{"name":"data","type":"f90eb4ab2d3897bc","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"0af3ecfb8c60d416","optional":false}],"indices":[]},
      "aa2bf9e82b9fdeb9": {"kind":"object","properties":[{"name":"form","type":"fee1caf8ab6a65c1","optional":false},{"name":"kind","type":"f68c335306535a00","optional":false}],"indices":[]},
-@@ -1275,7 +1280,6 @@
+@@ -1268,7 +1271,6 @@
      "e0a787e6ec76c7c9": {"kind":"object","properties":[{"name":"data","type":"ef11a3b7fa2033ae","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"c219efbdfd53b836","optional":false}],"indices":[]},
      "e2ad8f5bcd813f26": {"kind":"object","properties":[{"name":"childCreatedAt","type":"0657d3ca5ac4e7bf","optional":false},{"name":"childId","type":"4cd48f3e5108bd6e","optional":false},{"name":"label","type":"4cd48f3e5108bd6e","optional":false},{"name":"mode","type":"e5d3828df1ec3e2a","optional":false},{"name":"version","type":"f88f1b7b6bb733f6","optional":false}],"indices":[]},
      "e2d0367e5716bc18": {"kind":"literal","value":"compaction/start"},
@@ -1837,7 +1087,7 @@ index cc446efc..93d40fb1 100644
      "e308ccf867a5398e": {"kind":"object","properties":[{"name":"data","type":"f90eb4ab2d3897bc","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"8e8155594e078123","optional":false}],"indices":[]},
      "e31572180d6b28b7": {"kind":"literal","value":"provider"},
 diff --git a/docs/subsystems/compaction.md b/docs/subsystems/compaction.md
-index c186ba35..ae5023dc 100644
+index 415c3b06be..49720d945d 100644
 --- a/docs/subsystems/compaction.md
 +++ b/docs/subsystems/compaction.md
 @@ -147,6 +147,16 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
@@ -1986,7 +1236,7 @@ index c186ba35..ae5023dc 100644
  Source: [`packages/compaction/compaction/src/index.ts`](../../packages/compaction/compaction/src/index.ts)
  <!-- END GENERATED cordis-surface -->
 diff --git a/docs/subsystems/compaction.zh.md b/docs/subsystems/compaction.zh.md
-index e9e05247..0dd5c190 100644
+index 94b9256e05..2ba5663532 100644
 --- a/docs/subsystems/compaction.zh.md
 +++ b/docs/subsystems/compaction.zh.md
 @@ -147,6 +147,16 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
@@ -2135,7 +1385,7 @@ index e9e05247..0dd5c190 100644
  Source: [`packages/compaction/compaction/src/index.ts`](../../packages/compaction/compaction/src/index.ts)
  <!-- END GENERATED cordis-surface -->
 diff --git a/docs/subsystems/core.md b/docs/subsystems/core.md
-index a316daab..93c973ba 100644
+index a00dc512ef..49a084cd80 100644
 --- a/docs/subsystems/core.md
 +++ b/docs/subsystems/core.md
 @@ -96,6 +96,8 @@ interface Agent {
@@ -2245,7 +1495,7 @@ index a316daab..93c973ba 100644
  
  #### `agent/status` — emit
 diff --git a/docs/subsystems/core.zh.md b/docs/subsystems/core.zh.md
-index 9d8d401f..fde0e84f 100644
+index 5cb66a1692..3702f23c7d 100644
 --- a/docs/subsystems/core.zh.md
 +++ b/docs/subsystems/core.zh.md
 @@ -100,6 +100,8 @@ interface Agent {
@@ -2355,7 +1605,7 @@ index 9d8d401f..fde0e84f 100644
  
  #### `agent/status` — emit
 diff --git a/docs/subsystems/llm-streaming.md b/docs/subsystems/llm-streaming.md
-index 078f4f47..e98fe5ab 100644
+index 078f4f4700..e98fe5abcd 100644
 --- a/docs/subsystems/llm-streaming.md
 +++ b/docs/subsystems/llm-streaming.md
 @@ -1180,9 +1180,13 @@ async prepareCall( config: LlmCallConfig, signal?: AbortSignal, configure?: Conf
@@ -2374,7 +1624,7 @@ index 078f4f47..e98fe5ab 100644
  
  Types: [FileAttachmentRef](attachment.md) · [ImageAttachmentRef](attachment.md) · [ImageRequestTarget](attachment.md)
 diff --git a/docs/subsystems/llm-streaming.zh.md b/docs/subsystems/llm-streaming.zh.md
-index dcebebf6..089da5fb 100644
+index dcebebf666..089da5fb28 100644
 --- a/docs/subsystems/llm-streaming.zh.md
 +++ b/docs/subsystems/llm-streaming.zh.md
 @@ -1186,9 +1186,13 @@ async prepareCall( config: LlmCallConfig, signal?: AbortSignal, configure?: Conf
@@ -2393,7 +1643,7 @@ index dcebebf6..089da5fb 100644
  
  Types: [FileAttachmentRef](attachment.zh.md) · [ImageAttachmentRef](attachment.zh.md) · [ImageRequestTarget](attachment.zh.md)
 diff --git a/docs/subsystems/session.md b/docs/subsystems/session.md
-index b718e7ca..cc5ca44c 100644
+index c1651bf32e..5ffffc6804 100644
 --- a/docs/subsystems/session.md
 +++ b/docs/subsystems/session.md
 @@ -87,6 +87,14 @@ interface SessionEventMap {
@@ -2412,7 +1662,7 @@ index b718e7ca..cc5ca44c 100644
      step: number
      message: AssistantMessage
 diff --git a/docs/subsystems/session.zh.md b/docs/subsystems/session.zh.md
-index 03ba6e1e..976e632f 100644
+index e359382e86..d780da919d 100644
 --- a/docs/subsystems/session.zh.md
 +++ b/docs/subsystems/session.zh.md
 @@ -87,6 +87,14 @@ interface SessionEventMap {
@@ -2431,7 +1681,7 @@ index 03ba6e1e..976e632f 100644
      step: number
      message: AssistantMessage
 diff --git a/packages/compaction/compaction-basic/README.i18n.yaml b/packages/compaction/compaction-basic/README.i18n.yaml
-index eb5ecf79..89be7745 100644
+index e2609ea23a..9c438f42eb 100644
 --- a/packages/compaction/compaction-basic/README.i18n.yaml
 +++ b/packages/compaction/compaction-basic/README.i18n.yaml
 @@ -36,8 +36,11 @@
@@ -2449,7 +1699,7 @@ index eb5ecf79..89be7745 100644
    en: deb655b3b1860576
    zh: 79f56e41a9dfe01f
 diff --git a/packages/compaction/compaction-basic/README.md b/packages/compaction/compaction-basic/README.md
-index a33c2d7f..72c28b84 100644
+index c8d0c6b748..c9c8cd3fbf 100644
 --- a/packages/compaction/compaction-basic/README.md
 +++ b/packages/compaction/compaction-basic/README.md
 @@ -97,6 +97,14 @@ With `dsh-command-compact` mounted, type `/compact` in a chat UI to condense imm
@@ -2468,7 +1718,7 @@ index a33c2d7f..72c28b84 100644
  
  <a id="understand-the-implementation"></a>
 diff --git a/packages/compaction/compaction-basic/README.zh.md b/packages/compaction/compaction-basic/README.zh.md
-index 0ab7a2cf..62cbe496 100644
+index 023d9ea436..dcb4d93ca4 100644
 --- a/packages/compaction/compaction-basic/README.zh.md
 +++ b/packages/compaction/compaction-basic/README.zh.md
 @@ -97,6 +97,14 @@ kind: "package-reference"
@@ -2487,13 +1737,13 @@ index 0ab7a2cf..62cbe496 100644
  
  <a id="understand-the-implementation"></a>
 diff --git a/packages/compaction/compaction-basic/package.json b/packages/compaction/compaction-basic/package.json
-index 88075500..96c06c57 100644
+index 5f2d629998..b36f098c95 100644
 --- a/packages/compaction/compaction-basic/package.json
 +++ b/packages/compaction/compaction-basic/package.json
-@@ -40,11 +40,15 @@
+@@ -39,11 +39,15 @@
+     "@deepseek-ai/dsh-compaction-tool-result-pruner": "workspace:*",
      "@deepseek-ai/dsh-llm": "workspace:*",
      "@deepseek-ai/dsh-session": "workspace:*",
-     "@deepseek-ai/dsh-session-projection": "workspace:*",
 -    "@deepseek-ai/dsh-token-meter": "workspace:*"
 +    "@deepseek-ai/dsh-token-meter": "workspace:*",
 +    "@deepseek-ai/dsh-session-persistence": "workspace:*"
@@ -2507,7 +1757,7 @@ index 88075500..96c06c57 100644
      }
    },
    "dependencies": {
-@@ -70,6 +74,8 @@
+@@ -67,6 +71,8 @@
      "@deepseek-ai/dsh-token-meter": "workspace:*",
      "@deepseek-ai/dsh-tool-testkit": "workspace:*",
      "@deepseek-ai/dsh-tools": "workspace:*",
@@ -2518,31 +1768,25 @@ index 88075500..96c06c57 100644
    }
  }
 diff --git a/packages/compaction/compaction-basic/src/index.ts b/packages/compaction/compaction-basic/src/index.ts
-index dc361d8f..28744496 100644
+index 096fa72fe4..e87aa1dca6 100644
 --- a/packages/compaction/compaction-basic/src/index.ts
 +++ b/packages/compaction/compaction-basic/src/index.ts
-@@ -7,15 +7,17 @@
- import { Context, Service } from '@deepseek-ai/cordis'
+@@ -7,11 +7,11 @@
+ import { Context } from '@deepseek-ai/cordis'
  import z from '@deepseek-ai/schemastery'
  import { CompactionEngine, ManualCompactionError } from '@deepseek-ai/dsh-compaction'
 -import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction'
 +import type { CompactionRequestContext, CompactionResult, CompactionTrigger, RecoveredSummaryInput } from '@deepseek-ai/dsh-compaction'
  import type { EpochHeader, Session, SessionSeq } from '@deepseek-ai/dsh-session'
- import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
  import { CONTEXT_WINDOW_EXCEEDED_CODE, LlmError } from '@deepseek-ai/dsh-llm'
+ import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 -import { assertNever } from '@deepseek-ai/dsh-util-values'
-+import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 +import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
  import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
- import type { CommandId } from '@deepseek-ai/dsh-commands/types'
+ import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
  // Type-only: makes the optional sibling service available to `ctx.get()`.
- import type {} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
-+import type {} from '@deepseek-ai/dsh-session-persistence'
- import { answeredRouteProjectionDefinition } from './answered-route.ts'
- import type { AnsweredRoute } from './answered-route.ts'
- import {
-@@ -33,9 +35,12 @@ import { summarizeWithLlm } from './summarizer.ts'
- import type { SummarizationInput, SummaryResult, SummaryRoute } from './summarizer.ts'
+@@ -31,9 +31,12 @@ import { summarizeWithLlm } from './summarizer.ts'
+ import type { SummarizationInput, SummaryResult } from './summarizer.ts'
  import type {
    BasicCompactionConfig,
 +  CompactionPolicyConfig,
@@ -2554,7 +1798,7 @@ index dc361d8f..28744496 100644
  
  export type {
    BasicCompactionConfig,
-@@ -47,6 +52,24 @@ export type {
+@@ -45,6 +48,19 @@ export type {
    ResolvedTargetPolicy,
  } from './types.ts'
  
@@ -2562,12 +1806,7 @@ index dc361d8f..28744496 100644
 +  interface Events {
 +    /**
 +     * Apply explicit route-specific pressure, retention, and summary-budget overrides.
-+     * The backend merges the returned fields over its validated default policy
-+     * and validates the result. Undefined preserves existing configuration.
 +     * @mode waterfall
-+     * @param payload - agent, actual priced route, default policy, and cancellation.
-+     * @param next - delegate to another route policy or unchanged defaults.
-+     * @returns optional overrides using the ordinary BasicCompaction policy fields.
 +     */
 +    'compaction/pressure-policy'(
 +      payload: { agent: Agent; target: Readonly<LlmCallConfig>; defaultPolicy: ResolvedTargetPolicy; signal?: AbortSignal },
@@ -2576,23 +1815,26 @@ index dc361d8f..28744496 100644
 +  }
 +}
 +
- /** Detach a route that names both provider and model; any other value is no route. */
- function completeRoute(route: { provider?: string; model?: string } | undefined): SummaryRoute | undefined {
-   if (route?.provider === undefined || route.provider.length === 0
-@@ -117,6 +140,12 @@ const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
+ /** Resolve the exact provider/model durably routed for the latest request. */
+ function routedTarget(
+   session: Session,
+@@ -110,7 +126,14 @@ const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
   * token meter.
   */
  export class BasicCompactionEngine extends CompactionEngine {
+-  static inject = ['llm', 'tokenMeter', 'sessions']
 +  override readonly hostPolicyCapabilities: Readonly<{
 +    summaryRoute: 2
 +    pressurePolicy: 1
 +    durableSummaryAck: 1
 +    recoveredSummary: 1
 +  }> = Object.freeze({ summaryRoute: 2, pressurePolicy: 1, durableSummaryAck: 1, recoveredSummary: 1 })
-   static inject = ['llm', 'tokenMeter', 'sessions', 'sessionProjections']
++
++  static inject = ['llm', 'tokenMeter', 'sessions', 'sessionPersistence']
  
    static Config: z<BasicCompactionConfig> = z.object({
-@@ -170,12 +199,12 @@ export class BasicCompactionEngine extends CompactionEngine {
+     thresholdRatio: thresholdRatioSchema,
+@@ -155,12 +178,12 @@ export class BasicCompactionEngine extends CompactionEngine {
      }
  
      ctx.on('agent/pre-step', async (
@@ -2607,7 +1849,7 @@ index dc361d8f..28744496 100644
            if (result !== null) logResult(result, 'step pressure')
          } catch (error: unknown) {
            if (error instanceof TargetPressureConfigError) {
-@@ -233,7 +262,7 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -218,7 +241,7 @@ export class BasicCompactionEngine extends CompactionEngine {
        this.overflowAgents.set(agent.session, agent)
        const target = routedTarget(agent.session)
        if (target === undefined) return next()
@@ -2616,23 +1858,23 @@ index dc361d8f..28744496 100644
        const retries = this.overflowRetries.get(agent) ?? 0
        if (retries >= policy.maxOverflowRetries) return next()
  
-@@ -289,12 +318,13 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -271,12 +294,13 @@ export class BasicCompactionEngine extends CompactionEngine {
      input: SummarizationInput,
      agent: Agent,
      signal?: AbortSignal,
 +    context?: CompactionRequestContext,
    ): Promise<SummaryResult> {
-     const target = conversationTarget(agent, (await this.answeredRoute).stateOf(agent.session))
+     const target = conversationTarget(agent)
      const config = target === undefined
        ? this.config
 -      : resolveTargetPolicy(this.config, target)
--    return summarizeWithLlm(this.ctx, config, input, agent, target, signal)
+-    return summarizeWithLlm(this.ctx, config, input, agent, signal)
 +      : await this.resolvePolicy(agent, target, signal)
-+    return summarizeWithLlm(this.ctx, config, input, agent, target, signal, context)
++    return summarizeWithLlm(this.ctx, config, input, agent, signal, context)
    }
  
    /**
-@@ -311,18 +341,19 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -293,18 +317,19 @@ export class BasicCompactionEngine extends CompactionEngine {
      agent: Agent,
      trigger: CompactionTrigger,
      signal: AbortSignal,
@@ -2654,7 +1896,7 @@ index dc361d8f..28744496 100644
        }
        /* v8 ignore next -- closed-union exhaustiveness guard */
        default:
-@@ -336,9 +367,10 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -318,9 +343,10 @@ export class BasicCompactionEngine extends CompactionEngine {
      header: EpochHeader,
      signal: AbortSignal,
      requireBelowThreshold: boolean,
@@ -2666,7 +1908,7 @@ index dc361d8f..28744496 100644
      const meter = this.ctx.tokenMeter
      let measurement = meter.measure(agent.session, header)
      const prune = this.ctx.get('toolResultPruner')
-@@ -377,7 +409,7 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -359,7 +385,7 @@ export class BasicCompactionEngine extends CompactionEngine {
            + `(${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`,
          )
        }
@@ -2675,7 +1917,7 @@ index dc361d8f..28744496 100644
        measurement = meter.measure(agent.session, header)
        if (measurement.totalTokens < spec.thresholdTokens) return result
      }
-@@ -388,6 +420,22 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -370,6 +396,22 @@ export class BasicCompactionEngine extends CompactionEngine {
      )
    }
  
@@ -2698,7 +1940,7 @@ index dc361d8f..28744496 100644
    /**
     * Compact one inclusive positional range from the agent-owned surface using
     * the effective token meter for all retention and shrink pricing.
-@@ -402,9 +450,10 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -384,9 +426,10 @@ export class BasicCompactionEngine extends CompactionEngine {
      end: SessionSeq,
      agent: Agent,
      signal?: AbortSignal,
@@ -2710,7 +1952,7 @@ index dc361d8f..28744496 100644
        agent.session,
        start,
        end,
-@@ -430,6 +479,8 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -412,6 +455,8 @@ export class BasicCompactionEngine extends CompactionEngine {
      signal.throwIfAborted()
      try {
        return agent.runMaintenance(async (agentSignal) => {
@@ -2719,7 +1961,7 @@ index dc361d8f..28744496 100644
          const operationSignal = AbortSignal.any([agentSignal, signal])
          try {
            operationSignal.throwIfAborted()
-@@ -440,7 +491,7 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -422,7 +467,7 @@ export class BasicCompactionEngine extends CompactionEngine {
            )
            if (range === null) return null
            return await compactSurfaceRegion(
@@ -2728,7 +1970,7 @@ index dc361d8f..28744496 100644
              agent.session,
              range.start,
              range.end,
-@@ -476,11 +527,90 @@ export class BasicCompactionEngine extends CompactionEngine {
+@@ -458,11 +503,90 @@ export class BasicCompactionEngine extends CompactionEngine {
      }
    }
  
@@ -2823,7 +2065,7 @@ index dc361d8f..28744496 100644
          sourceEventSeqs,
 diff --git a/packages/compaction/compaction-basic/src/recovered-summary.ts b/packages/compaction/compaction-basic/src/recovered-summary.ts
 new file mode 100644
-index 00000000..94be53dc
+index 0000000000..94be53dc59
 --- /dev/null
 +++ b/packages/compaction/compaction-basic/src/recovered-summary.ts
 @@ -0,0 +1,139 @@
@@ -2967,10 +2209,10 @@ index 00000000..94be53dc
 +  return { start, end }
 +}
 diff --git a/packages/compaction/compaction-basic/src/region.ts b/packages/compaction/compaction-basic/src/region.ts
-index 2623071d..730f958c 100644
+index 7b3d77d299..7aa46eb535 100644
 --- a/packages/compaction/compaction-basic/src/region.ts
 +++ b/packages/compaction/compaction-basic/src/region.ts
-@@ -28,6 +28,7 @@ interface RegionDependencies {
+@@ -27,6 +27,7 @@ interface RegionDependencies {
    readonly meter: TokenMeter
    summarize(input: SummarizationInput, agent: Agent, signal?: AbortSignal): Promise<SummaryResult>
    recover(error: unknown, agent: Agent, sourceEventSeqs: readonly SessionSeq[], signal?: AbortSignal): boolean
@@ -2978,7 +2220,7 @@ index 2623071d..730f958c 100644
  }
  
  /** One validated inclusive span of current surface positions. */
-@@ -90,6 +91,11 @@ interface TransactionFailure {
+@@ -89,6 +90,11 @@ interface TransactionFailure {
    readonly stage: 'summary' | 'commit'
  }
  
@@ -2990,7 +2232,7 @@ index 2623071d..730f958c 100644
  /**
   * The `system/message` holding surface node 0, or `undefined` when another
   * message-producing event starts the surface.
-@@ -215,6 +221,7 @@ export async function compactSurfaceRegion(
+@@ -214,6 +220,7 @@ export async function compactSurfaceRegion(
    let failure: TransactionFailure | undefined
    let flushFailure: unknown
    let result: CompactionResult | undefined
@@ -2998,7 +2240,7 @@ index 2623071d..730f958c 100644
    let closed = false
    let closing = false
    let stage: TransactionFailure['stage'] = 'summary'
-@@ -234,6 +241,7 @@ export async function compactSurfaceRegion(
+@@ -233,6 +240,7 @@ export async function compactSurfaceRegion(
      assertStable(dependencies, session, summarized)
      stage = 'commit'
      const pending = commitCompactionBody(session, startEvent, summarized)
@@ -3006,7 +2248,7 @@ index 2623071d..730f958c 100644
      closing = true
      const endEvent = session.append('compaction/end', lifecycle)
      closed = true
-@@ -273,6 +281,8 @@ export async function compactSurfaceRegion(
+@@ -272,6 +280,8 @@ export async function compactSurfaceRegion(
    }
    /* v8 ignore next -- every path without a result records and throws a failure above. */
    if (result === undefined) throw new Error('compaction committed without a result')
@@ -3015,7 +2257,7 @@ index 2623071d..730f958c 100644
    return result
  }
  
-@@ -473,7 +483,7 @@ function commitCompactionBody(
+@@ -472,7 +482,7 @@ function commitCompactionBody(
    session: Session,
    startEvent: SessionEvent<'compaction/start'>,
    summarized: SummarizedCompaction,
@@ -3024,7 +2266,7 @@ index 2623071d..730f958c 100644
    const {
      start,
      end,
-@@ -482,6 +492,9 @@ function commitCompactionBody(
+@@ -481,6 +491,9 @@ function commitCompactionBody(
      summary,
      provider,
      model,
@@ -3034,7 +2276,7 @@ index 2623071d..730f958c 100644
      maxTokens,
      usage,
      checkpointMessage,
-@@ -501,6 +514,9 @@ function commitCompactionBody(
+@@ -500,6 +513,9 @@ function commitCompactionBody(
      shadowedTokenCount,
      provider,
      model,
@@ -3044,7 +2286,7 @@ index 2623071d..730f958c 100644
      ...maxTokens === undefined ? {} : { maxTokens },
      ...usage === undefined ? {} : { usage },
    })
-@@ -508,7 +524,7 @@ function commitCompactionBody(
+@@ -507,7 +523,7 @@ function commitCompactionBody(
      surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
      sourceEventSeqs: [startEvent.seq, summaryEvent.seq, ...shadowedSeqs],
    })
@@ -3053,7 +2295,7 @@ index 2623071d..730f958c 100644
      compactionId: startEvent.data.compactionId,
      ...startEvent.data.sourceCommandId === undefined
        ? {}
-@@ -519,15 +535,15 @@ function commitCompactionBody(
+@@ -518,15 +534,15 @@ function commitCompactionBody(
      shadowedRange: { start, end },
      shadowedSeqs: [...shadowedSeqs],
      shadowedTokenCount,
@@ -3073,7 +2315,7 @@ index 2623071d..730f958c 100644
  
  /**
 diff --git a/packages/compaction/compaction-basic/src/summarizer.ts b/packages/compaction/compaction-basic/src/summarizer.ts
-index c9184d1e..a6cb6a0a 100644
+index 6220a53b25..103a1e549a 100644
 --- a/packages/compaction/compaction-basic/src/summarizer.ts
 +++ b/packages/compaction/compaction-basic/src/summarizer.ts
 @@ -8,9 +8,10 @@ import type { Context } from '@deepseek-ai/cordis'
@@ -3084,20 +2326,11 @@ index c9184d1e..a6cb6a0a 100644
 +  ContentBlock, FinishReason, GenerateOptions, LlmCallConfig, Message, RequestMessage, TokenUsage, ToolSchema,
  } from '@deepseek-ai/dsh-llm'
  import type { Agent } from '@deepseek-ai/dsh-agent'
-+import type { CompactionRequestContext, RecoveredSummaryReceipt } from '@deepseek-ai/dsh-compaction'
++import type { CompactionRequestContext, CompactionSummaryRoute, RecoveredSummaryReceipt } from '@deepseek-ai/dsh-compaction'
  
  interface SummaryConfig {
    readonly summarizationProvider: string
-@@ -19,7 +20,7 @@ interface SummaryConfig {
- }
- 
- /** Exact provider/model pair that receives one summarization request. */
--export type SummaryRoute = Pick<GenerateOptions, 'provider' | 'model'>
-+export type SummaryRoute = Pick<GenerateOptions, 'provider' | 'model' | 'reasoningEffort'>
- 
- /** Tags wrapping the structured summary inside the landed checkpoint node. */
- const SUMMARY_OPEN_TAG = '<compacted-summary>'
-@@ -92,6 +93,9 @@ export type SummaryResult = {
+@@ -89,6 +90,9 @@ export type SummaryResult = {
    provider: string
    model: string
    maxTokens?: number
@@ -3107,41 +2340,37 @@ index c9184d1e..a6cb6a0a 100644
    /** Provider-reported usage for this summarization request. */
    usage?: TokenUsage
  } & (
-@@ -119,6 +123,7 @@ export type SummaryResult = {
-  * @param agent - supplies tool history and session id.
-  * @param conversation - route used when `config` names no summary target; `undefined` when the conversation has none.
-  * @param signal - optional cancellation forwarded to the adapter.
-+ * @param context - captured proposed main route for explicit summary policy.
-  * @returns safe text-only summary blocks and the exact call envelope and output.
-  */
- export async function summarizeWithLlm(
-@@ -128,11 +133,22 @@ export async function summarizeWithLlm(
+@@ -123,9 +127,10 @@ export async function summarizeWithLlm(
+   input: SummarizationInput,
    agent: Agent,
-   conversation: SummaryRoute | undefined,
    signal?: AbortSignal,
 +  context?: CompactionRequestContext,
  ): Promise<SummaryResult> {
+   const latest = agent.session.requestHeader()?.config
 -  const configured = config.summarizationProvider.length === 0
 +  const configuredTarget = config.summarizationProvider.length === 0
      ? undefined
--    : { provider: config.summarizationProvider, model: config.summarizationModel }
--  const target = configured ?? conversation
-+    : deepFreeze({ provider: config.summarizationProvider, model: config.summarizationModel })
-+  const defaultTarget = configuredTarget ?? conversation
-+  const proposedTarget = context?.proposedTarget
+     : { provider: config.summarizationProvider, model: config.summarizationModel }
+   const agentTarget = agent.options.provider !== undefined
+@@ -134,7 +139,16 @@ export async function summarizeWithLlm(
+     && agent.options.model.length > 0
+     ? { provider: agent.options.provider, model: agent.options.model }
+     : undefined
+-  const target = configured ?? latest ?? agentTarget
++  const defaultTarget = configuredTarget ?? latest ?? agentTarget
 +  const target = await ctx.waterfall('compaction/summary-route', {
 +    agent,
-+    ...proposedTarget === undefined ? {} : { proposedTarget },
++    ...context?.proposedTarget === undefined ? {} : { proposedTarget: context.proposedTarget },
 +    ...configuredTarget === undefined ? {} : { configuredTarget },
 +    ...defaultTarget === undefined ? {} : { defaultTarget },
 +    maxTokens: config.maxTokens,
 +    ...signal === undefined ? {} : { signal },
-+  }, () => Promise.resolve(defaultTarget === undefined ? undefined : { ...defaultTarget, maxTokens: config.maxTokens }))
++  }, () => Promise.resolve(defaultTarget === undefined ? undefined : { ...defaultTarget, maxTokens: config.maxTokens })) as CompactionSummaryRoute | undefined
 +  signal?.throwIfAborted()
    if (target === undefined) {
      throw new Error(
        'no provider/model available for summarization: set both BasicCompactionConfig summarization fields, route one request, or set both AgentOptions fields',
-@@ -148,17 +164,16 @@ export async function summarizeWithLlm(
+@@ -150,17 +164,16 @@ export async function summarizeWithLlm(
      }),
    ]
    const options: GenerateOptions = {
@@ -3162,7 +2391,7 @@ index c9184d1e..a6cb6a0a 100644
    const error = finishError(assembler.finish)
    if (error !== undefined) throw error
  
-@@ -167,13 +182,19 @@ export async function summarizeWithLlm(
+@@ -169,13 +182,19 @@ export async function summarizeWithLlm(
    if (!summary.some(block => block.text.trim().length > 0)) {
      throw new Error('summarization produced no text summary content')
    }
@@ -3186,10 +2415,10 @@ index c9184d1e..a6cb6a0a 100644
    }
  }
 diff --git a/packages/compaction/compaction-basic/tests/manual-compaction.spec.ts b/packages/compaction/compaction-basic/tests/manual-compaction.spec.ts
-index a2ca2931..78653742 100644
+index 189df10fbf..d590fccafc 100644
 --- a/packages/compaction/compaction-basic/tests/manual-compaction.spec.ts
 +++ b/packages/compaction/compaction-basic/tests/manual-compaction.spec.ts
-@@ -212,6 +212,10 @@ function fakeAgent(
+@@ -210,6 +210,10 @@ function fakeAgent(
    return {
      session,
      options: { provider: MODEL, model: MODEL },
@@ -3202,7 +2431,7 @@ index a2ca2931..78653742 100644
        if (release === undefined) throw new Error('agent already has active work')
 diff --git a/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts b/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts
 new file mode 100644
-index 00000000..3bd1e03c
+index 0000000000..3bd1e03c50
 --- /dev/null
 +++ b/packages/compaction/compaction-basic/tests/summary-host-policy.spec.ts
 @@ -0,0 +1,273 @@
@@ -3480,21 +2709,10 @@ index 00000000..3bd1e03c
 +  )
 +})
 diff --git a/packages/compaction/compaction-basic/tsconfig.json b/packages/compaction/compaction-basic/tsconfig.json
-index e202df1c..331f8dd4 100644
+index 8c3bbf0d20..ef2d5846bb 100644
 --- a/packages/compaction/compaction-basic/tsconfig.json
 +++ b/packages/compaction/compaction-basic/tsconfig.json
-@@ -4,7 +4,9 @@
-     "rootDir": "src",
-     "outDir": "lib/types"
-   },
--  "include": ["src"],
-+  "include": [
-+    "src"
-+  ],
-   "references": [
-     {
-       "path": "../../util/brand"
-@@ -41,6 +43,9 @@
+@@ -35,6 +35,9 @@
      },
      {
        "path": "../compaction-tool-result-pruner"
@@ -3505,7 +2723,7 @@ index e202df1c..331f8dd4 100644
    ]
  }
 diff --git a/packages/compaction/compaction/src/index.ts b/packages/compaction/compaction/src/index.ts
-index c77e5e01..65a306b6 100644
+index c6dee6fbae..465ba37bf7 100644
 --- a/packages/compaction/compaction/src/index.ts
 +++ b/packages/compaction/compaction/src/index.ts
 @@ -8,12 +8,14 @@
@@ -3516,7 +2734,7 @@ index c77e5e01..65a306b6 100644
 +import type { Session, SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session'
 +import type { Agent } from '@deepseek-ai/dsh-agent'
 +import type { GenerateOptions, LlmCallConfig } from '@deepseek-ai/dsh-llm'
- import type { CommandId } from '@deepseek-ai/dsh-commands/types'
+ import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 -import type { CompactionResult } from './types.ts'
 +import type { CompactionResult, RecoveredSummaryInput } from './types.ts'
  import type { CompactionCheckpointSource } from './checkpoint.ts'
@@ -3638,7 +2856,7 @@ index c77e5e01..65a306b6 100644
  }
  
 diff --git a/packages/compaction/compaction/src/types.ts b/packages/compaction/compaction/src/types.ts
-index b35dc283..482f9c37 100644
+index 0c69c53deb..3057fcf50b 100644
 --- a/packages/compaction/compaction/src/types.ts
 +++ b/packages/compaction/compaction/src/types.ts
 @@ -7,13 +7,30 @@
@@ -3647,7 +2865,7 @@ index b35dc283..482f9c37 100644
  
 -import type { ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
 +import type { ContentBlock, GenerateOptions, ReasoningEffortId, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
- import type { CommandId } from '@deepseek-ai/dsh-commands/types'
+ import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
  import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
  import type { CompactionId } from './brand.ts'
  
@@ -3687,7 +2905,7 @@ index b35dc283..482f9c37 100644
        maxTokens?: number
        /** Provider-reported token usage for the summarization request, when emitted. */
 diff --git a/packages/core/agent-loop/README.i18n.yaml b/packages/core/agent-loop/README.i18n.yaml
-index 53441930..97846054 100644
+index 253c4536e4..45e6046ae6 100644
 --- a/packages/core/agent-loop/README.i18n.yaml
 +++ b/packages/core/agent-loop/README.i18n.yaml
 @@ -24,8 +24,11 @@
@@ -3704,19 +2922,8 @@ index 53441930..97846054 100644
  /deepseek-ai-dsh-agent-loop/understand-the-implementation:
    en: ce7e776e9d516bdb
    zh: 59d2751743db7795
-@@ -45,8 +48,8 @@
-   en: e796c442d8ce8fcf
-   zh: 051b43f5d3a94ad7
- /deepseek-ai-dsh-agent-loop/understand-the-implementation/turn-and-step-flow:
--  en: 4bd3c8b4a9ee8cf8
--  zh: 2f4965a3197bed0e
-+  en: b604a30989075c07
-+  zh: 351c870c5f60a11b
- /deepseek-ai-dsh-agent-loop/understand-the-implementation/failure-and-cancellation:
-   en: eea56903c4ff82f5
-   zh: c0d5abb5767780ed
 diff --git a/packages/core/agent-loop/README.md b/packages/core/agent-loop/README.md
-index 28a4fe8e..b3d8958b 100644
+index 30443d6ace..8636b8ab4c 100644
 --- a/packages/core/agent-loop/README.md
 +++ b/packages/core/agent-loop/README.md
 @@ -74,6 +74,14 @@ Every inbox mutation commits one normalized `agent/inbox/spliced` event. The pro
@@ -3734,7 +2941,7 @@ index 28a4fe8e..b3d8958b 100644
  -----
  
  <a id="understand-the-implementation"></a>
-@@ -119,6 +127,8 @@ The loop is the production acquisition point for Session write handles. Fresh cr
+@@ -117,6 +125,8 @@ The loop is the production acquisition point for session write handles. When `ct
  
  ### Turn and step flow
  
@@ -3744,7 +2951,7 @@ index 28a4fe8e..b3d8958b 100644
  
  Prompt admission uses the actual `prepareCall()` result, not the preceding `request/context`. With no system node, even an empty prompt is appended (reserving node 0 without a wire message). On an incapable route, or at a new request series whose effective text differs, a non-empty rendering is consolidated at the first system node: each non-empty later system node receives a logged per-node empty replacement, then the head is rewritten if needed. Dormant empty tails need no replacement and do not determine the effective text. A series start whose latest surviving node already holds the rendering produces no system event, so the request keeps the prefix it had. On a continuing `in-history` series, an unchanged effective prompt produces no event and a non-empty change appends. An empty rendering clears every non-empty later system node through a logged per-node empty replacement, then empties the head if needed, regardless of route or series state. No older instructions remain model-visible. An empty head with no active later system node means no prompt; repeated clears and resume leave it empty. A restored non-empty prompt follows the same route/series rule: a continuing capable route may append it, while an incapable route or a new series whose effective text differs refills the head. A step starts a series when the pre-step decision declares `startsRequestSeries` or `session.surface.contentGeneration` changed since attachment or the last request (a replacement or image-offload decision). Visible tool-schema changes force prompt consolidation only when the prepared route lacks `toolUpdate`. Routes supporting both tool and system-prompt updates can append a changed prompt and activate added tools without rewriting earlier messages. If another admission condition replaces a system node, the request starts a new series with current tool declarations. Resume and a provider or model swap alone continue the series; the prepared route still governs admission. Per-node empty replacements preserve intervening history without a surface delete operation.
 diff --git a/packages/core/agent-loop/README.zh.md b/packages/core/agent-loop/README.zh.md
-index 20f95875..8f99c8be 100644
+index e20aa96f37..2835c1047f 100644
 --- a/packages/core/agent-loop/README.zh.md
 +++ b/packages/core/agent-loop/README.zh.md
 @@ -74,6 +74,14 @@ const handle = await ctx.agents.create({
@@ -3762,7 +2969,7 @@ index 20f95875..8f99c8be 100644
  -----
  
  <a id="understand-the-implementation"></a>
-@@ -119,6 +127,8 @@ loop 在发布工厂前等待必需的注册完成。它对模型选择和 inbox
+@@ -117,6 +125,8 @@ loop 在发布工厂前等待必需的注册完成。它对模型选择和 inbox
  
  ### 轮次与步骤流程
  
@@ -3772,7 +2979,7 @@ index 20f95875..8f99c8be 100644
  
  提示词准入依据实际的 `prepareCall()` 结果，而非先前的 `request/context`。没有系统节点时，即使提示词为空也追加（预留第 0 号节点，但不产生协议消息）。在不具备能力的路由上，或有效文本不同的新请求序列开始时，非空渲染文本归并到首个系统节点：每个非空的后续系统节点分别收到有日志记录的空内容替换，随后按需重写头节点。未生效的空尾节点无需替换，也不决定有效文本。新序列开始时若最新存活节点已经持有该渲染文本，则不产生系统事件，请求保留原有前缀。延续中的 `in-history` 序列在有效提示词不变时不产生事件，非空变更则追加。无论路由或序列状态如何，空渲染文本都会通过有日志记录的逐节点空内容替换清除每个非空的后续系统节点，再按需清空头节点。模型不会继续看到旧指令。空头节点且没有生效的后续系统节点表示没有提示词；重复清除与恢复会话都保持为空。重新提供的非空提示词遵循同一路由／序列规则：延续中的具备能力路由可以追加它，不具备能力的路由或有效文本不同的新序列则重新填充头节点。以下情况开启序列：pre-step 决定声明 `startsRequestSeries`，或 `session.surface.contentGeneration` 自附接或上次请求以来发生变化（替换或图片省略决定）。仅当已准备路由未声明 `toolUpdate` 时，可见工具 schema 变化才强制归并提示词。同时支持工具和系统提示词更新的路由可以追加变更后的提示词并激活新增工具，无需改写此前消息。如果其他准入条件替换系统节点，请求会以当前工具声明开启新序列。恢复与单纯的提供方或模型切换都延续序列；准入仍由已准备的路由决定。逐节点的空内容替换保留其间历史，无需 surface 删除操作。
 diff --git a/packages/core/agent-loop/src/agent.ts b/packages/core/agent-loop/src/agent.ts
-index 7ec43dd1..3098fcb3 100644
+index 7ec43dd132..3098fcb306 100644
 --- a/packages/core/agent-loop/src/agent.ts
 +++ b/packages/core/agent-loop/src/agent.ts
 @@ -17,6 +17,8 @@ import type {
@@ -3870,7 +3077,7 @@ index 7ec43dd1..3098fcb3 100644
  
          const toolCalls = message.content.filter(block => block.type === 'tool-call')
 diff --git a/packages/core/agent-loop/src/index.ts b/packages/core/agent-loop/src/index.ts
-index a280f832..f9953f39 100644
+index bda53c3b56..08ec6df905 100644
 --- a/packages/core/agent-loop/src/index.ts
 +++ b/packages/core/agent-loop/src/index.ts
 @@ -22,6 +22,8 @@ import type {
@@ -3881,7 +3088,7 @@ index a280f832..f9953f39 100644
 +  RecoveredAssistantResponse,
  } from '@deepseek-ai/dsh-agent'
  import { modelSelectionProjectionDefinition } from '@deepseek-ai/dsh-agent'
- import { errorChain, type ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+ import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 @@ -36,6 +38,7 @@ import { ReactLoopAgent } from './agent.ts'
  import { inboxProjectionDefinition } from './inbox.ts'
  import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
@@ -3941,7 +3148,7 @@ index a280f832..f9953f39 100644
          // A loop already unloading during minting owns the provisional scope itself.
 diff --git a/packages/core/agent-loop/src/recovered-response.ts b/packages/core/agent-loop/src/recovered-response.ts
 new file mode 100644
-index 00000000..d023d335
+index 0000000000..d023d3351c
 --- /dev/null
 +++ b/packages/core/agent-loop/src/recovered-response.ts
 @@ -0,0 +1,265 @@
@@ -4212,7 +3419,7 @@ index 00000000..d023d335
 +}
 diff --git a/packages/core/agent-loop/tests/host-policy.spec.ts b/packages/core/agent-loop/tests/host-policy.spec.ts
 new file mode 100644
-index 00000000..27b05326
+index 0000000000..27b053265e
 --- /dev/null
 +++ b/packages/core/agent-loop/tests/host-policy.spec.ts
 @@ -0,0 +1,165 @@
@@ -4383,7 +3590,7 @@ index 00000000..27b05326
 +})
 diff --git a/packages/core/agent-loop/tests/recovered-response.spec.ts b/packages/core/agent-loop/tests/recovered-response.spec.ts
 new file mode 100644
-index 00000000..bc021b9a
+index 0000000000..bc021b9a28
 --- /dev/null
 +++ b/packages/core/agent-loop/tests/recovered-response.spec.ts
 @@ -0,0 +1,189 @@
@@ -4577,7 +3784,7 @@ index 00000000..bc021b9a
 +  })
 +})
 diff --git a/packages/core/agent/src/dispatch.ts b/packages/core/agent/src/dispatch.ts
-index 03fd952a..f91745f8 100644
+index 03fd952ac5..f91745f847 100644
 --- a/packages/core/agent/src/dispatch.ts
 +++ b/packages/core/agent/src/dispatch.ts
 @@ -68,6 +68,20 @@ export interface AgentEventDispatch {
@@ -4622,7 +3829,7 @@ index 03fd952a..f91745f8 100644
        // oxlint-disable-next-line typescript/unbound-method -- the events mixin accessor returns a pre-bound function
        const waterfall = ctx.waterfall as (thisArg: Scoped<Agent>, name: string, ...args: unknown[]) => never
 diff --git a/packages/core/agent/src/runtime-types.ts b/packages/core/agent/src/runtime-types.ts
-index 7012dfdf..e8db814e 100644
+index 7012dfdf50..e8db814ed3 100644
 --- a/packages/core/agent/src/runtime-types.ts
 +++ b/packages/core/agent/src/runtime-types.ts
 @@ -8,7 +8,8 @@
@@ -4716,10 +3923,10 @@ index 7012dfdf..e8db814e 100644
       * Process-local assistant-stream publication. Chunk frames are transient;
       * the loop appends one final v2 `assistant/message` or `assistant/attempt`
 diff --git a/packages/core/session/src/types.ts b/packages/core/session/src/types.ts
-index eddd8855..7a69da38 100644
+index 0cf13c86a0..588f117be6 100644
 --- a/packages/core/session/src/types.ts
 +++ b/packages/core/session/src/types.ts
-@@ -351,6 +351,14 @@ export interface SessionEventMap {
+@@ -347,6 +347,14 @@ export interface SessionEventMap {
     * boundaries. An aborted turn with no such event streamed no visible content.
     */
    'assistant/message': {
@@ -4735,7 +3942,7 @@ index eddd8855..7a69da38 100644
      step: number
      message: AssistantMessage
 diff --git a/packages/extensions/tool-cordis/src/api-catalog.ts b/packages/extensions/tool-cordis/src/api-catalog.ts
-index f7a5c48f..3b857bd9 100644
+index 919025faa0..67274fddab 100644
 --- a/packages/extensions/tool-cordis/src/api-catalog.ts
 +++ b/packages/extensions/tool-cordis/src/api-catalog.ts
 @@ -137,11 +137,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
@@ -4761,7 +3968,7 @@ index f7a5c48f..3b857bd9 100644
        {
          signature: 'async create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, \'cwd\'> = {}): Promise<Agent>',
          description: 'Create an agent and session under one caller-supplied identity, owned by the accessing fiber. Constructor-driven config calls mint a fresh combined id before entering this boundary. When a persistence backend is mounted, the session\'s durable identity and any seed are stored before publication.',
-@@ -704,9 +715,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
+@@ -684,9 +695,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
      description: 'Abstract compaction service. Implementations own trigger policy, retention, and summarization, and may consume a separate measurement service. A successful run replaces the selected surface span with one summary node and prevents concurrent compaction of the same session. The replacement user message uses compactCheckpointSource with the transaction identity so consumers recognize and correlate it independently of the backend. Load one implementation per context as `ctx.compaction`.',
      methods: [
        {
@@ -4784,7 +3991,7 @@ index f7a5c48f..3b857bd9 100644
          returns: 'the compaction result, or `null` if no compaction was needed.',
        },
        {
-@@ -717,9 +739,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
+@@ -697,9 +719,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
          throws: ['{@link ManualCompactionError} for expected busy, agent-cancellation, changed-span, summarization/shrink, commit-stage, or persistence failures; an aborted request preserves its exact abort reason. Failed attempts remain visible in the log.'],
        },
        {
@@ -4796,7 +4003,7 @@ index f7a5c48f..3b857bd9 100644
          returns: 'the appended event seqs, summary, replaced range, and token accounting.',
          throws: ['when compaction is active or the range is missing, reversed, or unbalanced.'],
        },
-@@ -2359,9 +2381,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
+@@ -2199,9 +2221,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
          returns: 'a prepared config and its registration-bound stream entry point.',
        },
        {
@@ -4808,7 +4015,7 @@ index f7a5c48f..3b857bd9 100644
          returns: 'the chunk stream, possibly wrapped by `llm/stream` listeners.',
        },
      ],
-@@ -5359,6 +5381,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
+@@ -5056,6 +5078,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
      description: 'Reject a proposed step or replace the messages that enter it. Calling `next()` preserves the current messages.',
      parameters: [{ name: 'payload', description: '.modelSelection - captured step selection, retained across retries; omitted effort uses adapter defaults. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
    },
@@ -4831,7 +4038,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'agent/request-error',
      mode: 'waterfall',
-@@ -5367,6 +5405,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
+@@ -5064,6 +5102,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
      description: 'Handle one failed model-request attempt before the loop retries or closes its step. A listener returns `{ kind: \'retry\' }` without calling `next()` when it owns recovery, or calls `next()` to delegate. The default `undefined` leaves the failure terminal.',
      parameters: [{ name: 'payload', description: '.signal - the turn abort signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
    },
@@ -4846,7 +4053,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'agent/status',
      mode: 'emit',
-@@ -5455,6 +5501,30 @@ export const EVENT_API: readonly EventApiEntry[] = [
+@@ -5152,6 +5198,30 @@ export const EVENT_API: readonly EventApiEntry[] = [
      description: 'A command was registered or unregistered. This is an unfiltered registry notification because a global or scoped change may affect any UI view. Observer failures are contained and cannot veto the registry mutation.',
      parameters: [],
    },
@@ -4877,7 +4084,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'compaction/summary-error',
      mode: 'waterfall',
-@@ -5463,6 +5533,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
+@@ -5160,6 +5230,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
      description: 'Recover a failed summary request by synchronously recording a durable change to its selected input. Return true only after making progress; the provider re-derives and re-prices the selection before retrying. Call next() when the failure cannot be recovered. Decisions survive a later summary failure or cancellation.',
      parameters: [{ name: 'payload', description: '.signal - optional compaction cancellation signal.' }, { name: 'next', description: 'delegate to the next recovery listener.' }],
    },
@@ -4892,7 +4099,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'connection/request',
      mode: 'waterfall',
-@@ -6679,10 +6757,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+@@ -6264,10 +6342,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
      name: 'CompactionId',
      declaration: 'export type CompactionId = Branded<\'CompactionId\'>;',
    },
@@ -4915,9 +4122,9 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'CompactionTrigger',
      declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
-@@ -9011,6 +9101,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
-     name: 'ReconnectConfig',
-     declaration: 'export interface ReconnectConfig {\n    enabled?: boolean;\n    initialDelayMs?: number;\n    maxDelayMs?: number;\n    maxAttempts?: number;\n}',
+@@ -8356,6 +8446,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+     name: 'RecommendationDetails',
+     declaration: 'export type RecommendationDetails = {\n    readonly status: \'available\';\n    readonly title: LocalizedText;\n    readonly description: LocalizedText;\n    readonly enabled: boolean;\n} | {\n    readonly status: \'refused\';\n    readonly reason: \'unknown\' | \'unavailable\' | \'not-live-root\' | \'closing\';\n};',
    },
 +  {
 +    name: 'RecoveredAssistantCommit',
@@ -4938,7 +4145,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'RecurringScheduleRecord',
      declaration: 'export type RecurringScheduleRecord = EveryScheduleRecord | DailyScheduleRecord | WeeklyScheduleRecord | CronScheduleRecord | RRuleScheduleRecord;',
-@@ -9139,10 +9245,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+@@ -8484,10 +8590,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
      name: 'RequestErrorAction',
      declaration: 'export type RequestErrorAction = {\n    kind: \'retry\';\n} | undefined;',
    },
@@ -4949,7 +4156,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'RequestImageAttachment',
      declaration: 'export interface RequestImageAttachment {\n    variantId: ImageVariantId;\n    attachment: ImageAttachmentRef;\n    data: Uint8Array;\n    mediaType: ImageMediaType;\n    bytes: number;\n    width: number;\n    height: number;\n    depth: \'uchar\';\n    space: \'srgb\';\n    hasAlpha: boolean;\n}',
-@@ -9171,6 +9273,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+@@ -8516,6 +8618,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
      name: 'ResolvedNormalRetryPolicy',
      declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
    },
@@ -4960,7 +4167,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'ResolvedRetryBackoff',
      declaration: 'export interface ResolvedRetryBackoff {\n    readonly initialDelayMs: number;\n    readonly maxDelayMs: number;\n    readonly jitterRatio: number;\n}',
-@@ -9183,6 +9289,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+@@ -8528,6 +8634,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
      name: 'ResolvedSubagentStartRequest',
      declaration: 'export interface ResolvedSubagentStartRequest extends SubagentStartRequest {\n    readonly cwd: string;\n}',
    },
@@ -4971,7 +4178,7 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'ResolvedToolSet',
      declaration: 'export interface ResolvedToolSet {\n    dispose(): void;\n    view(scope: ScopeKey | undefined): ReadonlyMap<string, ToolDefinition>;\n}',
-@@ -9529,7 +9639,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+@@ -8874,7 +8984,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
    },
    {
      name: 'SessionEventMap',
@@ -4981,10 +4188,10 @@ index f7a5c48f..3b857bd9 100644
    {
      name: 'SessionEventMetadataFilter',
 diff --git a/packages/llm/llm/src/index.ts b/packages/llm/llm/src/index.ts
-index 24b06101..0451407e 100644
+index 2f4299d8cd..14c3bd667c 100644
 --- a/packages/llm/llm/src/index.ts
 +++ b/packages/llm/llm/src/index.ts
-@@ -1050,6 +1050,7 @@ export class LlmRuntime extends TypertRemoteService {
+@@ -1083,6 +1083,7 @@ export class LlmRuntime extends TypertRemoteService {
    private async * adapterStream(
      options: GenerateOptions,
      prepared?: PreparedDispatch,
@@ -4992,7 +4199,7 @@ index 24b06101..0451407e 100644
    ): AsyncGenerator<StreamChunk> {
      let iterator: AsyncIterator<StreamChunk>
      try {
-@@ -1074,6 +1075,7 @@ export class LlmRuntime extends TypertRemoteService {
+@@ -1107,6 +1108,7 @@ export class LlmRuntime extends TypertRemoteService {
            'INVALID_PREPARED_CALL',
          )
        }
@@ -5000,7 +4207,7 @@ index 24b06101..0451407e 100644
        const resolvedOptions = callConfigEquals(options, resolvedConfig)
          ? options
          : Object.isFrozen(options)
-@@ -1147,21 +1149,26 @@ export class LlmRuntime extends TypertRemoteService {
+@@ -1180,21 +1182,26 @@ export class LlmRuntime extends TypertRemoteService {
     * finish chunks; middleware, nested-call, cleanup, and consumer failures
     * remain thrown.
     * @param options - the full request; `options.provider` selects the adapter.
@@ -5030,33 +4237,11 @@ index 24b06101..0451407e 100644
      )
    }
  }
-diff --git a/packages/llm/llm/tests/service.spec.ts b/packages/llm/llm/tests/service.spec.ts
-index 76678c99..b06c7193 100644
---- a/packages/llm/llm/tests/service.spec.ts
-+++ b/packages/llm/llm/tests/service.spec.ts
-@@ -943,13 +943,16 @@ describe('LlmRuntime', () => {
-       return next()
-     })
- 
-+    let resolved: Readonly<LlmCallConfig> | undefined
-     for await (const _chunk of ctx.llm.stream({
-       provider: 'initial',
-       model: 'model',
-       messages: [],
--    })) { /* drain */ }
-+    }, (actual) => { resolved = actual })) { /* drain */ }
- 
-     expect(adapter.lastOptions?.reasoningEffort).toBe(brandString<ReasoningEffortId>('standard'))
-+    expect(resolved).toMatchObject({ provider: 'routed', model: 'model', reasoningEffort: 'standard' })
-+    expect(Object.isFrozen(resolved)).toBe(true)
-     disposeRouting()
- 
-     const frozenRequest: GenerateOptions = Object.freeze({
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index 91f3346e..88ca553a 100644
+index 9a84d64b21..9e6561b480 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
-@@ -7902,6 +7902,12 @@ importers:
+@@ -7419,6 +7419,12 @@ importers:
        '@deepseek-ai/dsh-session':
          specifier: workspace:*
          version: link:../../core/session
@@ -5069,11 +4254,34 @@ index 91f3346e..88ca553a 100644
        '@deepseek-ai/dsh-session-projection':
          specifier: workspace:*
          version: link:../../session/session-projection
+@@ -20848,10 +20854,12 @@ packages:
+ 
+   '@modelcontextprotocol/server-everything@2026.8.31':
+     resolution: {integrity: sha512-5U3OZh8Xq0Li4nA26l6uNvV9/1suMDuWSn+NjLZIhzinhMY6N3A4DCrxVecBGPf2PsNFKTEv5krxGPRwzxc7jQ==}
++    deprecated: 'Date-based versions are no longer published. This package has resumed semantic versioning at 1.0.0: install the latest version.'
+     hasBin: true
+ 
+   '@modelcontextprotocol/server-filesystem@2026.8.31':
+     resolution: {integrity: sha512-kKaFkyAh6oipvc9+EAbJ552JafnMnOq5nzmzWkp1jJdBhTAAGpmIpWihUG1+rfNhmEFM98gUZDdCHCDD4v6a7Q==}
++    deprecated: 'Date-based versions are no longer published. This package has resumed semantic versioning at 1.0.0: install the latest version.'
+     hasBin: true
+ 
+   '@modelcontextprotocol/server@2.2.0':
+@@ -21822,6 +21830,9 @@ packages:
+   '@smithy/core@3.35.0':
+     resolution: {integrity: sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A==}
+     engines: {node: '>=18.0.0'}
++    deprecated: |-
++      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
++        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+ 
+   '@smithy/credential-provider-imds@4.5.2':
+     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
 diff --git a/scripts/gen-cordis-catalog.ts b/scripts/gen-cordis-catalog.ts
-index e13c3297..1916bb1b 100644
+index 92ae05967e..d5b2267d69 100644
 --- a/scripts/gen-cordis-catalog.ts
 +++ b/scripts/gen-cordis-catalog.ts
-@@ -421,10 +421,13 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
+@@ -404,10 +404,13 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
    AllowedModelRoute: 'subagent.md',
    SubagentModelSelectionSettings: 'subagent.md',
    AgentOptions: 'core.md',
@@ -5087,7 +4295,7 @@ index e13c3297..1916bb1b 100644
    CreateAgentOptions: 'core.md',
    CreateWorktreeRequest: 'worktrees.md',
    CreatedWorktree: 'worktrees.md',
-@@ -648,6 +651,11 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
+@@ -620,6 +623,11 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
    PtcRunSandbox: 'ptc-runtime.md',
    PtcRunResult: 'ptc-runtime.md',
    CompactionResult: 'compaction.md',
