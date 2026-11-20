@@ -2,184 +2,276 @@
 
 English | [中文](chatgpt-web-sidecar.zh.md)
 
-Status: **proposed architecture**. This document supersedes the patched-DSH
-approach in [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
-and [flywheel #57](https://github.com/ckanner/flywheel/pull/57). It does not
-modify DSH source.
+Status: **proposed architecture, revised after source review**. This is a
+design-only PR; the bridge and its acceptance tests are not implemented here.
+It supersedes [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
+and [flywheel #57](https://github.com/ckanner/flywheel/pull/57), both closed
+without merging. No DSH source modification is part of this design.
 
 ## 1. Decision
 
-Implement Web Pro as two ordinary pieces:
+Implement Web Pro through the existing `chatgpt` provider and a local
+`chatgpt-web-bridge` process. The plugin uses the public
+`ctx.llm.registerAdapter()` API; the bridge owns Chrome, the dedicated profile,
+the website protocol, request journal and provider-side recovery.
 
-1. the existing `chatgpt` DSH provider plugin, registering
-   `gpt-6-pro-web` through the public `ctx.llm.registerAdapter()` API;
-2. a local **ChatGPT Web bridge** process that owns Chrome, the browser profile,
-   the web conversation, turn journalling, idempotency and recovery.
+DSH owns the agent loop, authoritative history, tools, permissions and
+compaction. The bridge can make its own submissions durable and idempotent; it
+cannot promise a host acknowledgement, exactly-once local tools, or a veto on
+other providers.
 
-DSH remains an unmodified installation. The bridge is a provider-side runtime,
-not a harness fork.
+The Web model remains **GPT-6 Pro**:
+`chatgpt / gpt-6-pro-web / pro`. GPT-6.2 Astra/Sol and UltraFast remain SIWC
+features. Existing SIWC authentication, catalog and request behavior are
+preserved; Web login and receipts have their own namespace.
 
-The model remains **GPT-6 Pro** only. GPT-6.2 Astra/Sol and UltraFast belong to
-the SIWC provider and are not Web Pro models.
+### Review basis
+
+The contracts below were checked against the unmodified upstream
+[DSH source](https://github.com/deepseek-ai/deepseek-harness/tree/2e39e70496aa02986ca6a820c5d497e816b69d7e),
+the [ChatGPT plugin base](https://github.com/ckanner/dsh-plugin-chatgpt/tree/afec4caef1dd4a55926e5de29ccb992be63fd7d9)
+and [Flywheel main](https://github.com/ckanner/flywheel/tree/f016015a884351d081e066a4031a6814299f25e5).
+Source links identify review evidence, not a runtime host-tree pin. The
+released DSH `0.2.2-rc.5` tag is `9c2670d3bce5275e0d1610272958121af87787bb`;
+it is a separate tree and must be included in implementation acceptance.
+A declared 0.2/0.3 peer range is not evidence that every release has been tested.
 
 ## 2. Why the host patch is rejected
 
-The rejected candidate needed public host capabilities that stock DSH does not
-provide: durable response acknowledgement, replay veto, summary-route metadata
-and recovered-response adoption. It added those capabilities by patching DSH
-source files and pinning an exact host commit.
+The previous candidate added durable response acknowledgement, replay veto,
+summary-route metadata and recovered-response adoption by patching DSH source.
+That required users to replace the desktop/SDK host and maintain an exact
+source patch across upgrades. It did not satisfy the distributable-plugin goal.
 
-That has unacceptable properties for a distributable plugin:
+Stock DSH already has its own
+[session checkpoint policy](https://github.com/deepseek-ai/deepseek-harness/blob/2e39e70496aa02986ca6a820c5d497e816b69d7e/packages/session/session-checkpoint-policy/src/index.ts):
+it flushes logged requests and top-level tool intents before dispatch when
+installed by the normal host composition. This is DSH's durability boundary.
+A bridge receipt is a different fact and does not acknowledge that boundary.
 
-- it is a DSH fork, not a plugin;
-- every DSH upgrade requires patch rebasing;
-- the patch is tied to an exact source tree, not a version range;
-- users must replace their desktop/SDK host;
-- recovery guarantees cannot be validated on a stock installation.
+The replacement keeps provider durability in the bridge and uses only public
+plugin interfaces. It does not reproduce the old host hooks in a hidden shim.
 
-The replacement puts the provider-side durability boundary in the bridge. DSH
-does not need to know that the model response came from a browser.
+## 3. Architecture and ownership
 
-## 3. Architecture
-
-```text
-DSH stock host
-  Session / AgentLoop / tools / permissions / compaction
-        |
-        |  public llm adapter contract
-        v
-dsh-plugin-chatgpt
-  provider registration, model metadata, attachments, config
-        |
-        |  loopback HTTP + per-launch token
-        v
-chatgpt-web-bridge
-  turn queue / idempotency / journal / recovery
-  Chrome ownership / CDP / page protocol / image upload
-        |
-        |  dedicated Chrome profile
-        v
-ChatGPT website (GPT-6 Pro)
-```
-
-### Ownership
+The stock DSH adapter calls a local authenticated bridge over loopback HTTP.
+The bridge drives the website through its own Chrome profile.
 
 | Owner | Responsibility |
 | --- | --- |
-| DSH | authoritative session history, AgentLoop, tool execution, permissions, compaction and retry policy |
-| `chatgpt` plugin | provider row, model selection, config, attachment resolution, `StreamChunk` mapping, bridge health |
-| bridge | Chrome, login profile, browser transaction, prompt, page protocol, tool-call translation, durable turn journal, idempotency, recovery |
-| Chrome profile | ChatGPT website login only; no DSH secret or model token |
+| DSH | Session history, AgentLoop, tools, permissions, compaction, retry policy and host checkpoints |
+| `chatgpt` plugin | Provider/model metadata, attachment resolution, exact request normalization, bridge client, `StreamChunk` mapping and settings |
+| bridge | Profile/account binding, serialized browser actions, page protocol, journal, response cache and Web-request fences |
+| Flywheel | Its SDK invocation, task/role/candidate evidence, budgets, orchestration and any consumer recovery policy |
+| Chrome profile | Website login and bridge-owned chats; no copied DSH credentials |
 
-The bridge must not execute DSH tools. It emits validated tool calls; DSH decides
-whether and how to execute them.
+The bridge never executes DSH tools. A successful model response, a delivered
+tool call, a tool result and a completed Flywheel task are separate facts.
 
 ## 4. End-to-end interaction
 
+A **provider request** is one finite model response. A **browser conversation**
+may contain many such requests. A tool continuation is a new provider request
+and a new browser submission in the same verified conversation.
+
 ```mermaid
 sequenceDiagram
-  participant U as User
   participant D as DSH AgentLoop
-  participant P as chatgpt plugin
+  participant P as ChatGPT plugin
   participant B as Web bridge
-  participant C as Chrome/ChatGPT
-
-  U->>D: prompt
-  D->>P: adapter.stream(GenerateOptions)
-  P->>P: compute idempotency key
-  P->>B: POST /v1/turns
-  B->>B: load journal / acquire conversation lock
-  B->>C: prepare project-only conversation
-  B->>C: verify account, GPT-6, Pro
-  B->>C: submit prompt envelope
-  C-->>B: page response
-  B-->>P: SSE text/tool-call events
-  P-->>D: StreamChunk events
-  D->>D: execute local tools
-  D->>P: next adapter.stream(tool result)
-  P->>B: POST /v1/turns (same browser turn)
-  B->>C: submit tool results
-  C-->>B: final answer
-  B-->>P: finish + durable receipt
-  P-->>D: finish
-  D->>D: commit assistant history
+  participant C as Chrome
+  D->>P: stream immutable request
+  P->>B: POST request A
+  B->>B: admit and persist submission intent
+  B->>C: submit request A
+  C-->>B: complete tool response
+  B->>B: validate and durably cache response A
+  B-->>P: response A and terminal finish
+  P-->>D: tool blocks, finish tool-calls, close stream
+  D->>D: record assistant and execute permitted tools
+  D->>P: stream request B with results
+  P->>B: POST request B with parent receipt
+  B->>C: submit verified continuation
+  C-->>B: complete final response
+  B->>B: durably cache response B
+  B-->>P: response B and terminal finish
+  P-->>D: text blocks, finish stop, close stream
 ```
 
-The browser is never asked to execute DSH tools. The model returns a strict JSON
-tool call; the bridge validates it against the tools in this request; DSH runs
-the tool; the next adapter call carries the result back to the same browser turn.
+The [stock AgentLoop](https://github.com/deepseek-ai/deepseek-harness/blob/2e39e70496aa02986ca6a820c5d497e816b69d7e/packages/core/agent-loop/src/agent.ts)
+consumes the entire stream, records the assistant, then executes tools.
+Therefore **every tool-call response must finish and close before waiting for
+tool results**. The bridge releases the browser mutation slot at that boundary;
+it does not hold a stream or profile queue slot while DSH runs local tools.
 
 ## 5. Request identity and idempotency
 
-DSH may retry the same logical request after a transport failure, cancellation
-or process restart. The browser must not be submitted twice.
+### 5.1 Identity comes from the admitted request snapshot
 
-The adapter derives a stable key from public data:
+The public
+[`GenerateOptions` and `RequestMessage`](https://github.com/deepseek-ai/deepseek-harness/blob/2e39e70496aa02986ca6a820c5d497e816b69d7e/packages/llm/llm/src/types.ts)
+allow `system`, optional `sessionId`/`purpose`, durable messages with stable
+IDs, and identity-free one-shot inputs. The plugin must preserve these
+distinctions. It must not read the live session's latest `user/message` seq to
+invent a request identity: that event can differ from an asynchronous request's
+input, and retries can rebuild context or compact history.
+
+The plugin detaches an immutable GenerateOptions snapshot before asynchronous
+attachment or bridge work. It resolves exact attachment versions and obtains
+the authenticated bridge's durable installation/profile/account binding from
+that snapshot, then finalizes the wire envelope/hash before admission. It never
+rereads mutable caller input. The binding is checked again before mutation.
 
 ```text
-lastUserSeq = seq of the last user/message event in ctx.sessions.get(sessionId)
-idempotencyKey = sha256(
-  sessionId
-  + lastUserSeq
-  + purpose
-  + model
-  + reasoningEffort
-  + canonical(messages)
-  + canonical(tools)
-)
+binding = {
+  protocolVersion, installationId, providerRoute,
+  profileId, accountBinding, sessionId, purpose
+}
+anchor = identities from this request's admitted input
+payload = normalize(model, reasoningEffort, system, ordered messages, tools,
+                    controls, attachment versions, parentReceipt)
+requestHash = sha256(canonical({ binding, anchor, payload }))
+idempotencyKey = requestHash
 ```
 
-Properties:
+Canonicalization uses sorted object keys, ordered arrays and unambiguous typed
+serialization. It preserves effective system/developer instructions, tool
+schemas and results, model/effort, meaningful controls and image byte digests.
+Signals, temporary ports, launch tokens, client leases, delivery attempts and
+transport timestamps are excluded from the semantic request hash.
+The bridge independently recomputes the hash; same key with a different
+envelope is a conflict. The parent receipt must also match the receipt derived
+from the hashed assistant history before admission or cache lookup.
 
-- a DSH retry of the same request produces the same key;
-- a new user prompt in the same session produces a new last-user seq and key;
-- a tool continuation carries new tool-result content, so it has a new key;
-- a restarted DSH session has the same durable user event seq and messages;
-- model or effort changes produce a different key.
+| Request | Anchor and admission |
+| --- | --- |
+| Normal AgentLoop | Required session ID and stable message IDs from the supplied request; include the full effective body because a surface replacement can change content |
+| Compaction | Existing source-message IDs plus purpose and full summary input; the appended summary instruction may legitimately have no ID |
+| Session title | Session/purpose plus the semantic title input, system and controls; ignore the producer's freshly generated wrapper UUID for this purpose only |
+| Identity-free normal one-shot | Reject before browser action in v1; do not use an empty session, random retry key or another request's live user event |
 
-The key is computed by the plugin from public session state and the request. It
-does not require a DSH host hook.
+For titles, identical semantic input intentionally addresses the same cached
+work. A later title producer invocation is not evidence of the original
+request's consumption. For all purposes, only supported caller shapes are
+admitted; additional one-shot support needs an explicit durable operation
+identity and separate contract tests.
 
-For a tool continuation, the bridge stores the browser turn identity with the
-first key. The continuation key is new, but it carries the same session and the
-existing browser conversation reference, so the bridge attaches it to the same
-turn rather than starting a new project.
+### 5.2 The guarantee and its limits
+
+The bridge guarantees **at most one submission for an admitted exact request
+identity**. It cannot identify every semantic retry after DSH changes the
+request, compacts history, forks or creates a new session. Changed input must
+not be silently labeled the same logical operation.
+
+Every key, including a new one, first passes the persisted profile and
+conversation admission checks. An unresolved submission intent or browser
+outcome fences further submissions on that profile, including another DSH
+session. A model, effort, account or profile change does not automatically
+resolve an old record. Explicit inspection/reconciliation is required.
+
+The same pending key attaches to its existing work; completed text can be
+replayed from cache. Tool-bearing responses have the stricter delivery rules
+in §8. These fences govern Web requests through this bridge, not SIWC, another
+bridge installation, other providers or arbitrary local tools.
 
 ## 6. Bridge API
 
-The bridge binds `127.0.0.1` on an ephemeral port. The plugin receives the port
-and a per-launch bearer token through a private file or stdout handshake. Never
-expose it on a LAN interface.
+Version 1 binds `127.0.0.1` on an ephemeral port. All endpoints require the
+private per-launch bearer token. An authenticated health/admission response
+identifies the instance, protocol version and current profile/account binding;
+absence of a verified binding requires setup, not a model submission.
 
-### Start one turn
+### One finite request
 
 ```http
 POST /v1/turns
 Authorization: Bearer <launch-token>
 Content-Type: application/json
 Accept: text/event-stream
+```
 
+A schematic, valid JSON request:
+
+```json
 {
-  "idempotencyKey": "sha256:...",
-  "sessionId": "session-...",
+  "protocolVersion": 1,
+  "clientLeaseId": "client-lease",
+  "deliveryAttemptId": "delivery-attempt",
+  "idempotencyKey": "sha256:request-digest",
+  "installationId": "bridge-installation",
+  "provider": "chatgpt",
+  "profileId": "dedicated-profile",
+  "accountBinding": "verified-account-fingerprint",
+  "sessionId": "session-id",
+  "purpose": "normal",
   "model": "gpt-6-pro-web",
   "reasoningEffort": "pro",
-  "purpose": "normal" | "compaction" | "session-title",
-  "messages": [ ... DSH messages ... ],
-  "tools": [ ... DSH tool schemas ... ]
+  "system": "Effective out-of-band instructions, when supplied",
+  "messages": [
+    {
+      "id": "durable-message-id",
+      "role": "user",
+      "content": [{ "type": "text", "text": "Inspect the requested file." }]
+    }
+  ],
+  "tools": [],
+  "controls": {},
+  "attachmentVersions": [],
+  "parentReceipt": null
 }
 ```
 
-Response is `text/event-stream`:
+`purpose` is normalized to `normal` only when absent; recognized auxiliary
+protocol purposes are `compaction` and `session-title`. Recognizing a purpose
+does not establish that its requested controls are supported. Unsupported
+purposes or request options fail before browser action. Client lease and
+delivery-attempt IDs control response ownership; they do not create a new model
+request identity.
+
+The plugin forwards `GenerateOptions.system` using the same precedence as
+the existing [request converter](../../src/convert/request.ts); effective
+instructions must participate in hashing and transmission. It must not drop
+them just because they are not a leading message. Supported generation
+controls are normalized into `controls` and hashed. Controls the website
+cannot faithfully implement are rejected, not silently omitted or described
+as provider-enforced limits; §9 covers summarizer output caps.
+
+Images are resolved through the public attachment service to the exact
+request-version bytes. The API carries validated MIME, length and digest with
+inline bytes or a bridge-owned, digest-checked blob reference. It does not
+accept an arbitrary local path or silently substitute an attachment label.
+Unsupported file blocks fail before upload.
+
+### Response events and host mapping
+
+SSE uses normal `event:` and `data:` lines separated by a blank line:
 
 ```text
-event: turn        { "turnId": "...", "state": "preparing" }
-event: text        { "delta": "..." }
-event: reasoning   { "delta": "..." }       (optional display only)
-event: tool-call   { "callId": "...", "name": "...", "arguments": "..." }
-event: finish      { "reason": "stop", "responseDigest": "...", "state": "completed" }
-event: error       { "code": "WEB_UNCERTAIN", "retryable": false, "state": "uncertain" }
+event: turn
+data: {"turnId":"request-a","state":"accepted"}
+
+event: finish
+data: {"turnId":"request-a","reason":"tool-calls","responseDigest":"sha256:response","state":"completed"}
+
 ```
+
+This excerpt omits the response payload. The versioned response schema must
+carry the complete validated text/tool blocks, stable call IDs and receipt;
+`finish` alone is not a response. V1 buffers and validates the complete page
+envelope before exposing executable tool blocks. Observed progress events
+are separate from model content and cannot fabricate reasoning or usage.
+
+The plugin maps a validated response to public `block-start`, deltas,
+`block-end` and terminal `finish` chunks. Tool output ends with
+`reason: { kind: 'tool-calls' }`; final text ends with
+`reason: { kind: 'stop' }`, then the generator closes. No success chunks
+follow finish. Usage is omitted when unobserved.
+
+A bridge `WEB_UNCERTAIN` error is mapped to a structured public LLM failure
+and a visible recovery instruction. `retryable: false` in bridge JSON is
+not a host replay veto: stock retry policy operates on codes. The bridge
+must enforce its fence on every subsequent request even if the host retries
+the error or the consumer maps it to a generic code.
 
 ### Control
 
@@ -188,247 +280,439 @@ GET  /v1/turns/:turnId
 POST /v1/turns/:turnId/cancel
 POST /v1/turns/:turnId/recover
 POST /v1/turns/:turnId/discard
+POST /v1/clients
+POST /v1/clients/:clientId/heartbeat
+DELETE /v1/clients/:clientId
 GET  /health
 ```
 
-`recover` only reads durable evidence and returns a completed cached response.
-It must not resubmit a prompt. `discard` records an explicit human decision and
-retains the evidence needed to avoid resubmission.
+`recover` performs authenticated read-only journal/page reconciliation and
+returns evidence or a completed cached response; it never resubmits, runs
+tools or writes DSH history. `discard` records an explicit decision and keeps
+a tombstone. It is not permission to rerun a tool or proof that a remote
+generation stopped; an active/unknown browser still keeps its profile fenced.
+Control requests validate the caller's installation, session and turn ownership.
+Client registration grants a private lease; heartbeats maintain only that
+client's ownership, not evidence of model activity. Release affects only that
+lease. The implementation contract must bound expiry and reject stale leases.
 
-## 7. Turn state machine
+## 7. Request state machine and durability
 
-```text
-accepted
-   -> preparing
-   -> submitted
-   -> streaming
-   -> completed
-   -> failed
-   -> uncertain
-   -> cancelled
+```mermaid
+stateDiagram-v2
+  [*] --> accepted
+  accepted --> preparing
+  preparing --> submit_intent: durable intent before Send
+  submit_intent --> submitted: positive page evidence
+  submit_intent --> uncertain: crash or missing evidence
+  submitted --> observing
+  submitted --> uncertain: connection lost
+  observing --> completed: validate and persist full response
+  observing --> uncertain: outcome unavailable
+  accepted --> cancelled: before browser mutation
+  preparing --> cancelled: positively not submitted
+  preparing --> failed: admission failure
+  observing --> failed: known terminal invalid response
+  uncertain --> completed: reconcile exact response
+  uncertain --> failed: verified terminal failure
 ```
 
-Persist at least:
+At minimum the journal records:
 
 ```text
-turnId, idempotencyKey, sessionId, model, effort, purpose
-requestHash, conversationUrl, conversationId, promptMessageId
-responseDigest, providerResponseId, toolCalls, state
-createdAt, updatedAt, lastObservedAt
+schemaVersion, bridgeInstanceId, installationId, profileId, accountBinding
+turnId, idempotencyKey, requestHash, sessionId, purpose, model, effort
+generationId, projectId, conversationId, conversationUrl, parentReceipt
+normalizedRequest, attachmentDigests, submissionIntent, observedPromptId
+completeResponse, responseDigest, stableToolCalls, deliveryOwner, deliveryState, state
+createdAt, updatedAt, lastObservedAt, fenceReason
 ```
 
 Rules:
 
-- `completed`: cache the full response and return it for the same key;
-- `submitted` with unknown outcome: `uncertain`; never auto-resubmit;
-- `cancelled`: retain evidence; do not silently start a replacement turn;
-- bridge restart: replay `completed`, reconcile `streaming`, fence `uncertain`;
-- one Chrome profile is serialized globally; each DSH session gets a queue
-  position, not concurrent page mutation;
-- journal writes are atomic and flushed before emitting `completed`.
+- Acquire the profile/record lock, validate binding and persist admission.
+- **Atomically write and fsync `submit_intent` before any Send action.**
+  If the process dies after the click but before `submitted`, restart observes
+  the intent and reconciles; it cannot return to a sendable `preparing` state.
+- Project creation, uploads and cleanup also record their own mutation intent
+  and observed identity; an ambiguous setup action is not blindly repeated.
+- Persist and flush the full validated response, tool IDs and digest before
+  emitting successful model content or finish. No quota/time/error page or
+  stable partial text is a completed answer.
+- Journal durability includes atomic replacement and the necessary file and
+  parent-directory sync. For an existing installation, corruption, missing
+  evidence or a lost journal causes admission failure, not an empty fresh
+  registry. First installation creates its identity/store through explicit setup.
+- Submission cancellation is `uncertain` until page evidence proves its
+  outcome. Closing HTTP or terminating Chrome does not prove the website stopped.
+- Concurrent same-key callers join one browser operation, but this does not grant
+  every subscriber executable response delivery (§8). Different keys cannot
+  pass an unresolved profile fence. Browser mutation is serialized per physical profile.
+- Completed model response and host delivery are separate state. Tool-response
+  exposure is persisted before its first executable chunk; see §8.
+- `failed`, `cancelled` and `discarded` retain identity/tombstones. A new
+  operation requires explicit admissible input; it never resets a prior key.
 
-## 8. Tool loop
+## 8. Tool loop, receipts and recovery limits
 
-Web ChatGPT has no public tool-call API. The bridge therefore uses a strict,
-versioned prompt envelope:
+The page receives a strict versioned envelope containing only the admitted
+tool schemas. The bridge validates the entire response, exact names, JSON
+arguments and call IDs before mapping it into DSH blocks. It does not widen
+permissions, run tools, or treat prose as a tool result.
 
-1. include the exact tool schemas supplied by DSH;
-2. require a single JSON object for a tool call;
-3. validate name, arguments and call ID against the request;
-4. emit a DSH `tool-call` chunk;
-5. DSH executes the tool under its normal permission policy;
-6. send the durable tool result back to the same browser turn;
-7. repeat until a final text answer.
+Every model response, including a tool-call response, is a separately completed
+provider request. Stable call IDs are namespaced to that response; duplicate
+IDs within it fail. Later history may legitimately contain a different
+response with a reused short website ID, so continuation checks use the parent
+receipt and call occurrence, not a global short-ID comparison.
 
-The bridge never invents a tool or widens permissions. Unknown tool names,
-malformed arguments, duplicate call IDs and out-of-order results fail closed.
+The public
+[`finish.replayState`](https://github.com/deepseek-ai/deepseek-harness/blob/2e39e70496aa02986ca6a820c5d497e816b69d7e/packages/llm/llm/src/types.ts)
+can carry an adapter-private receipt in `ReplayEnvelope.response`:
 
-## 9. Compaction and session titles
+```json
+{
+  "kind": "chatgpt-web-receipt",
+  "version": 1,
+  "installationId": "bridge-installation",
+  "provider": "chatgpt",
+  "profileId": "dedicated-profile",
+  "accountBinding": "verified-account-fingerprint",
+  "sessionId": "session-id",
+  "purpose": "normal",
+  "model": "gpt-6-pro-web",
+  "generationId": "generation-id",
+  "turnId": "request-a",
+  "requestHash": "sha256:request",
+  "responseDigest": "sha256:response"
+}
+```
 
-DSH owns history and the CompactionEngine. For `purpose: "compaction"`, the
-bridge:
+DSH may store it on the assistant's source and return it in a later request.
+The bridge validates it against its journal, current session/generation,
+exact assistant blocks and ordered tool results. A copied/forked receipt,
+another account or a changed prefix cannot adopt an old request.
 
-- uses a separate summary conversation (not the main task conversation);
-- disables tools;
-- returns text only;
-- uses the same idempotency and journal rules;
-- never changes DSH history itself.
+SIWC and Web share an adapter, so host filtering alone does not isolate their
+opaque state. Each branch recognizes only its own kind/version/route/model/
+account scope; foreign opaque SIWC state never becomes a Web instruction or
+receipt.
 
-`session-title` is optional and uses a short-text turn with no tools. It is
-separate from the main model route.
+### Tool delivery boundary
+
+DSH owns permission decisions, tool execution and result durability. The
+ordinary adapter request does not supply a universal typed proof of tool
+execution/unknown outcome; `isError` and error prose are not such proof.
+
+V1 persists `delivery-intent` before exposing a tool-bearing response.
+An atomic durable claim grants exactly one `clientLeaseId + deliveryAttemptId`
+the first delivery. Other same-key subscribers receive status/inspection only,
+never a second executable copy. Losing that owner does not automatically transfer
+the claim; it enters inspection. Completed text-only responses may be shared.
+After exposure might have occurred, **a later provider retry does not
+automatically emit that cached tool response again**. It either recognizes a
+valid continuation with the parent receipt and the full matching result set,
+or requires explicit inspection. Missing, partial or conflicting results do
+not authorize another tool invocation. An uninterrupted first delivery is the
+normal supported path; more permissive reconnect needs its own proof/tests.
+
+A receipt proves what the bridge recorded. It does not prove host fsync,
+tool success, safe tool replay or Flywheel task completion. The bridge does
+not install a global DSH tool fence. Normal stock checkpoint behavior remains
+DSH-owned, and custom host compositions must verify their own policy.
+
+## 9. History projection, compaction and titles
+
+### 9.1 Keep the website aligned with the current DSH request
+
+DSH's request surface is authoritative. The bridge stores a binding for
+`installation/account/profile/session/purpose/generation` plus the exact
+projected prefix and receipt chain.
+
+Only an exact, verified append to that prefix can use a delta in the existing
+conversation. Compaction, fork, history replacement, changed effective
+instructions/tools or unverified page edits require a fresh generation seeded
+from the **current** request. The bridge does not append an entire rewritten
+history to an old chat, silently truncate input, or maintain its own summary.
+
+A fresh generation uses a new empty private **project-only Project and chat**,
+not just another chat in the old Project. OpenAI documents that
+[project-only memory can reference other conversations in the same Project](https://help.openai.com/en/articles/10169521-projects-in-chatgpt).
+Thus reusing that Project could reintroduce history DSH removed.
+Old generations remain inspectable evidence; they are not copied into the new
+Project or automatically deleted.
+
+Before input or upload, verify the actual account, project, conversation,
+GPT-6/Pro controls and absence of an interfering generation/hosted app mode.
+Recheck after uploads and immediately before sending. A matching URL alone is
+insufficient. If isolation or context fit cannot be established, fail before
+submission; do not let website-side history trimming masquerade as DSH compaction.
+
+### 9.2 Auxiliary requests
+
+For `purpose: compaction`, use a separate purpose-specific Project, prohibit
+tool execution and return validated text only. The host may supply historical
+tool schemas for prefix alignment; these are hashed as input but are never
+active tools for the summary response. A failed/truncated summary does not
+replace DSH history.
+
+The public stock summarizer can use its configured provider/model. Keep that
+routing decision in DSH. Website input/output limits must be explicit:
+a requested `maxTokens`, `temperature` or `stop` is not automatically a
+website capability. Unsupported enforcement fails with a clear option error.
+The stock summary producer always supplies `maxTokens`; the stock title
+producer also supplies an output cap. Before enabling long Web sessions while
+Web control enforcement remains unproved, setup must check an explicit supported
+summary provider/model in the existing DSH settings. Model-backed titles likewise
+need an explicit supported route, or the optional title feature remains disabled.
+Do not silently switch routes or count their default fallback to the Web model
+as a supported configuration. Web-backed auxiliary requests are accepted only
+after their option semantics and overflow behavior are proved. Unknown usage
+never becomes a zero count or a hard token-budget guarantee.
+
+`session-title` is optional, text-only, separately scoped and content-addressed
+as described in §5. It must not select a newer live user event, execute tools,
+pollute the task Project or imply that a newly generated title request is a
+retry of an older UUID.
 
 ## 10. Model selection and metadata
 
-The plugin registers the existing `chatgpt` provider and adds one explicit
-Web model:
+Keep the existing provider and add the explicit Web model when enabled and
+the bridge is ready:
 
 ```text
 provider: chatgpt
 model: gpt-6-pro-web
 label: GPT-6 Pro · Web
-reasoningEffort: pro
+reasoning.efforts: [pro]
+reasoning.defaultEffort: pro
 ```
 
-The model is listed only when the bridge is healthy and the Web feature is
-enabled. `resolveModel` validates the exact model/effort. If the account,
-browser login, GPT-6 control or Pro control is unavailable, admission fails
-before any prompt is submitted.
+The public `resolveModel(provider, model, signal?)` receives no effort
+argument. It resolves the exact model and advertises the supported reasoning
+metadata; stock call resolution validates the requested effort. The plugin and
+bridge also validate the actual model/effort at dispatch and before Send.
+Unsupported selections fail instead of being silently changed.
 
-The existing SIWC model roster is independent and remains dynamic from the
-account catalog. GPT-6.2 Astra/Sol and UltraFast are SIWC features, not Web
-models.
+Catalog health controls visibility, not the sole admission gate. A previously
+configured model must fail clearly when login or the bridge is unavailable.
+The SIWC roster continues to come from its account catalog, with independent
+authentication and failure behavior.
 
 ## 11. Security and privacy
 
-- bridge listens on loopback only; bearer token is per launch, never logged;
-- dedicated Chrome profile under the user's home, directory mode 0700;
-- no Chrome remote-debugging endpoint exposed beyond loopback;
-- the bridge never receives DSH session contents beyond the explicit request;
-- DSH tool permissions remain the only authority for local execution;
-- website text and model output are untrusted; prompt injection cannot grant a
-  tool or permission;
-- profile locks prevent two bridge instances from driving the same profile;
-- aborting an HTTP stream does not by itself prove that the browser stopped:
-  after submit, cancellation is an uncertain outcome until the page is
-  reconciled.
+- Authenticate every bridge endpoint, including status/recovery; do not log tokens.
+- Enforce literal loopback endpoints, validate Host/Origin, disable permissive
+  CORS and redirects, and bound request/event/image sizes. `bridgeUrl` cannot
+  turn this local transport into an unreviewed remote service.
+- Use owner-only profile, journal and handshake directories (0700) and files
+  (0600). Protect request/response contents as sensitive local data.
+- Bind the profile lock to its canonical physical path and OS user. Verify
+  handshake instance identity; a stale PID/port alone does not establish ownership.
+- Keep CDP on loopback or a private pipe; reuse only bridge-owned Chrome.
+  Never attach to or kill an arbitrary user browser.
+- Resolve only explicit request attachments through the public host service;
+  arbitrary file reads or unrestricted URL fetching are not a bridge API.
+- Website/model text is untrusted. It cannot add a tool, raise permissions,
+  change the selected account or authenticate a recovery operation.
+- Login is a visible user action in the dedicated profile. No DSH or SIWC
+  credential is copied into Chrome, and setup does not silently change account
+  memory/privacy settings.
 
 ## 12. Process lifecycle and installation
 
-The plugin package owns a managed bridge child process:
+V1 bundles the TypeScript bridge runtime in the plugin package. Installation
+uses the normal plugin flow plus explicit login/setup; no application or DSH
+package is replaced. A separately managed bridge is optional, authenticated,
+local-only and protocol-version checked.
 
-- plugin startup performs `GET /health`; if absent, it launches the bundled
-  bridge executable on an ephemeral port;
-- the bridge writes a private handshake file with port and launch token;
-- plugin disposal stops only a bridge it started; an externally configured
-  bridge is left running;
-- `bridgeCommand` / `bridgeUrl` config allows a separately managed bridge;
-- Chrome is started by the bridge with a dedicated `--user-data-dir`; the
-  bridge owns the process group and cleans it up;
-- first use opens a visible login window; no DSH credential is copied into the
-  browser profile.
+One physical profile has one bridge service with a lifetime independent of
+the first plugin client:
 
-No DSH source file, package, or application is modified.
+1. Atomically discover/start under the profile ownership lock. Validate the
+   private handshake, instance ID, protocol and binding before joining.
+2. Each Desktop/SDK client holds its own lease and request ownership. A later
+   client must not be treated as a child of the original launcher.
+3. Plugin disposal releases its lease and cancels only its requests. It does
+   not kill a shared bridge or another client's generation.
+4. The bridge may stop under a documented idle policy only after no client
+   leases or active work remain. Persist/reconcile uncertain work first.
+5. Cleanup touches only the Chrome process group the bridge created and can
+   still identify. External bridge lifetime belongs to its external owner.
+
+An explicit trusted `bridgeCommand` uses an executable and argument array,
+not an interpolated shell string. The managed package and protocol versions
+are verified at startup. Replacing a lost journal or profile is an explicit
+recovery operation; automatic restart never creates a blank evidence store
+and treats old work as new.
 
 ## 13. Failure matrix
 
 | Failure | Result |
 | --- | --- |
-| bridge unavailable before submit | retryable provider error; no browser action |
-| Chrome cannot start | retryable setup error; no prompt |
-| account/model/effort mismatch | non-retryable admission error before submit |
-| prompt submit response lost | `uncertain`; no automatic resubmit |
-| browser connection lost after submit | `uncertain`; reconcile on restart |
-| DSH retry with same key | cached completed response, or same pending state |
-| DSH cancellation before submit | `cancelled`; no browser submit |
-| DSH cancellation after submit | `uncertain` until page evidence is reconciled |
-| malformed tool call | fail the turn; no tool execution |
-| tool result uncertain | keep domain fenced; no resubmit |
-| compaction request fails | DSH keeps existing history and reports the failure |
+| Bridge absent before admission | Setup/transport failure; no browser action |
+| Account/model/effort/option mismatch | Admission error before upload/input |
+| Crash after durable intent, before submission acknowledgement | Uncertain; reconcile, never blindly Send again |
+| Page connection lost after submission | Profile fenced until exact outcome is established |
+| Same key and envelope | Join existing work or replay admissible cached text |
+| Same key, different envelope | Conflict; no mutation |
+| New key while profile outcome is uncertain | Fenced too; session/model changes cannot bypass it |
+| Cancellation with positive proof of no submission | Cancelled with evidence; no replacement |
+| Cancellation after intent/submission | Uncertain until reconciled |
+| Malformed/partial/error-page response | No successful text/tool response; preserve submitted evidence |
+| Tool response may have been delivered; result missing | Inspection required; no automatic tool-response replay |
+| Summary/title failure or unsupported controls | Host retains its history; no fallback rewrite by the bridge |
+| Launching Desktop exits while another SDK client is active | Release only that client's lease; keep the shared service alive |
 
 ## 14. Testing and acceptance
 
-### Unit
+These are **planned gates**, not results established by this design PR.
 
-- idempotency key stability across retries, new user prompts and restarts;
-- state machine and journal replay;
-- API validation, token/auth, cancellation and malformed input;
-- tool envelope validation and unknown-tool rejection;
-- response cache and `uncertain` fencing.
+### Unit and protocol
 
-### Integration without DSH desktop
+- Exact-envelope hashing includes out-of-band system instructions, controls,
+  account/profile/provider identity and exact image versions.
+- Stable normal inputs, compaction's identity-free trailing instruction,
+  content-addressed titles and rejection of anonymous normal calls.
+- Same-key conflict, concurrent duplicate requests and a new key/session while
+  a profile is fenced.
+- Two same-key consumers can cause only one browser submission and only one
+  executable tool-response delivery; owner loss cannot transfer that delivery.
+- Fault injection before/after every journal write, fsync, Send, response cache
+  and tool-delivery intent; no duplicate send or automatic executable replay.
+- Complete SSE/StreamChunk termination, validated blocks and stable tool IDs;
+  no partial response promoted to success.
+- Receipt validation across forks, copied sessions, account changes and SIWC/Web.
+- New generation after compaction/history drift, including Project-level
+  isolation; attachment replay uses the exact request bytes.
+- Two-client startup/disposal races, stale handshake, crashed owner, authentication
+  and bounded input.
 
-- adapter against a mock bridge implementing the SSE contract;
-- bridge against fixture Chrome pages;
-- real DSH AgentLoop + stock host + fixture page for one tool loop;
-- compaction and session-title purposes;
-- retry/cancel/restart journeys.
+### Integration on an unmodified host
+
+- Public adapter plus stock AgentLoop completes two model requests around one
+  local tool execution; the first stream finishes before the tool starts.
+- Stock checkpoint policy remains installed; no monkey patch or copied host source.
+- Retry after runtime-context refresh/compaction exercises changed envelopes
+  and fences instead of assuming the key is unchanged.
+- Summary/title calls preserve `system` and use isolated purpose contexts;
+  unsupported options fail without history loss.
+- Response exposure, DSH restart, bridge restart and tool-result ambiguity are
+  checked independently from browser submission recovery.
+- Shared Desktop/SDK clients cannot terminate one another's work.
 
 ### Real acceptance
 
-1. stock DSH `0.2.2-rc.5`;
-2. install plugin and bridge only;
-3. sign in in the dedicated Chrome profile;
-4. select `GPT-6 Pro · Web`;
-5. text answer;
-6. local tool call and result;
-7. image input;
-8. cancel and retry without duplicate page submission;
-9. bridge restart and DSH restart recovery;
-10. DSH 0.2/0.3 upgrade without source changes.
+Use released stock DSH `0.2.2-rc.5`, install only the plugin/bridge, sign in,
+select Web Pro, then verify text, tools, images, long history/generation changes,
+cancellation, both restarts and multiple clients on macOS. Repeat the relevant
+contract suite for each declared supported 0.2/0.3 release before claiming it
+tested. Fixture Chrome and offline contracts do not establish signed-in
+website behavior.
 
-No host patch is part of acceptance.
+## 15. Migration and Flywheel integration
 
-## 15. Migration from the rejected candidate
+### Reuse from the rejected candidate
 
-1. Freeze #9/#57; do not merge or publish.
-2. Extract the browser/CDP/page/recovery code from #9 into a standalone bridge
-   package; remove all host-hook dependencies.
-3. Keep the existing provider/adapter code as a thin bridge client.
-4. Add the idempotency and journal layers.
-5. Implement a mock bridge and contract tests before porting browser details.
-6. Port tool loop, images, compaction and recovery incrementally.
-7. Publish the bridge and plugin independently; Flywheel consumes the same
-   provider route and needs no special integration.
+Keep #9/#57 closed and retain their branches/history. Extract reviewed CDP,
+page verification, image, response parsing and cancellation code selectively.
+Remove host-hook dependencies, old host-tree admission and global recovery
+claims. Do not merge or release the old alpha archive as the new bridge.
 
-Reusable parts from #9: browser CDP ownership, page model verification, image
-upload, response parsing, tool protocol, cancellation and evidence model.
-Discard: host policy hooks, host patch, host-tree pinning, and any claim that a
-plugin can guarantee host-level durable ACK.
+Implement the public contract and crash tests before porting the browser.
+The bundled bridge is the initial distribution decision; any future separate
+package must preserve protocol and journal migration compatibility.
+
+### Flywheel requires a separate integration PR
+
+Flywheel can reuse `harness: dsh` and the ordinary `chatgpt` provider route.
+That does **not** make its existing UI, policy or recovery Web-aware.
+The [current main source](https://github.com/ckanner/flywheel/tree/f016015a884351d081e066a4031a6814299f25e5)
+has the following concrete follow-up requirements:
+
+| Boundary | Current behavior and required work |
+| --- | --- |
+| Exact model/effort | UI offers no new `pro` option; empty DSH thinking becomes `high`; execution-policy schema/validator rejects `pro`. Add and test the exact Web binding without changing unrelated provider defaults. |
+| Web outcome | `WEB_UNCERTAIN` currently becomes a generic `SERVER`; an SDK `turn/end` error may become `failed`, and later work can use a new session. Preserve independent Web facts and enforce the appropriate admission fence. |
+| Recovery | Current adapter-journal recovery is for Codex/Claude. Add reviewed Web inspection/recovery if required; a cached model answer is not a complete SDK task or candidate receipt. |
+| Budget | Preserve missing usage as unknown. With an explicit daily token limit, hard-budget mode stops later calls after unknown usage; it cannot retrospectively measure a Web turn. Never substitute zero. |
+| Compaction/title | The current SDK overlay disables these host plugins. Desktop acceptance is not evidence that Flywheel enables them; decide and verify its composition separately. |
+| Liveness | Validate long Pro thinking/queue phases against actual watchdog deadlines. Only real observations can count as activity; daemon health is not model progress. |
+
+Relevant current code:
+[driver defaults](https://github.com/ckanner/flywheel/blob/f016015a884351d081e066a4031a6814299f25e5/internal/drivers/dsh.go),
+[effort policy](https://github.com/ckanner/flywheel/blob/f016015a884351d081e066a4031a6814299f25e5/internal/config/execution_policy.go),
+[SDK lifecycle/overlay](https://github.com/ckanner/flywheel/blob/f016015a884351d081e066a4031a6814299f25e5/plugins/dsh/src/bridge.js),
+[error mapping](https://github.com/ckanner/flywheel/blob/f016015a884351d081e066a4031a6814299f25e5/plugins/dsh/src/protocol.js)
+and [recovery entry](https://github.com/ckanner/flywheel/blob/f016015a884351d081e066a4031a6814299f25e5/internal/machine/session_recovery.go).
+
+No bridge guarantee substitutes for Flywheel's task, workspace, permission,
+candidate or other-provider controls. This design does not claim automatic
+Web adoption or cross-provider tool fencing on the current main branch.
 
 ## 16. Disposition of existing pull requests
 
 | Pull request | Disposition |
 | --- | --- |
-| [dsh-plugin-chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9) | **Close as superseded.** Keep the branch and commits as research evidence; do not merge or publish. |
-| [flywheel #57](https://github.com/ckanner/flywheel/pull/57) | **Close as superseded** by this design. It depends on #9's patched host; do not merge or release. |
-| [dsh-plugin-chatgpt #10](https://github.com/ckanner/dsh-plugin-chatgpt/pull/10) | Already merged; DSH 0.2–0.3 peer range belongs to the normal plugin. |
-| [dsh-plugin-chatgpt #11](https://github.com/ckanner/dsh-plugin-chatgpt/pull/11) | Already merged; GPT-6.2 metadata belongs to the SIWC provider. |
-| [dsh-plugin-chatgpt #12](https://github.com/ckanner/dsh-plugin-chatgpt/pull/12) | Already merged; UltraFast service-tier variants belong to the SIWC provider. |
-| [dsh-plugin-chatgpt #13](https://github.com/ckanner/dsh-plugin-chatgpt/pull/13) | Already merged; display labels. |
-| [flywheel #59](https://github.com/ckanner/flywheel/pull/59) | Already merged and released as Flywheel 0.37.3. |
+| [ChatGPT #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9) | Closed, unmerged, superseded; preserve research evidence |
+| [Flywheel #57](https://github.com/ckanner/flywheel/pull/57) | Closed, unmerged, superseded; do not ship its patched-host integration |
+| [ChatGPT #10](https://github.com/ckanner/dsh-plugin-chatgpt/pull/10) | Merged; ordinary plugin DSH compatibility range |
+| [ChatGPT #11](https://github.com/ckanner/dsh-plugin-chatgpt/pull/11) | Merged; SIWC GPT-6.2 metadata |
+| [ChatGPT #12](https://github.com/ckanner/dsh-plugin-chatgpt/pull/12) | Merged; SIWC UltraFast variants |
+| [ChatGPT #13](https://github.com/ckanner/dsh-plugin-chatgpt/pull/13) | Merged; display labels |
+| [Flywheel #58](https://github.com/ckanner/flywheel/pull/58) | Merged; full conversation-page workbench |
+| [Flywheel #59](https://github.com/ckanner/flywheel/pull/59) | Merged; compatibility window, main package version 0.37.3 |
 
-Closing #9/#57 must preserve their branches and validation records. The host
-patch is not deleted from Git history; it is simply not part of the supported
-product path.
+These merged changes remain valid. Closing the old Web candidates does not
+revert their independent SIWC, compatibility or UI work. Source versions and
+merged status do not by themselves establish a registry installation test.
 
 ## 17. Delivery phases
 
-1. **Design** — this document, review and PR closure.
-2. **Bridge skeleton** — API, journal, idempotency, mock page, plugin adapter
-   client; no browser UI yet.
-3. **Text-only Web Pro** — real Chrome, login, account/model/Pro verification,
-   text turn.
-4. **Tool loop** — schema envelope, validation, DSH tool execution, tool result
-   continuation.
-5. **Images and compaction** — uploads, summary purpose, unknown usage.
-6. **Recovery hardening** — cancellation, restart, uncertain turns, admin
-   commands.
-7. **Live acceptance and release** — stock DSH, signed-in account, macOS
-   Desktop, CI fixtures, documented limits.
+1. **Design review** — this document and explicit stock-host boundaries.
+2. **Contract and durability skeleton** — normalized API, journal, submission
+   intent, fences, leases, mock page and thin client; crash/retry tests first.
+3. **Text Web Pro** — real Chrome, login, isolation, model/Pro verification and
+   finite text requests.
+4. **Tool loop** — finite tool responses, receipt/result matching and conservative
+   delivery recovery on stock DSH.
+5. **Images and history** — exact bytes, projection/generation changes, stock
+   compaction interaction and explicit auxiliary option support.
+6. **Recovery and consumer integration** — admin inspection, multi-client
+   restarts and the separate Flywheel contracts in §15.
+7. **Live acceptance and release** — stock macOS Desktop, signed-in account,
+   supported-version fixtures and the exact reviewed package.
 
-Each phase has its own PR. No phase modifies DSH source.
+Each phase has its own implementation PR. Submission durability is part of the
+first executable contract, not postponed until a late recovery phase. None
+modifies DSH source.
 
-## 18. Open questions
+## 18. Decisions before implementation acceptance
 
-- Bridge implementation language: TypeScript first (reuse the existing CDP and
-  page code); native binary only if process startup becomes a distribution
-  constraint.
-- Bundle the bridge in the plugin package initially, with an optional external
-  `bridgeUrl`; split it later only if its lifecycle requires it.
-- Whether a recovered completed response may be returned through a later DSH
-  retry when the original turn is already closed. The initial policy is:
-  cached retry only; otherwise leave the turn for explicit inspection.
-- Whether Web usage should remain `unknown` (no fabricated counters). Initial
-  answer: yes; hard budget cannot be enforced by the bridge alone.
-- Whether to expose a provider command for status/recover/discard, or only a
-  settings card. Initial answer: both, with commands as the recovery surface.
+- V1 uses TypeScript and bundles the bridge with the plugin; an optional
+  external bridge is local-only and protocol checked.
+- Identical admitted text requests may return cached responses; ambiguous
+  tool-response delivery requires inspection.
+- Web usage remains unknown unless directly observed. No fabricated token,
+  cost, visual-consumption or hard-budget claim is allowed.
+- Unsupported generation controls fail explicitly; Web summary/title routes
+  require tested semantics before being advertised.
+- Commands and the provider settings card expose status, inspect/recover and
+  explicit discard with clear scope.
+- Live selectors, context capacity, image behavior and Project isolation still
+  require signed-in acceptance; this document does not certify them.
 
 ## 19. Acceptance criteria for this design
 
-- a stock DSH session can select `GPT-6 Pro · Web` with no host patch;
-- the browser is submitted at most once per logical request;
-- DSH retries and restarts return the cached or uncertain state without
-  duplicate submission;
-- DSH tools execute only through DSH permissions;
-- the plugin and bridge can be upgraded independently of DSH;
-- #9/#57 are closed and no release depends on a patched DSH.
+- The product installs into stock DSH through public APIs; no host patch or
+  application replacement is required.
+- Request identity refers to the supplied immutable input, preserving system
+  instructions and exact attachment versions.
+- Every admitted request has one durable submission identity; uncertainty
+  fences new keys as well as retries on the affected profile.
+- A tool response finishes before DSH executes tools; bridge cache/replay never
+  claims host ACK or exactly-once tool execution.
+- Compaction/history changes cannot silently reuse stale browser/Project context.
+- Shared bridge lifetime is independent of the first client.
+- Flywheel integration is separately specified and tested; old #9/#57 are not
+  revived or used as evidence of the new architecture's acceptance.
