@@ -20,6 +20,21 @@ describe('describeModel', () => {
     assert.equal(model.defaultReasoningEffort, 'medium')
   })
 
+  it('describes GPT-6.2 Astra and Sol with the current 1.05M context and reasoning set', () => {
+    for (const [id, name] of [['gpt-6.2-astra', 'GPT-6.2 Astra'], ['gpt-6.2-sol', 'GPT-6.2 Sol']] as const) {
+      const model = describeModel({ slug: id })
+      assert.equal(model.name, name)
+      assert.equal(model.metadataSource, 'catalog')
+      assert.equal(model.contextWindow, 1_050_000)
+      assert.equal(model.maxTokens, 128_000)
+      assert.deepEqual(model.input, ['text', 'image'])
+      assert.deepEqual(model.reasoningEfforts?.map(effort => effort.id), [
+        'low', 'medium', 'high', 'xhigh', 'max',
+      ])
+      assert.equal(model.defaultReasoningEffort, 'medium')
+    }
+  })
+
   it('omits the efforts a model maps to null', () => {
     // o3 accepts low/medium/high but not xhigh or max; offering those would
     // produce requests the model rejects.

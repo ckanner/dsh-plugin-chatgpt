@@ -94,7 +94,7 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
-Model metadata comes from the account listing. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Sign-in lives on that row's card.
+Model metadata comes from the account listing. The bundled catalog now describes **GPT-6.2 Astra** and **GPT-6.2 Sol** (`gpt-6.2-astra`, `gpt-6.2-sol`) with their 1,050,000-token context, 128,000-token output cap and reasoning levels; they appear when the signed-in account's catalog advertises them. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Sign-in lives on that row's card.
 
 For example, add this field to the plugin's configuration to set DSH's context budget to 1,000,000 tokens for models without an individual override, even if the catalog reports a maximum of 872,000. Remove it to restore account defaults for those models. These settings are independent of Codex settings. DSH still reserves headroom for compaction; they do not change service-side request limits.
 
