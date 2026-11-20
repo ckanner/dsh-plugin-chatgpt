@@ -32,8 +32,8 @@ try {
     banner: { js: "import { createRequire as __hostRequire } from 'node:module'; const require = __hostRequire(import.meta.url);" },
   })
   const inputs = new Set(Object.keys(result.metafile.inputs).map(path => resolve(dsh, path)))
-  for (const path of ['vendor/cordis/src/fiber.ts', 'vendor/loader/src/index.ts', 'vendor/include/src/index.ts',
-    'vendor/schemastery/src/index.ts', 'packages/llm/llm/src/index.ts', 'packages/boot/config-editor/src/index.ts']) {
+  for (const path of ['vendor/cordis/src/fiber.ts', 'vendor/loader/src/index.ts',
+    'vendor/schemastery/src/index.ts', 'packages/llm/llm/src/index.ts']) {
     assert.ok(inputs.has(join(dsh, path)), `Verification must include the actual public host implementation: ${path}`)
   }
   assert.ok(inputs.has(join(plugin, 'src/index.ts')), 'Verification must activate the actual plugin entry')
@@ -44,5 +44,5 @@ try {
   await writeFile(runner, "import './lib/runtime/verify.mjs'\n")
   execFileSync(process.execPath, [runner, directory], { cwd: directory, stdio: 'inherit', timeout: 30_000 })
   assert.equal(git('status', '--porcelain', '--untracked-files=no'), '', 'Verification must not alter stock DSH source')
-  console.log(`PASS: stock DSH ${revision}; actual plugin activation, async disposal, config remount and nested title inventory`)
+  console.log(`PASS: stock DSH ${revision}; actual plugin activation, async disposal and config remount`)
 } finally { await rm(directory, { recursive: true, force: true }) }

@@ -120,6 +120,6 @@ npx playwright-core install --with-deps chromium
 DSH_TEST_CHROMIUM=/absolute/path/to/chromium npm run test:web-browser
 ```
 
-独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。独立 plugin-host gate 用 stock Cordis/Loader/Include/ConfigEditor/LLM 激活实际插件入口，核验等待异步清理、配置重载和嵌套标题策略发现。
+独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。独立 plugin-host gate 用 stock Cordis/Loader/LLM 激活实际插件入口，核验等待异步清理和配置重载；不再读取 Loader fiber 或模型标题路由。
 
 宣称真实验收通过前，应使用目标登录账号验证：文本、一个本地工具及其后续请求、用户与工具结果图片、压缩后新 Project、provider 切换、取消、交付中断、DSH/daemon 重启，以及两个独立释放的客户端。记录浏览器、OS、DSH 版本和 journal/session 证据。任何 fixture 结果都不能替代这项账号绑定的验收。
