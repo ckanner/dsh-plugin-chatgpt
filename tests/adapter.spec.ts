@@ -811,6 +811,22 @@ describe('ChatGptAdapter', () => {
     assert.ok((resolved.reasoning?.efforts.length ?? 0) > 0)
   })
 
+  it('lists GPT-6.2 Astra and Sol when the account catalog advertises them', async () => {
+    const endpointUrl = await endpoint({
+      listing: { models: [
+        { slug: 'gpt-6.2-astra', display_name: 'GPT-6.2 Astra', visibility: 'list' },
+        { slug: 'gpt-6.2-sol', display_name: 'GPT-6.2 Sol', visibility: 'list' },
+      ] },
+    })
+    const adapter = adapterFor(await signedIn(), endpointUrl.url)
+    const models = await adapter.listModels()
+    assert.deepEqual(models.slice(0, 2).map(model => model.id), ['gpt-6.2-astra', 'gpt-6.2-sol'])
+    const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.2-astra')
+    assert.equal(resolved.context.contextWindow, 1_050_000)
+    assert.equal(resolved.name, 'GPT-6.2 Astra')
+    assert.deepEqual(resolved.reasoning?.efforts.map(effort => effort.id), ['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
   it('serves a model the account does offer', async () => {
     const endpointUrl = await endpoint({
       listing: { models: [{ slug: 'gpt-6-astra', visibility: 'list' }] },

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.21
+
+Add current GPT-6.2 model metadata.
+
+- Describe `gpt-6.2-astra` and `gpt-6.2-sol` with their 1,050,000-token context
+  window, 128,000-token output cap, image input and reasoning levels. The account
+  catalog remains authoritative for availability; these entries give selectable
+  models accurate metadata instead of the conservative fallback.
+- Accept the DSH 0.2.1-rc.5 through 0.3 compatibility window for host peers.
+
 ## 0.1.20
 
 Preserve durable images and tool output content on current DSH.
