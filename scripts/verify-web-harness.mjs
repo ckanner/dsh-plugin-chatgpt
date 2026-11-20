@@ -171,8 +171,11 @@ try {
       const moved = await fixture(name, movedPages, false, false, {}, true);
       let fresh, childAgent;
       try {
-        const actualWorkspace = join(moved.directory, 'actual-worktree');
-        await mkdir(actualWorkspace);
+        const actualWorkspacePath = join(moved.directory, 'actual-worktree');
+        await mkdir(actualWorkspacePath);
+        // macOS exposes /var through the /private/var symlink; WorkingDirectory
+        // records the canonical path. Compare and fence the same canonical path.
+        const actualWorkspace = await realpath(actualWorkspacePath);
         if (child) {
           await moved.host.beginInvocation({ sessionId: moved.agent.id, hostInvocationId: 'child-workspace-invocation', executionDomainId: 'child-workspace-domain', workspace: moved.directory });
           childAgent = (await moved.ctx.agents.create({
