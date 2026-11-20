@@ -15,7 +15,7 @@
  */
 
 import z, { type Volatile } from '@deepseek-ai/schemastery'
-import type { Context, FiberState } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import { join } from 'node:path'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
@@ -200,27 +200,6 @@ export class HarnessAdapter extends LlmAdapter {
   }
 }
 
-/** Read active stock title policies through the public Loader/ConfigEditor entry surface. */
-export function titleRoutes(ctx: Pick<Context, 'get'>): { name: string, provider?: string, model?: string }[] {
-  // Cordis exports a const enum. Keep its public ACTIVE value typed without a runtime enum import.
-  const active: FiberState.ACTIVE = 2
-  // ConfigEditor exposes only editable profile rows and omits nested Includes.
-  // Loader's public iterator covers every active entry in all nested trees.
-  const service = (ctx.get('loader') ?? ctx.get('configEditor')) as { entries?: () => Iterable<{
-    options: { name?: string }, fiber?: { state: number, effectiveConfig: unknown, runtime?: { name?: string } | null },
-  }> } | undefined
-  const result: { name: string, provider?: string, model?: string }[] = []
-  for (const entry of service?.entries?.() ?? []) {
-    if (entry.fiber?.state !== active) continue
-    const name = entry.fiber.runtime?.name ?? entry.options.name ?? ''
-    if (!/(?:^|\/)\s*(?:dsh-)?session-title-(?:first-prompt|all-prompts)-llm$/.test(name)) continue
-    const value = entry.fiber.effectiveConfig as { provider?: unknown, model?: unknown } | undefined
-    result.push({ name, ...typeof value?.provider === 'string' ? { provider: value.provider } : {},
-      ...typeof value?.model === 'string' ? { model: value.model } : {} })
-  }
-  return result
-}
-
 /**
  * Register the ChatGPT provider route.
  *
@@ -280,9 +259,6 @@ export function apply(ctx: Context, config: Config): void {
     runtime: new ManagedWebRuntime({ stateDirectory: join(stateDir, 'web'), provider: route,
       ...executable ? { chromeExecutable: executable } : {}, ...maxInputBytes === undefined ? {} : { maxInputBytes } }),
     contextBudget: () => config.modelContextWindowLimits.get()?.[WEB_MODEL] ?? config.contextWindowLimit.get(),
-    compaction: () => ctx.get('compaction'),
-    titleRoutes: () => titleRoutes(ctx),
-    resolveModel: (provider, model, signal) => ctx.llm.resolveModelInfo(provider, model, signal),
     resolveAttachments: () => ctx.get('attachments'),
     errorFactory: (message, code, status, requestId) => new LlmError(message, code, { status,
       ...requestId === undefined ? {} : { requestId } }),

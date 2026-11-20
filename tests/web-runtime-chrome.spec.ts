@@ -69,7 +69,10 @@ async function fixture(t: TestContext, mode = 'normal') {
     await owner.release()
     await rm(root, { recursive: true, force: true })
   })
-  return { profileDirectory, owner, executable, async launch() { chrome = await launchOwnedChrome({ profileDirectory, ownership: owner, executable }); return chrome } }
+  // acquireProfileOwnership() returns the physical directory. Keep the launch
+  // and cleanup paths identical on systems where /var is a symlink.
+  return { profileDirectory: owner.profileDirectory, owner, executable,
+    async launch() { chrome = await launchOwnedChrome({ profileDirectory: owner.profileDirectory, ownership: owner, executable }); return chrome } }
 }
 
 test('owned launcher rejects a forged profile capability before invoking any executable', async t => {

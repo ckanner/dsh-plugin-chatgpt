@@ -69,7 +69,6 @@ export function WebCard({ getRemote, mounting }: { getRemote: () => Promise<WebR
     <p style={{ margin: 0 }}>Use Pro in a dedicated Chrome window on this machine. Sign in there, select GPT-6 and Pro, then verify this account. DSH keeps the conversation history and runs tools.</p>
     {status?.account ? <div>Web account: {status.account}</div> : null}
     {status?.contextBudget ? <div>Local input budget: {status.contextBudget.toLocaleString()} tokens. Web token usage is unavailable.</div> : null}
-    {status?.auxiliary ? <div>DSH summary route: <code>{status.auxiliary.provider}/{status.auxiliary.model}</code></div> : null}
     {error ? <div role="alert" style={{ color: 'var(--dsw-alias-text-danger, #c33)' }}>{error}</div> : null}
     {status?.issues.length ? <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>{status.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul> : null}
     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>

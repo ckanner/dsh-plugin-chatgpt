@@ -85,7 +85,7 @@ lease 范围内的请求携带 `X-Web-Client-Lease`。turn 控制 POST 使用 `{
 
 后续浏览器/provider 实现已增加 Chrome 发现与启动、可见账号和 GPT-6/Pro 核验、Project 隔离、DOM 提取、setup/recovery UI，以及独立拥有生命周期的 daemon。设置指南记录具体限制。离线 fixture 由调用方提供的 `accountBinding` 仍不等于真实账号核验，Chromium fixture 也不证明登录后的网页布局。
 
-宿主拥有的精确图片版本现在会按摘要传输、保存，并在重新打开 journal 时逐一验证引用。文件仍不支持。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。已安装 provider 要求显式、受支持的摘要路由和本地上下文预算；已知的模型标题插件也需独立路由，或显式关闭。这里不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明；Flywheel 具有自己的消费端集成与验收要求。
+宿主拥有的精确图片版本现在会按摘要传输、保存，并在重新打开 journal 时逐一验证引用。文件仍不支持。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。Web v1 只接受普通 turn：`compaction` 和 `session-title` 会以 `WEB_AUXILIARY_UNSUPPORTED` 失败，因此 DSH 必须把这些 purpose 路由到其他 provider，或关闭可选的标题插件。已安装 provider 只要求本地上下文预算，不读取 Loader fiber 或私有 compaction 配置。这里不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明；Flywheel 具有自己的消费端集成与验收要求。
 
 ## 复现验证
 

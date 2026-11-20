@@ -3,12 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setImmediate as nextTurn } from 'node:timers/promises'
-import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import { Context, FiberState } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Include from '@deepseek-ai/cordis-plugin-include'
-import { ConfigEditor } from '@deepseek-ai/dsh-config-editor'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import z from '@deepseek-ai/schemastery'
 import { ProxyAgent } from 'undici'
@@ -94,32 +91,4 @@ await test('actual Loader remounts for Web startup settings and preserves live b
   await entry.fiber.await()
   assert.equal(seen.length, 3, 'The existing live token budget must retain its volatile behavior')
   assert.equal(seen[2].contextWindowLimit.get(), 100000)
-})
-
-await test('title inventory sees actual nested Include entries excluded by ConfigEditor', { timeout: 5000 }, async t => {
-  const { ctx } = await host(t, 'titles')
-  const directory = join(root, 'title-profile')
-  await mkdir(directory)
-  const nested = join(directory, 'nested.json')
-  const profile = join(directory, 'profile.json')
-  ctx.loader.builtins.include = Include
-  ctx.loader.builtins.title = { name: 'session-title-first-prompt-llm',
-    Config: z.object({ provider: z.string(), model: z.string() }), apply() {} }
-  await writeFile(nested, JSON.stringify([{ id: 'title', name: 'cordis:title', config: {} }]))
-  await writeFile(profile, JSON.stringify([
-    { id: 'title', name: 'cordis:title', config: { provider: 'api', model: 'title-model' } },
-    { id: 'disabled-title', name: 'cordis:title', disabled: true },
-    { id: 'nested', name: 'cordis:include', config: { path: pathToFileURL(nested).href } },
-  ]))
-  await ctx.loader.create({ id: 'include', name: 'cordis:include', config: { path: pathToFileURL(profile).href } })
-  await ctx.loader.await()
-  const editor = new ConfigEditor(ctx)
-  assert.ok(editor.entries().some(entry => entry.id === 'include:title'))
-  assert.equal(editor.entries().some(entry => entry.id === 'include:nested:title'), false,
-    'The real ConfigEditor deliberately excludes nested Includes')
-  assert.ok([...ctx.loader.entries()].some(entry => entry.id === 'include:nested:title'))
-  assert.deepEqual(chatgpt.titleRoutes(ctx), [
-    { name: 'session-title-first-prompt-llm', provider: 'api', model: 'title-model' },
-    { name: 'session-title-first-prompt-llm' },
-  ], 'The nested fallback title route must reach Web readiness validation; inactive rows stay excluded')
 })

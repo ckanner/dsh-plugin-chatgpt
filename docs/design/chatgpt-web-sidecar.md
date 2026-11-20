@@ -452,30 +452,25 @@ submission; do not let website-side history trimming masquerade as DSH compactio
 
 ### 9.2 Auxiliary requests
 
-For `purpose: compaction`, use a separate purpose-specific Project, prohibit
-tool execution and return validated text only. The host may supply historical
-tool schemas for prefix alignment; these are hashed as input but are never
-active tools for the summary response. A failed/truncated summary does not
-replace DSH history.
+Web v1 accepts only `purpose: "normal"`. DSH-owned compaction and
+model-backed session titles must use an explicit non-Web provider/model, or the
+optional title feature must remain disabled. The provider rejects
+`compaction` and `session-title` with a clear `WEB_AUXILIARY_UNSUPPORTED`
+error before Chrome is touched.
 
-The public stock summarizer can use its configured provider/model. Keep that
-routing decision in DSH. Website input/output limits must be explicit:
-a requested `maxTokens`, `temperature` or `stop` is not automatically a
-website capability. Unsupported enforcement fails with a clear option error.
-The stock summary producer always supplies `maxTokens`; the stock title
-producer also supplies an output cap. Before enabling long Web sessions while
-Web control enforcement remains unproved, setup must check an explicit supported
-summary provider/model in the existing DSH settings. Model-backed titles likewise
-need an explicit supported route, or the optional title feature remains disabled.
-Do not silently switch routes or count their default fallback to the Web model
-as a supported configuration. Web-backed auxiliary requests are accepted only
-after their option semantics and overflow behavior are proved. Unknown usage
-never becomes a zero count or a hard token-budget guarantee.
+This is deliberate: the website has no enforceable `maxTokens`, `temperature`
+or `stop` control. A stock summary producer always supplies `maxTokens`; a
+stock title producer supplies an output cap. Pretending to honor those controls
+would be a silent correctness failure. Supporting Web-backed auxiliary calls
+requires a separate, explicitly proved output-control design and is out of scope
+for v1.
 
-`session-title` is optional, text-only, separately scoped and content-addressed
-as described in §5. It must not select a newer live user event, execute tools,
-pollute the task Project or imply that a newly generated title request is a
-retry of an older UUID.
+The provider must not inspect DSH Loader fibers or private compaction-service
+configuration to discover routes. It cannot make a host configuration safe by
+reading internals. Setup simply requires an explicit local context budget and
+documents the external summary/title requirement; a Web-only configuration may
+enable normal turns, but a DSH route that selects Web for an auxiliary purpose
+fails visibly at dispatch.
 
 ## 10. Model selection and metadata
 

@@ -10,7 +10,7 @@ The signed-in ChatGPT website still needs manual acceptance with the intended ac
 
 Use a supported Node 22/24 line, a local graphical Chrome/Chromium installation, and a POSIX host. The implementation supports Chrome discovery paths on macOS and Linux. The stock host gate uses released DSH `0.2.2-rc.5`; broader peer ranges and a successful package import are not claims of live acceptance on every release. Windows profile durability is not implemented.
 
-DSH continues to own all tools, permissions, authoritative history, retries and compaction. The Web provider cannot enforce `maxTokens`, `temperature` or `stop`, and rejects them. Configure an explicit non-Web summary route in the **actual running compaction service** before enabling the model. A plugin-local configuration claim is insufficient. Also select an explicit local token budget; it is an admission/compaction budget, not a discovered ChatGPT context capacity.
+DSH continues to own all tools, permissions, authoritative history, retries and compaction. Web v1 accepts only `purpose: "normal"`; it rejects `compaction` and `session-title` with `WEB_AUXILIARY_UNSUPPORTED` because the website has no enforceable `maxTokens`, `temperature` or `stop`. Configure DSH compaction and any enabled model-title plugin to use an explicit **non-Web** provider/model, or disable the optional title plugin. A Web-only profile can enable normal turns; an auxiliary route that still selects Web fails visibly at dispatch. The plugin does not inspect Loader fibers or private compaction configuration. Also select an explicit local token budget; it is an admission budget, not a discovered ChatGPT context capacity.
 
 For a stock profile whose entries are named `chatgpt`, `compaction-basic` and `session-title-llm`, merge these values into the corresponding existing configurations:
 
@@ -43,7 +43,7 @@ For a stock profile whose entries are named `chatgpt`, `compaction-basic` and `s
     model: gpt-6.2-sol
 ```
 
-Use a summary/title model available to your own configured provider; `gpt-6.2-sol` is an example, not an entitlement check. The plugin resolves that route through `ctx.llm.resolveModelInfo`. Exact model policies override the compaction defaults. Empty summary pairs, Web fallback, disabled auto compaction, duplicate target policies and impossible headroom/retention are rejected. Known active stock model-title plugins require their own explicit non-Web pair; alternatively disable that optional title plugin and retain the host's deterministic title service. The plugin reads these settings and never silently rewrites them or chooses a chargeable fallback.
+Use a summary/title model available to your own configured provider; `gpt-6.2-sol` is an example, not an entitlement check. Exact model policies override the compaction defaults. Web v1 does not inspect these settings, does not rewrite them, and does not choose a chargeable fallback. If DSH selects Web for an auxiliary request, the provider rejects it before Chrome is touched. Keep compaction and model-backed titles on a non-Web route, or disable the optional title plugin and retain the host's deterministic title service.
 
 ## Enable the model
 
@@ -101,7 +101,7 @@ dsh-chatgpt-web recover --state-directory /absolute/stateDir/web 'turn-<sha256>'
 dsh-chatgpt-web discard --state-directory /absolute/stateDir/web 'turn-<sha256>'
 ```
 
-CLI `enable` controls daemon availability; the installed provider still independently checks actual host auxiliary policy and budget before model resolution and dispatch. Tokens are held in owner-only files and are not printed by setup/status or sent to the provider card. Management and model HTTP listeners bind literal loopback and reject browser Origin headers. Handshake acceptance checks private credentials, protocol/package version, instance nonce, physical profile, installation and account binding.
+CLI `enable` controls daemon availability; the installed provider still checks the explicit local budget before model resolution and dispatch, and rejects any auxiliary-purpose request before Chrome is touched. Tokens are held in owner-only files and are not printed by setup/status or sent to the provider card. Management and model HTTP listeners bind literal loopback and reject browser Origin headers. Handshake acceptance checks private credentials, protocol/package version, instance nonce, physical profile, installation and account binding.
 
 The daemon owns the physical profile before launching Chrome and validates the browser's actual command line. A plugin client releases only its own leases. Idle shutdown waits for all clients, active operations and unresolved outcomes; Chrome cleanup targets only the proven owned process. Missing/changed locks are never reclaimed based on PID alone. After a crash, establish that no owned browser/bridge operation remains and inspect the journals before offline lock repair. There is no automatic lock-stealing or evidence-deletion command. The snapshot journal has a 64 MiB bound; reaching it stops new admission rather than erasing history.
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { validateBinding } from '../web-bridge/protocol.ts'
 import { CONFIG_FILE, type ManagedWebRuntimeOptions, type RuntimeConfig } from './types.ts'
@@ -27,8 +28,16 @@ export function validateConfig(value: unknown, stateDirectory: string, provider?
 }
 
 export async function loadConfig(stateDirectory: string, provider?: string): Promise<RuntimeConfig | undefined> {
-  const value = await readPrivateJson<unknown>(join(stateDirectory, CONFIG_FILE))
-  return value === undefined ? undefined : validateConfig(value, stateDirectory, provider)
+  // macOS exposes /var as a symlink to /private/var. The config stores the
+  // physical directory created by privateDirectory(), so validating against
+  // the caller's lexical path would reject a valid profile there. Resolve the
+  // path first; a missing state directory remains a normal ENOENT.
+  const physical = await realpath(stateDirectory).catch(error => {
+    if (error?.code === 'ENOENT') return stateDirectory
+    throw error
+  })
+  const value = await readPrivateJson<unknown>(join(physical, CONFIG_FILE))
+  return value === undefined ? undefined : validateConfig(value, physical, provider)
 }
 
 export async function initializeConfig(options: ManagedWebRuntimeOptions): Promise<{ stateDirectory: string, config: RuntimeConfig }> {

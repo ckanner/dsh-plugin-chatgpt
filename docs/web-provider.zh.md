@@ -10,7 +10,7 @@
 
 使用支持的 Node 22/24、具备图形桌面的本机 Chrome/Chromium，以及 POSIX 宿主。实现包含 macOS 和 Linux 的 Chrome 路径发现。stock 宿主 gate 使用已发布 DSH `0.2.2-rc.5`；更宽的 peer 范围和包导入成功，不代表每个版本都完成了真实验收。尚未实现 Windows profile 持久化。
 
-DSH 继续拥有所有工具、权限、权威历史、重试与压缩。Web provider 无法强制 `maxTokens`、`temperature`、`stop`，因此明确拒绝这些参数。启用模型前，必须在**实际运行的 compaction service**中配置显式的非 Web 摘要路由；只在插件本地声明一个配置不算数。还需设置显式的本地 token 预算，它用于准入和压缩，并不是检测到的 ChatGPT 上下文容量。
+DSH 继续拥有所有工具、权限、权威历史、重试与压缩。Web v1 只接受 `purpose: "normal"`；因为网页没有可强制执行的 `maxTokens`、`temperature`、`stop`，provider 会以 `WEB_AUXILIARY_UNSUPPORTED` 拒绝 `compaction` 和 `session-title`。请把 DSH 压缩和已启用的模型标题插件配置到明确的**非 Web** provider/model，或关闭可选的标题插件。只有 Web 的配置可以启用普通 turn；如果辅助路由仍选择 Web，会在派发时明确失败。插件不会读取 Loader fiber 或私有 compaction 配置。还需设置显式的本地 token 预算，它用于准入，并不是检测到的 ChatGPT 上下文容量。
 
 对于条目名为 `chatgpt`、`compaction-basic`、`session-title-llm` 的 stock profile，把以下字段合并到对应的现有配置中：
 
@@ -43,7 +43,7 @@ DSH 继续拥有所有工具、权限、权威历史、重试与压缩。Web pro
     model: gpt-6.2-sol
 ```
 
-摘要和标题模型必须在你配置的 provider 中可用；`gpt-6.2-sol` 只是示例，不是账号权限证明。插件通过 `ctx.llm.resolveModelInfo` 解析该路由。精确模型策略覆盖压缩默认值；空摘要配置、回落到 Web、关闭自动压缩、重复目标策略以及不可用的 headroom/retention 都会被拒绝。已启用的 stock 模型标题插件也必须有显式非 Web 路由；也可以关闭该可选插件，保留宿主的确定性标题服务。插件只读取这些设置，不会静默重写，也不会擅自选择会计费的备用模型。
+摘要和标题模型必须在你配置的 provider 中可用；`gpt-6.2-sol` 只是示例，不是账号权限证明。精确模型策略覆盖压缩默认值。Web v1 不读取这些设置，不会静默重写，也不会擅自选择会计费的备用模型。如果 DSH 为辅助请求选择了 Web，provider 会在接触 Chrome 之前拒绝。请把压缩和模型生成的标题保持在非 Web 路由；也可以关闭可选的标题插件，保留宿主的确定性标题服务。
 
 ## 启用模型
 
@@ -101,7 +101,7 @@ dsh-chatgpt-web recover --state-directory /absolute/stateDir/web 'turn-<sha256>'
 dsh-chatgpt-web discard --state-directory /absolute/stateDir/web 'turn-<sha256>'
 ```
 
-CLI 的 `enable` 控制 daemon 可用性；已安装 provider 仍会在模型解析和派发前独立核验实际宿主辅助路由与预算。token 保存在仅属主可读文件中，不会由 setup/status 打印或发送到 provider 卡片。管理和模型 HTTP listener 都绑定字面值 loopback，并拒绝浏览器 Origin。握手同时验证私有凭据、协议和包版本、instance nonce、物理 profile、安装和账号绑定。
+CLI 的 `enable` 控制 daemon 可用性；已安装 provider 仍会在模型解析和派发前检查显式本地预算，并在接触 Chrome 之前拒绝任何辅助 purpose 请求。token 保存在仅属主可读文件中，不会由 setup/status 打印或发送到 provider 卡片。管理和模型 HTTP listener 都绑定字面值 loopback，并拒绝浏览器 Origin。握手同时验证私有凭据、协议和包版本、instance nonce、物理 profile、安装和账号绑定。
 
 daemon 在启动 Chrome 前取得物理 profile 所有权，并验证浏览器实际命令行。插件客户端只释放自己的 lease。空闲关闭会等待所有客户端、活动操作和不确定结果；Chrome 清理只针对已证明属于自己的进程。不能仅凭 PID 回收缺失或改变的锁。崩溃后，必须先确认没有所属浏览器或 bridge 操作仍在运行，并检查 journal，再离线修复锁。没有自动抢锁或删除证据的命令。快照 journal 上限为 64 MiB，达到上限后停止新请求，不删除历史。
 

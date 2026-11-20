@@ -94,7 +94,7 @@ auth.adopt(credential)
 
 一个 provider 路由，像内置 provider 一样出现在 **设置 → 模型** 里，带有该账号有权使用的模型清单、上下文窗口和推理级别。在那里选中某个模型，就是把它放进模型选择器的方式，不涉及任何单独的挑选界面。
 
-显式启用的 [GPT-6 Pro Web 路由](web-provider.zh.md)在专用 Chrome 设置、可见账号验证和显式宿主压缩策略就绪后增加 `gpt-6-pro-web / pro`。这是尚未发布的候选实现，真实登录验收与 Chrome fixture、stock 宿主测试分开记录。Web usage 保持未知，不支持的输出控制项会明确失败。
+显式启用的 [GPT-6 Pro Web 路由](web-provider.zh.md)在专用 Chrome 设置、可见账号验证和显式本地上下文预算就绪后增加 `gpt-6-pro-web / pro`。这是尚未发布的候选实现，真实登录验收与 Chrome fixture、stock 宿主测试分开记录。Web usage 保持未知，辅助 purpose 会被拒绝，不支持的输出控制项会明确失败。
 
 模型元数据来自账号列表。内置目录现已描述 **GPT-6.2 Astra** 与 **GPT-6.2 Sol**（`gpt-6.2-astra`、`gpt-6.2-sol`）的 1,050,000 token 上下文、128,000 token 输出上限和推理级别；当登录账号的目录公布这些模型时，它们会出现在选择器中。Astra 或 Sol 可用时，选择器还会提供它们的 **UltraFast** 服务档变体（`gpt-6.2-astra-ultrafast`、`gpt-6.2-sol-ultrafast`），请求会发送 `service_tier: "ultrafast"`，费用更高。适配器默认跟随各模型在账号目录中声明的上下文窗口，并在目录刷新时采用更新值。可用 `contextWindowLimit` 设置全局预算，或用 `modelContextWindowLimits` 为指定模型设置预算；显式配置会按填写的值采用。登录仍在这一行的卡片上。
 
@@ -212,7 +212,7 @@ modelContextWindowLimits:
 
 ## Dev Note
 
-[Web bridge 契约](web-bridge-contract.zh.md)说明请求身份、精确图片版本、持久化提交与交付及恢复。[设置指南](web-provider.zh.md)介绍托管 daemon、provider 卡片、显式辅助路由、CLI 和真实验收边界。
+[Web bridge 契约](web-bridge-contract.zh.md)说明请求身份、精确图片版本、持久化提交与交付及恢复。[设置指南](web-provider.zh.md)介绍托管 daemon、provider 卡片、非 Web 辅助路由要求、CLI 和真实验收边界。
 
 ```text
 npm test          # node --test, no build step

@@ -404,23 +404,20 @@ DSH request surface 是权威输入。bridge 持久记录
 
 ### 9.2 辅助请求
 
-`purpose: compaction` 使用独立 purpose 的 Project，禁止工具执行，只返回已验证
-文本。宿主可能为了 prefix 对齐而附带历史工具 schema；它们作为输入参与 hash，
-但不能成为摘要响应中的活动工具。失败或截断摘要不能替换 DSH 历史。
+Web v1 只接受 `purpose: "normal"`。DSH 的压缩和模型生成的会话标题必须使用
+明确的非 Web provider/model，或者关闭可选的标题功能。provider 会在接触 Chrome
+之前以 `WEB_AUXILIARY_UNSUPPORTED` 明确拒绝 `compaction` 和
+`session-title`。
 
-原版 summarizer 可使用自己配置的 provider/model，路由决定仍留在 DSH。
-网页输入/输出限制必须明确：请求中的 `maxTokens`、`temperature`、`stop`
-不会自动成为网页能力。不支持的强制参数应给出明确 option 错误。
-原版摘要 producer 每次都传 `maxTokens`，标题 producer 同样传输出上限。
-在 Web 参数强制能力尚未证明时，启用长 Web 会话前，setup 必须检查现有 DSH
-设置中已显式配置支持这些参数的摘要 provider/model；模型生成标题也需要显式的
-受支持路由，否则可选 title 功能保持禁用。不能静默切换路由，也不能把默认回落
-到 Web 模型算作受支持配置。只有参数语义和 overflow 行为得到验证后，才接纳
-Web 辅助请求。Unknown usage 不能变成零计数或严格 token 预算保证。
+这是有意为之：网页没有可强制执行的 `maxTokens`、`temperature` 或
+`stop`。stock 摘要生产者总会提供 `maxTokens`，标题生产者也会提供输出上限；
+假装能遵守这些控制会造成静默的正确性错误。支持 Web 辅助调用需要另行设计并证明
+输出控制，不在 v1 范围内。
 
-`session-title` 是可选的短文本调用，独立隔离并按 §5 的语义输入寻址。
-不能选择更新的 live user event、执行工具、污染任务 Project，或声称新生成的
-标题 UUID 一定是旧请求的重试。
+provider 不得通过 DSH Loader fiber 或 compaction service 的私有配置来探测路由。
+它不能靠读取内部状态来保证宿主配置安全。setup 只要求明确的本地上下文预算，并记录
+外部 summary/title 路由要求；只有 Web 的配置可以启用普通 turn，但如果 DSH 的
+辅助调用选择了 Web，会在派发时明确失败。
 
 ## 10. 模型选择与元数据
 

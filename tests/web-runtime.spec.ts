@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -64,6 +64,18 @@ async function fixture(t: TestContext, options: { idleTimeoutMs?: number, transp
     async restart() { await running.close(); const next = await startRuntimeDaemon({ stateDirectory, dependencies }); daemons.push(next); return next },
   }
 }
+
+test('loadConfig accepts a symlinked state-directory path and validates its physical profile', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'web-runtime-link-'))
+  const physical = join(root, 'state')
+  const alias = join(root, 'state-link')
+  await mkdir(physical, { mode: 0o700 })
+  await symlink(physical, alias, 'dir')
+  t.after(async () => { await rm(root, { recursive: true, force: true }) })
+  await initializeConfig({ stateDirectory: alias, provider: 'chatgpt' })
+  const loaded = await loadConfig(alias)
+  assert.equal(loaded?.profileDirectory, join(await realpath(physical), 'chrome-profile'))
+})
 
 async function bridgeLease(connection: RuntimeConnection) {
   const response = await fetch(`${connection.url}/v1/clients`, { method: 'POST', headers: { authorization: `Bearer ${connection.token}`, 'content-type': 'application/json' }, body: '{}' })
