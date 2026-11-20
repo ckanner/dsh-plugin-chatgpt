@@ -31,6 +31,8 @@ const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 
 /** Chinese text for each English line that carries prose, keyed exactly. */
 const LINE_TRANSLATIONS = {
+  "The [experimental Web bridge](docs/web-bridge-contract.md) implements the stock-DSH protocol and durability foundation with offline page fixtures. It does not yet expose a selectable Web model; the implementation status describes the remaining Chrome and setup work.":
+    "[实验性 Web bridge](web-bridge-contract.zh.md)通过离线页面 fixture 实现 stock DSH 协议与持久化基础。目前尚未开放可选择的 Web 模型；实现状态说明了剩余的 Chrome 和 setup 工作。",
   "English | [中文](docs/README.zh.md)":
     "[English](../README.md) | 中文",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":

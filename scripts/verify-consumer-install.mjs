@@ -44,10 +44,14 @@ try {
     import { apply, HarnessAdapter } from 'dsh-plugin-chatgpt'
     import { LlmAdapter } from '@deepseek-ai/dsh-llm'
     import { contentCapabilities } from 'dsh-plugin-chatgpt/capabilities'
+    import { WebBridgeClient, openWebBridge, WEB_PROTOCOL_VERSION } from 'dsh-plugin-chatgpt/experimental/web-bridge'
     assert.equal(typeof apply, 'function')
     assert.ok(HarnessAdapter.prototype instanceof LlmAdapter)
     assert.equal(contentCapabilities.version, 1)
     assert.deepEqual(contentCapabilities.imageInputRoles, ['user', 'tool'])
+    assert.equal(typeof WebBridgeClient, 'function')
+    assert.equal(typeof openWebBridge, 'function')
+    assert.equal(WEB_PROTOCOL_VERSION, 1)
   `)
   execFileSync(process.execPath, [check], { cwd: temporary, stdio: 'inherit' })
   console.log('PASS: exact candidate installed and imported with real Cordis 4.1.0, Schemastery 3.19.0 and DSH 0.2.2-rc.3 peers')

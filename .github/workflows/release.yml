@@ -29,7 +29,13 @@ permissions:
   id-token: write
 
 jobs:
+  stock-web-agent-loop:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/web-contract.yml
+
   release:
+    needs: stock-web-agent-loop
     runs-on: ubuntu-latest
     env:
       # Empty when the secret is absent, which is what selects the second step.

@@ -1,0 +1,34 @@
+name: stock Web bridge contract
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  stock-web-agent-loop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - run: npm ci --ignore-scripts
+      - name: Checkout unmodified released DSH
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 9c2670d3bce5275e0d1610272958121af87787bb
+          path: .harness-stock
+          persist-credentials: false
+      - name: Install isolated stock host test dependencies
+        run: >-
+          npm install --prefix "$RUNNER_TEMP/dsh-web-host-deps"
+          --ignore-scripts --no-save --package-lock=false
+          zod@4.6.6 p-limit@7.3.3 @js-temporal/polyfill@0.5.1 rrule@2.8.1 koffi@3.1.1
+      - name: Build stock native session lease addon
+        working-directory: .harness-stock
+        run: node native/system/scripts/build.ts --host-addon-only
+      - name: Real AgentLoop, tool executor and checkpoint contract
+        run: npm run verify:web-agent-loop -- .harness-stock --deps "$RUNNER_TEMP/dsh-web-host-deps"

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Implement the experimental Web bridge protocol and durability foundation from
+the stock-DSH sidecar design. This phase uses an injected page transport and does
+not make a Web model available in the installed plugin.
+
+- Capture immutable public host requests, including durable message IDs,
+  effective system instructions, tool history and scoped replay receipts.
+- Persist submission intent before Send, fence unknown profile outcomes, and
+  persist a unique delivery claim before exposing any executable tool response.
+- Add authenticated loopback HTTP/SSE, independent client leases, a finite thin
+  client, and read-only recovery/inspection controls.
+- Verify real unmodified DSH rc.5 AgentLoop, native tools, JSONL persistence and
+  checkpoint policy, including concurrent delivery and provider retries.
+- Export the developer-only `experimental/web-bridge` module; document the
+  remaining Chrome, setup, multimodal and consumer integration work in the
+  [implementation status](docs/web-bridge-contract.md).
+
 ## 0.1.23
 
 Use the requested UltraFast display labels: **GPT-6.2-Astra · UltraFast** and
