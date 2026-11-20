@@ -22,12 +22,18 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
     } catch { child.kill(signal) }
   }
   let closed=false
-  const childClosed=new Promise<void>(resolve=>child.once('close',()=>{closed=true;resolve()}))
+  child.once('close',()=>{closed=true})
+  const groupAlive=()=>{
+    if(!child.pid)return false
+    try{process.kill(process.platform==='win32'?child.pid:-child.pid,0);return true}catch{return false}
+  }
   const awaitClose=async(milliseconds:number):Promise<boolean>=>{
-    if(closed)return true
-    let timer:ReturnType<typeof setTimeout>|undefined
-    try{return await Promise.race([childClosed.then(()=>true),new Promise<boolean>(resolve=>{timer=setTimeout(()=>resolve(false),milliseconds)})])}
-    finally{clearTimeout(timer)}
+    const deadline=Date.now()+milliseconds
+    while(Date.now()<deadline){
+      if(closed||!groupAlive()){child.stderr?.destroy();return true}
+      await new Promise(resolve=>setTimeout(resolve,50))
+    }
+    return false
   }
   let startupError: Error | undefined
   let stderr=''
