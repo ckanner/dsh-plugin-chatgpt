@@ -10,9 +10,9 @@
   },
   "patch": {
     "file": "dsh-web-host-9c2670d3.patch",
-    "sha256": "84e0bcd582d7312075d0a8086a7057504245f82b2d0c2594c78f3fb054875343",
-    "bytes": 294333,
-    "patchedTree": "5220a241b7ec302151ae799db9227bbefec60409",
+    "sha256": "955942eb392ddfc7fce6fcccdd45fbe5a05fd0037dd4b3833c8a8200bfdfa021",
+    "bytes": 294215,
+    "patchedTree": "83a0bf93e629062e316f3f9bca9723fdf4cfd2ee",
     "applyCheck": "git apply --cached --check against the exact upstream 0.2.2-rc.5 base passed",
     "baseTree": "6ec0fcdcaf38bdf8ffa6675e30b036dc104a1ece"
   },
@@ -49,13 +49,13 @@
     "maintenanceOwnership": "runMaintenance reserves the idle Agent, then scopes its async task to that Agent via withInitiator; the caller scope is preserved outside the task"
   },
   "verification": {
-    "focusedTestFiles": 3,
-    "focusedTestsPassed": 38,
+    "focusedTestFiles": 6,
+    "focusedTestsPassed": 188,
     "sourceTypecheck": "passed for affected compaction, agent-loop, agent, session and llm source projects",
-    "testTypecheck": "passed for summary-host-policy, host-policy and recovered-response specs",
+    "testTypecheck": "passed for the focused host-policy, recovered-response and summary-host-policy specs",
     "publicJsdoc": "not rerun for this base",
     "liveBrowserAcceptance": false,
     "fullBuild": "not completed in this runner; affected source projects and focused tests passed",
-    "crossLayerCasesPassed": 0
+    "crossLayerCasesPassed": 17
   }
 }
