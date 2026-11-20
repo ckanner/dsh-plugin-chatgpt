@@ -110,8 +110,8 @@ export const ROUTE_MAX_OUTPUT_TOKENS = 128_000
  * to the base model on the wire.
  */
 export const ULTRAFAST_VARIANTS = Object.freeze([
-  { id: 'gpt-6.2-astra-ultrafast', base: 'gpt-6.2-astra', name: 'GPT-6.2 Astra · UltraFast' },
-  { id: 'gpt-6.2-sol-ultrafast', base: 'gpt-6.2-sol', name: 'GPT-6.2 Sol · UltraFast' },
+  { id: 'gpt-6.2-astra-ultrafast', base: 'gpt-6.2-astra', name: 'GPT-6.2-Astra · UltraFast' },
+  { id: 'gpt-6.2-sol-ultrafast', base: 'gpt-6.2-sol', name: 'GPT-6.2-Sol · UltraFast' },
 ] as const)
 
 /** One Ultrafast variant, if the selected id names one. */

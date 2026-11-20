@@ -847,7 +847,7 @@ describe('ChatGptAdapter', () => {
     assert.ok(!models.some(model => model.id === 'gpt-6.2-sol-ultrafast'), 'no UltraFast Sol without Sol in the account roster')
 
     const resolved = await adapter.resolveModel('chatgpt', 'gpt-6.2-astra-ultrafast')
-    assert.equal(resolved.name, 'GPT-6.2 Astra · UltraFast')
+    assert.equal(resolved.name, 'GPT-6.2-Astra · UltraFast')
     assert.equal(resolved.context.contextWindow, 1_050_000)
 
     for await (const _chunk of adapter.stream('chatgpt', {
