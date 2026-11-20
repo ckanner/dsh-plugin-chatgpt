@@ -1,7 +1,7 @@
 /** A plain-text website protocol; no UI prose is interpreted as a tool call. */
 import { WebBridgeError, type PageTurn, type WebMessage } from '../web-bridge/contracts.ts'
 import { attachmentIdentity } from '../web-bridge/attachments.ts'
-import { canonical, validatePageResponse, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH, WEB_MAX_REQUEST_BYTES } from '../web-bridge/protocol.ts'
+import { canonical, createResponse, validatePageResponse, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH, WEB_MAX_REQUEST_BYTES } from '../web-bridge/protocol.ts'
 import { textDigest, type BrowserGeneration } from './ledger.ts'
 
 function visibleMessage(message: WebMessage): unknown {
@@ -64,7 +64,11 @@ export function parseResponse(text: string, turn: PageTurn): unknown {
   }
   // Validate without exposing the namespaced return value. The engine performs
   // its own final validation and supplies the single namespace exactly once.
-  validatePageResponse(response, turn.request, turn.turnId)
+  const blocks = validatePageResponse(response, turn.request, turn.turnId)
+  // A syntactically valid page response can still exceed the complete receipt,
+  // SSE or inspection budget. Classify that before advancing browser history.
+  // The checked namespaced value is discarded; the engine receives raw blocks.
+  createResponse(turn.request, turn.turnId, turn.generationId, blocks)
   return response
 }
 

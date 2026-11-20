@@ -96,6 +96,7 @@
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "verify:harness": "node scripts/verify-harness.mjs",
     "verify:web-agent-loop": "node scripts/verify-web-agent-loop.mjs",
+    "verify:web-plugin-host": "node scripts/verify-web-plugin-host.mjs",
     "verify:package": "node scripts/verify-package-contents.mjs",
     "verify:install": "node scripts/verify-consumer-install.mjs"
   },

@@ -69,6 +69,8 @@ DSH 的角色、指令、历史和工具定义会投影为网页提示；这不�
 
 完整网页提示 envelope 默认最多 256 KiB。响应、receipt framing 和 inspection 保持在 1 MiB 边界内。网页必须返回对应精确请求的完整 JSON envelope；engine 在持久化前验证每个 block 和工具 schema，客户端在暴露任何 DSH chunk 前验证 response、finish 和 EOF。不伪造思考文本或 usage。工具只在有限模型响应结束后，由原版 DSH AgentLoop 执行。
 
+浏览器 transport 当前的单次操作/响应观察截止时间为 10 分钟，UI 控件还使用较短等待时间；宿主取消信号可以提前结束。Pro 响应超过观察时间后，结果仍为不确定，可稍后从网页恢复；超时不授权再次 Send。目标账号验收需包含长时间思考和排队场景。
+
 ## 检查、恢复与放弃
 
 provider 卡片提供 **Load turns**、**Inspect**、**Recover from page evidence** 及显式放弃操作。列表显示最新 100 轮的摘要；更早的请求仍可通过 CLI 按精确 ID 检查。检查展示已记录状态和完整响应，不会执行其中的工具 block。恢复只观察网页、更新本地证据，绝不点击 Send 或运行工具。profile 阻断错误会指向真正未解决的那一轮，即使触发该错误的是另一个新请求。
@@ -77,11 +79,14 @@ provider 卡片提供 **Load turns**、**Inspect**、**Recover from page evidenc
 | --- | --- |
 | `WEB_UNCERTAIN` | 已派发请求没有完整验证的交付结果。用 `requestId`/turn ID 检查并恢复，然后才能继续新请求。 |
 | `WEB_DELIVERY_CLAIMED` | 工具响应已提交唯一交付所有者。重新连接不能重放，需核对 DSH session 和工具历史。 |
+| 网页已结束，但响应 envelope 无效 | 显式恢复只有重新核对精确提示、账号、Project、响应身份/原文及历史，并与持久化证据一致，才能判定终态失败。原请求保留失败 tombstone，不执行任何 block，也不建立成功续接前缀。证据变化或不足仍保持不确定。 |
 | `failed` 且保留 Send 前浏览器证据 | 恢复可以证明从未出现 Send intent。原请求保持终态；显式放弃该浏览器证据后才能继续，并检查残留草稿或上传。 |
 | `discarded` 且 `uncertain` | 结果已放弃，远端操作仍不确定。继续只读恢复；放弃操作不会解除该阻断。 |
 | 绑定、journal、图片或所有权错误 | 检查已保存状态。重新运行 setup 不会替换现有账号绑定或抹掉证据。 |
 
 相同精确请求的完整文本响应可以重放。带工具的响应只有一次持久化交付声明，即使相同所有者也不能再次获取可执行重放。这不是宿主持久化 ACK，也不是工具已执行的证明。新的语义请求、新的 DSH session 和新的 Flywheel 任务都是不同身份，因此 Flywheel 仍需消费端的不确定结果阻断。
+
+协议无效的终态证据最多保存 1 MiB 响应原文，并包含完整宿主响应与 framing 预算检查。一般网页报错、账号变化、超时、生成未完成或证据写入失败，都不能证明终态失败。bridge 已记录 prompt ID 或 conversation URL 后，恢复不能用另一个恰好包含相同文本的页面替换它。
 
 CLI 使用相同管理接口：
 
@@ -110,10 +115,11 @@ npm run typecheck
 npm run verify:client
 npm run verify:install
 npm run verify:web-agent-loop -- /path/to/stock-dsh --deps /path/to/host-dependencies
+npm run verify:web-plugin-host -- /path/to/stock-dsh --deps /path/to/host-dependencies
 npx playwright-core install --with-deps chromium
 DSH_TEST_CHROMIUM=/absolute/path/to/chromium npm run test:web-browser
 ```
 
-独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。
+独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。独立 plugin-host gate 用 stock Cordis/Loader/Include/ConfigEditor/LLM 激活实际插件入口，核验等待异步清理、配置重载和嵌套标题策略发现。
 
 宣称真实验收通过前，应使用目标登录账号验证：文本、一个本地工具及其后续请求、用户与工具结果图片、压缩后新 Project、provider 切换、取消、交付中断、DSH/daemon 重启，以及两个独立释放的客户端。记录浏览器、OS、DSH 版本和 journal/session 证据。任何 fixture 结果都不能替代这项账号绑定的验收。

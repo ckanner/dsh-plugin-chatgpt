@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, type Browser, type Locator, type Page } from 'playwright-core'
 import { WebBridgeError, type PageRecovery, type PageTurn, type WebPageTransport } from '../web-bridge/contracts.ts'
 import { attachmentBytes, validateAttachmentVersions } from '../web-bridge/attachments.ts'
-import { canonical, requestHash, WEB_MAX_REQUEST_BYTES } from '../web-bridge/protocol.ts'
+import { canonical, requestHash, WEB_MAX_JSON_BYTES, WEB_MAX_REQUEST_BYTES } from '../web-bridge/protocol.ts'
 import { BrowserLedger, textDigest, type BrowserGeneration, type BrowserLedgerFault, type BrowserMessageEvidence } from './ledger.ts'
 import { COMPOSER, MODEL_TRIGGER, PROFILE_TRIGGER, readPageEvidence, readProjectEvidence, readUploads, type PageEvidence } from './dom.ts'
 import { parseResponse, projectionSettingsDigest, renderPrompt } from './envelope.ts'
@@ -48,6 +48,10 @@ export interface ChromePageTransport extends WebPageTransport {
 const UI_TIMEOUT = 10_000
 const DEFAULT_RESPONSE_TIMEOUT = 10 * 60_000
 const DEFAULT_INPUT_BYTES = 256 * 1024
+/** Constructed only after durable proof of a strictly observed terminal response. */
+class TerminalResponseFailure extends WebBridgeError {
+  constructor() { super('WEB_INVALID_RESPONSE', 'The exact completed website response violated the required protocol; its immutable terminal evidence was recorded.', 502) }
+}
 function failure(code: string, message: string): never { throw new WebBridgeError(code, message, 409) }
 function drift(message: string): never { return failure('WEB_BROWSER_DRIFT', message) }
 function check(signal: AbortSignal): void { signal.throwIfAborted() }
@@ -328,6 +332,7 @@ class Transport implements ChromePageTransport {
       const signal = this.signal(originalSignal)
       this.prepared = undefined
       if (this.ledger.turn(turn.turnId)?.discarded) failure('WEB_BROWSER_DISCARDED', 'An explicitly discarded website request is never resubmitted')
+      if (this.ledger.turn(turn.turnId)?.terminalFailure) failure('WEB_BROWSER_TERMINAL', 'A terminally invalid website response is never submitted again under the same identity')
       if (this.ledger.pending()) failure('WEB_BROWSER_UNCERTAIN', 'An unresolved browser mutation fences further submission')
       this.admitted(turn)
       const generation = this.generation(turn)
@@ -548,10 +553,34 @@ class Transport implements ChromePageTransport {
     if (state.active || !answer || !answer.finished || answer.busy) return undefined
     await this.verifyProject(generation, signal)
     const finalState = await this.binding(signal, generation.conversationUrl)
+    if (finalState.projectUrl !== generation.projectUrl) drift('The terminal response changed its Project binding during final inspection')
     if (canonical(transcript(finalState), WEB_MAX_REQUEST_BYTES) !== canonical(transcript(state), WEB_MAX_REQUEST_BYTES)) drift('The terminal transcript changed while account/model binding was rechecked')
     const finalAnswer = finalState.messages[index + 1]
     if (!finalAnswer?.finished || finalAnswer.busy || finalState.active) return undefined
-    const response = parseResponse(answer.text, turn)
+    const terminalTranscriptDigest = textDigest(canonical(transcript(finalState), WEB_MAX_REQUEST_BYTES))
+    if (record.terminalFailure !== undefined) {
+      const proof = record.terminalFailure
+      if (proof.promptId !== promptId || proof.responseId !== answer.id || proof.responseText !== answer.text
+        || proof.responseDigest !== textDigest(answer.text) || proof.transcriptDigest !== terminalTranscriptDigest) {
+        drift('The terminally invalid response differs from its immutable recorded evidence')
+      }
+      check(signal)
+      throw new TerminalResponseFailure()
+    }
+    let response: unknown
+    try { response = parseResponse(answer.text, turn) }
+    catch (error) {
+      // This catch surrounds only deterministic protocol validation. Account,
+      // Project, history, DOM, timeout and storage errors never establish a
+      // terminal remote outcome or clear its engine fence.
+      if (!(error instanceof WebBridgeError) || !['WEB_INVALID_RESPONSE', 'WEB_INVALID_REQUEST', 'WEB_RESPONSE_LIMIT'].includes(error.code)
+        || Buffer.byteLength(answer.text, 'utf8') > WEB_MAX_JSON_BYTES) throw error
+      check(signal)
+      await this.ledger.rejectResponse(turn.turnId, { kind: 'invalid-response', promptId, responseId: answer.id,
+        responseText: answer.text, responseDigest: textDigest(answer.text), transcriptDigest: terminalTranscriptDigest })
+      check(signal)
+      throw new TerminalResponseFailure()
+    }
     await this.ledger.complete(turn.turnId, { responseId: answer.id, responseText: answer.text, completed: true }, turn.generationId, { transcript: transcript(state), lastTurnId: turn.turnId,
       projectedMessageCount: turn.request.messages.length, projectedMessagesDigest: textDigest(canonical(turn.request.messages, WEB_MAX_REQUEST_BYTES)),
       projectionSettingsDigest: projectionSettingsDigest(turn) })
@@ -582,13 +611,22 @@ class Transport implements ChromePageTransport {
         // Uncertain Project/uploads still retain their separate browser fence.
         if (!send) return { kind: 'not-submitted' }
         if (!generation?.projectUrl) return { kind: 'unknown' }
-        if (generation.conversationUrl) await this.navigate(generation.conversationUrl, signal)
-        let facts = await this.binding(signal, undefined, true)
+        const observedPrompt = send.state === 'observed' ? send.evidence?.promptId : undefined
+        const observedUrl = send.state === 'observed' ? send.evidence?.conversationUrl : undefined
+        if (send.state === 'observed' && (!observedPrompt || !observedUrl)
+          || record.promptId !== undefined && observedPrompt !== undefined && record.promptId !== observedPrompt
+          || generation.conversationUrl !== undefined && observedUrl !== undefined && generation.conversationUrl !== observedUrl) return { kind: 'unknown' }
+        const knownPrompt = record.promptId ?? observedPrompt
+        const knownUrl = generation.conversationUrl ?? observedUrl
+        if (knownUrl) await this.navigate(knownUrl, signal)
+        let facts = await this.binding(signal, knownUrl, true)
         if (!conversationUrl(facts.url, this.origin) || facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
         const candidateUrl = facts.url
         await this.verifyProject({ ...generation, conversationUrl: candidateUrl }, signal)
         facts = await this.binding(signal, candidateUrl, true)
+        if (facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
         const prompts = facts.messages.filter(message => message.role === 'user' && message.text === record.prompt
+          && (knownPrompt === undefined || message.id === knownPrompt)
           && canonical(message.attachments) === canonical(this.expectedUploads(record.prompt))
           && !generation.transcript.some(item => item.id === message.id))
         if (record.completed && record.promptId && record.responseText && record.responseId && generation.lastTurnId === turn.turnId) {
@@ -602,7 +640,9 @@ class Transport implements ChromePageTransport {
         await this.ledger.updateGeneration(turn.generationId, { conversationUrl: facts.url })
         const response = await this.completed(turn, prompts[0]!.id, signal)
         return response === undefined ? { kind: 'unknown' } : { kind: 'completed', response }
-      } catch { return { kind: 'unknown' } }
+      } catch (error) {
+        return error instanceof TerminalResponseFailure ? { kind: 'terminal-failure', message: error.message } : { kind: 'unknown' }
+      }
     })
   }
 

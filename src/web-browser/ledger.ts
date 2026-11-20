@@ -36,6 +36,16 @@ export interface BrowserTurnRecord {
   responseText?: string
   completed?: boolean
   discarded?: boolean
+  terminalFailure?: BrowserTerminalFailure
+}
+/** Immutable evidence of one exactly observed, finished but unusable response. */
+export interface BrowserTerminalFailure {
+  kind: 'invalid-response'
+  promptId: string
+  responseId: string
+  responseText: string
+  responseDigest: string
+  transcriptDigest: string
 }
 export interface BrowserMutation {
   id: string
@@ -87,6 +97,15 @@ async function write(path: string, value: unknown): Promise<void> {
   } finally { await handle.close().catch(() => undefined); await rm(temporary, { force: true }) }
 }
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
+function validTerminalFailure(value: unknown): value is BrowserTerminalFailure {
+  return object(value) && value.kind === 'invalid-response'
+    && Object.keys(value).length === 6
+    && typeof value.promptId === 'string' && value.promptId.length > 0 && value.promptId.length <= 1024
+    && typeof value.responseId === 'string' && value.responseId.length > 0 && value.responseId.length <= 1024
+    && typeof value.responseText === 'string' && Buffer.byteLength(value.responseText, 'utf8') <= 1024 * 1024
+    && value.responseDigest === textDigest(value.responseText)
+    && typeof value.transcriptDigest === 'string' && /^sha256:[a-f0-9]{64}$/.test(value.transcriptDigest)
+}
 
 export class BrowserLedger {
   private closed = false
@@ -157,7 +176,9 @@ export class BrowserLedger {
             || turn.promptDigest !== textDigest(turn.prompt) || turn.promptId !== undefined && typeof turn.promptId !== 'string'
             || turn.responseId !== undefined && typeof turn.responseId !== 'string' || turn.responseText !== undefined && typeof turn.responseText !== 'string'
             || turn.completed !== undefined && typeof turn.completed !== 'boolean'
-            || turn.discarded !== undefined && typeof turn.discarded !== 'boolean') error('Browser turn evidence is invalid')
+            || turn.discarded !== undefined && typeof turn.discarded !== 'boolean'
+            || turn.terminalFailure !== undefined && (!validTerminalFailure(turn.terminalFailure)
+              || turn.completed === true || turn.terminalFailure.promptId !== turn.promptId)) error('Browser turn evidence is invalid')
           turns.add(turn.id)
         }
         const actions = new Set<string>()
@@ -166,6 +187,10 @@ export class BrowserLedger {
             || typeof action.kind !== 'string' || typeof action.beforeUrl !== 'string' || !['intent', 'observed'].includes(String(action.state))
             || action.evidence !== undefined && (!object(action.evidence) || Object.values(action.evidence).some(item => typeof item !== 'string'))) error('Browser action evidence is invalid')
           actions.add(action.id)
+        }
+        for (const turn of value.turns) {
+          if (turn.terminalFailure !== undefined && !value.mutations.some(action => action.turnId === turn.id && action.kind === 'send'
+            && action.state === 'observed' && action.evidence?.promptId === turn.terminalFailure.promptId)) error('Terminal failure lacks a positively observed Send')
         }
         data = value as unknown as LedgerData
       }
@@ -198,6 +223,7 @@ export class BrowserLedger {
     const existing = this.turn(turn.turnId)
     if (existing !== undefined) {
       if (existing.discarded) throw new WebBridgeError('WEB_BROWSER_DISCARDED', 'This browser request was explicitly discarded and cannot be resubmitted', 409)
+      if (existing.terminalFailure) throw new WebBridgeError('WEB_BROWSER_TERMINAL', 'A terminally invalid browser response cannot be resubmitted under the same identity', 409)
       if (existing.requestHash !== turn.request.idempotencyKey || existing.generationId !== turn.generationId || existing.prompt !== prompt) error('Browser request identity changed')
       return
     }
@@ -214,13 +240,32 @@ export class BrowserLedger {
     await this.commit(next => { const item = next.generations.find(item => item.id === id); if (!item) error('Missing browser generation'); Object.assign(item, change) })
   }
   async updateTurn(id: string, change: Partial<BrowserTurnRecord>): Promise<void> {
-    await this.commit(next => { const item = next.turns.find(item => item.id === id); if (!item) error('Missing browser turn'); Object.assign(item, change) })
+    await this.commit(next => {
+      const item = next.turns.find(item => item.id === id)
+      if (!item) error('Missing browser turn')
+      if (change.terminalFailure !== undefined || item.terminalFailure && Object.entries(change).some(([key, value]) => key !== 'discarded'
+        && JSON.stringify(item[key as keyof BrowserTurnRecord]) !== JSON.stringify(value))) error('Terminal failure evidence and its identity are immutable')
+      Object.assign(item, change)
+    })
+  }
+  async rejectResponse(turnId: string, evidence: BrowserTerminalFailure): Promise<void> {
+    this.assertOpen()
+    const current = this.turn(turnId)
+    if (!current || current.completed || !validTerminalFailure(evidence) || current.promptId !== evidence.promptId
+      || !this.mutations(turnId).some(action => action.kind === 'send' && action.state === 'observed' && action.evidence?.promptId === evidence.promptId)) error('Invalid terminal failure evidence')
+    if (current.terminalFailure !== undefined) {
+      if (JSON.stringify(current.terminalFailure) !== JSON.stringify(evidence)) error('Terminal failure evidence cannot be replaced')
+      return
+    }
+    // Deliberately do not advance the successful generation transcript/tip.
+    await this.commit(next => { next.turns.find(turn => turn.id === turnId)!.terminalFailure = structuredClone(evidence) })
   }
   async complete(turnId: string, turn: Partial<BrowserTurnRecord>, generationId: string, generation: Partial<BrowserGeneration>): Promise<void> {
     await this.commit(next => {
       const storedTurn = next.turns.find(item => item.id === turnId)
       const storedGeneration = next.generations.find(item => item.id === generationId)
       if (!storedTurn || !storedGeneration || storedTurn.generationId !== generationId) error('Missing completion evidence identity')
+      if (storedTurn.terminalFailure !== undefined || turn.terminalFailure !== undefined) error('A terminally invalid response cannot become a successful projection')
       Object.assign(storedTurn, turn); Object.assign(storedGeneration, generation)
     })
   }

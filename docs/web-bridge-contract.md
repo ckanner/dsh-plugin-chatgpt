@@ -53,6 +53,8 @@ Two callers of the same exact key join one page operation. Completed text can be
 
 `recover` only reads page evidence and reconciles the journal. `discard` retains a tombstone and does not clear an unknown browser outcome. Inspection data is not permission to execute its tool blocks. A receipt proves what this bridge recorded; it is not a host persistence ACK or proof of tool execution.
 
+The browser transport can establish `terminal-failure` for a fully observed but protocol-invalid response after saving immutable, bounded response/transcript evidence and rechecking the same account, Project and identities during explicit recovery. It does not advance the successful generation prefix. Changed evidence, incomplete output, generic alerts or failed durable writes remain unknown; known prompt and conversation identities cannot be replaced by same-text candidates.
+
 Locks use exclusive directories under the real physical profile and journal. They contain a random owner token and are never reclaimed from a stale PID alone. Clean shutdown waits for all transport operations to settle before releasing those locks. After a hard process crash, an operator must first establish that no bridge/owned browser operation remains and inspect the evidence before manually resolving stale locks. There is deliberately no automatic lock-stealing command. The durability implementation is verified on POSIX; Windows directory-fsync behavior is not claimed by this phase.
 
 The snapshot journal has a 64 MiB bound and no automatic deletion/compaction. Reaching that bound stops admission. This bounded foundation preserves evidence; a production retention/archival policy is separate work.
@@ -98,6 +100,7 @@ The stock host gate uses the released DSH `dsh-v0.2.2-rc.5` commit `9c2670d3bce5
 
 ```sh
 npm run verify:web-agent-loop -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
+npm run verify:web-plugin-host -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
 ```
 
 The script bundles the real stock AgentLoop, LLM runtime, BlockAssembler, native tool executor, JSONL persistence and checkpoint policy. It checks the selected commit and unchanged tracked host files before and after execution; the page transport alone is a fixture. CI and release share this Linux gate on Node 24, while ordinary bridge tests run under both supported Node 22 and 24 lines.

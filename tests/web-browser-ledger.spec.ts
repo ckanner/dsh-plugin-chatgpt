@@ -1,10 +1,10 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Script } from 'node:vm'
-import { BrowserLedger, BROWSER_LEDGER_FILE, textDigest, type BrowserIdentity } from '../src/web-browser/ledger.ts'
+import { BrowserLedger, BROWSER_LEDGER_FILE, textDigest, type BrowserIdentity, type BrowserTerminalFailure } from '../src/web-browser/ledger.ts'
 import { projectionSettingsDigest, renderPrompt } from '../src/web-browser/envelope.ts'
 import { canonical, createResponse, requestHash, WEB_MAX_REQUEST_BYTES } from '../src/web-bridge/protocol.ts'
 import { WebBridgeError, type PageTurn } from '../src/web-bridge/contracts.ts'
@@ -28,6 +28,16 @@ function turn(): PageTurn {
 }
 function code(expected: string) { return (error: unknown) => error instanceof WebBridgeError && error.code === expected }
 async function snapshot(directory: string) { return JSON.parse(await readFile(join(directory, BROWSER_LEDGER_FILE), 'utf8')) }
+async function submitted(ledger: BrowserLedger, current: PageTurn): Promise<void> {
+  await ledger.admit(current, renderPrompt(current, 100_000))
+  const send = await ledger.begin(current.turnId, 'send', 'https://chatgpt.com/c/owned')
+  await ledger.observed(send, { promptId: 'user-1', conversationUrl: 'https://chatgpt.com/c/owned' })
+  await ledger.updateTurn(current.turnId, { promptId: 'user-1' })
+}
+function rejectedProof(text = 'This is not the required response envelope'): BrowserTerminalFailure {
+  return { kind: 'invalid-response', promptId: 'user-1', responseId: 'assistant-1', responseText: text,
+    responseDigest: textDigest(text), transcriptDigest: textDigest('exact terminal transcript') }
+}
 
 describe('browser mutation ledger without a browser', () => {
   it('requires explicit first initialization, exclusive ownership, exact profile binding, and owner-only evidence', async () => {
@@ -158,6 +168,56 @@ describe('browser mutation ledger without a browser', () => {
     const reopened = await BrowserLedger.open(p.directory, p.identity, false)
     assert.equal(reopened.turn(current.turnId)?.discarded, true)
     assert.equal(reopened.mutations(current.turnId)[0]?.state, 'observed')
+    await reopened.close()
+  })
+
+  it('persists immutable invalid-response evidence without advancing the successful generation prefix', async () => {
+    const p = await paths(), current = turn(), proof = rejectedProof()
+    const ledger = await BrowserLedger.open(p.directory, p.identity, true)
+    await submitted(ledger, current)
+    const generation = ledger.generation(current.generationId)
+    await ledger.rejectResponse(current.turnId, proof)
+    await ledger.rejectResponse(current.turnId, structuredClone(proof))
+    assert.deepEqual(ledger.turn(current.turnId)?.terminalFailure, proof)
+    assert.deepEqual(ledger.generation(current.generationId), generation)
+    assert.equal(ledger.turn(current.turnId)?.completed, undefined)
+    await assert.rejects(ledger.admit(current, renderPrompt(current, 100_000)), code('WEB_BROWSER_TERMINAL'))
+    await assert.rejects(ledger.rejectResponse(current.turnId, rejectedProof('edited response')), code('WEB_BROWSER_LEDGER'))
+    await assert.rejects(ledger.updateTurn(current.turnId, { completed: true }), code('WEB_BROWSER_LEDGER'))
+    await assert.rejects(ledger.updateTurn(current.turnId, { promptId: 'replacement-prompt' }), code('WEB_BROWSER_LEDGER'))
+    await assert.rejects(ledger.complete(current.turnId, { completed: true }, current.generationId, { lastTurnId: current.turnId }), code('WEB_BROWSER_LEDGER'))
+    await ledger.close()
+    const reopened = await BrowserLedger.open(p.directory, p.identity, false)
+    assert.deepEqual(reopened.turn(current.turnId)?.terminalFailure, proof)
+    assert.deepEqual(reopened.generation(current.generationId), generation)
+    await reopened.close()
+  })
+
+  it('cannot establish terminal failure without positive Send evidence, matching bytes, and a bounded proof', async () => {
+    const p = await paths(), current = turn()
+    const ledger = await BrowserLedger.open(p.directory, p.identity, true)
+    await ledger.admit(current, renderPrompt(current, 100_000))
+    await assert.rejects(ledger.rejectResponse(current.turnId, rejectedProof()), code('WEB_BROWSER_LEDGER'))
+    await submitted(ledger, current)
+    await assert.rejects(ledger.rejectResponse(current.turnId, { ...rejectedProof(), responseDigest: textDigest('different bytes') }), code('WEB_BROWSER_LEDGER'))
+    await assert.rejects(ledger.rejectResponse(current.turnId, rejectedProof('x'.repeat(1024 * 1024 + 1))), code('WEB_BROWSER_LEDGER'))
+    assert.equal(ledger.turn(current.turnId)?.terminalFailure, undefined)
+    await ledger.close()
+  })
+
+  it('never publishes a failed terminal-evidence write and keeps the old durable state after reopen', async () => {
+    const p = await paths(), current = turn()
+    const ledger = await BrowserLedger.open(p.directory, p.identity, true)
+    await submitted(ledger, current)
+    const moved = join(p.root, 'temporarily-unavailable')
+    await rename(p.directory, moved)
+    try {
+      await assert.rejects(ledger.rejectResponse(current.turnId, rejectedProof()), { code: 'ENOENT' })
+      assert.equal(ledger.turn(current.turnId)?.terminalFailure, undefined)
+      await assert.rejects(ledger.rejectResponse(current.turnId, rejectedProof()), code('WEB_BROWSER_LEDGER'))
+    } finally { await rename(moved, p.directory); await ledger.close() }
+    const reopened = await BrowserLedger.open(p.directory, p.identity, false)
+    assert.equal(reopened.turn(current.turnId)?.terminalFailure, undefined)
     await reopened.close()
   })
 })

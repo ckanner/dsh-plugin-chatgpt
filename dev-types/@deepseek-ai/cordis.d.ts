@@ -46,7 +46,7 @@ declare module '@deepseek-ai/cordis' {
     llm: LlmRouteRegistry
     settings: SettingsService
     fiber: Fiber
-    effect(callback: () => () => void): () => void
+    effect(callback: () => () => void | Promise<void>): () => void | Promise<void>
     get(name: string): unknown
     /**
      * Run `callback` once the named services are available, against a context

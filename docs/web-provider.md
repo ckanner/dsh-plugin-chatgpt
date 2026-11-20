@@ -69,6 +69,8 @@ The private blob store retains each exact image version once. Journal requests c
 
 The complete prompt envelope has a default 256 KiB byte budget. Responses, receipt framing and inspection remain within a 1 MiB bound. The page must return a complete JSON envelope for the exact request. The engine validates every block and tool schema before persistence; the client validates response, finish and EOF before exposing any DSH chunk. It reports no fabricated thinking text or usage. Tools execute only after the finite model response closes, in the ordinary stock DSH AgentLoop.
 
+The browser transport currently has a 10-minute operation/response observation deadline, alongside shorter waits for UI controls. Host cancellation can end it sooner. If a Pro response outlasts observation, the outcome remains uncertain and can be recovered later from the page; a timeout does not authorize another Send. Include long thinking/queue periods in target-account acceptance.
+
 ## Inspect, recover and abandon
 
 The provider card offers **Load turns**, **Inspect**, **Recover from page evidence** and an explicit abandonment action. The list shows the newest 100 turn summaries; older turns remain inspectable by their exact ID through the CLI. Inspection shows recorded state and any completed response. It never executes tool blocks. Recovery observes the website and updates local evidence; it never clicks Send or runs a tool. A profile-fence error identifies the actual unresolved turn, even when a different new request encountered that fence.
@@ -77,11 +79,14 @@ The provider card offers **Load turns**, **Inspect**, **Recover from page eviden
 | --- | --- |
 | `WEB_UNCERTAIN` | A dispatched request lacks a completely verified delivery. Inspect its `requestId`/turn ID and recover before any new request. |
 | `WEB_DELIVERY_CLAIMED` | A tool response already committed its one delivery owner. Reconnecting cannot replay it. Reconcile the DSH session/tool history. |
+| Finished page response with an invalid envelope | Explicit recovery may prove terminal failure only after rechecking the exact prompt, account, Project, response identity/text and transcript against durable evidence. The request remains a failed tombstone; no blocks execute and no successful continuation prefix is created. Changed or insufficient evidence remains unknown. |
 | `failed` with pre-Send browser evidence | Recovery can prove there was no Send intent. The old request remains terminal; explicitly abandon its browser evidence before new work, and inspect any remaining draft/upload. |
 | `discarded` plus `uncertain` | The result is abandoned, but the remote operation remains unknown. Continue read-only recovery; abandonment does not clear that fence. |
 | Binding, journal, image or ownership error | Inspect the saved state. Re-running setup cannot replace an existing account binding or erase its evidence. |
 
 A completed text response may be replayed for the same exact request. A tool-bearing response gets one durable delivery claim; even the same delivery owner cannot request a second executable replay. This is not a host persistence ACK or proof that a tool executed. A new semantic request, a new DSH session and a new Flywheel task are separate identities, which is why Flywheel also needs its consumer-side unknown-outcome fence.
+
+Protocol-invalid terminal evidence retains at most 1 MiB of response text and includes the complete host response/framing budget check. Generic website alerts, account changes, timeouts, incomplete generation and failed evidence writes cannot establish terminal failure. Once the bridge has recorded a prompt ID or conversation URL, recovery cannot replace it with a different page that happens to contain the same text.
 
 The CLI uses the same management surface:
 
@@ -110,10 +115,11 @@ npm run typecheck
 npm run verify:client
 npm run verify:install
 npm run verify:web-agent-loop -- /path/to/stock-dsh --deps /path/to/host-dependencies
+npm run verify:web-plugin-host -- /path/to/stock-dsh --deps /path/to/host-dependencies
 npx playwright-core install --with-deps chromium
 DSH_TEST_CHROMIUM=/absolute/path/to/chromium npm run test:web-browser
 ```
 
-The dedicated Chrome CI job explicitly enables real browser tests. If Chromium is unavailable or cannot start, that job fails; it does not replace a browser run with mocked page methods. Ordinary offline tests cover exact attachment replay, schema validation, fsync failures, leases, request identity, disposal, independent daemon clients and stock host tool/checkpoint behavior.
+The dedicated Chrome CI job explicitly enables real browser tests. If Chromium is unavailable or cannot start, that job fails; it does not replace a browser run with mocked page methods. Ordinary offline tests cover exact attachment replay, schema validation, fsync failures, leases, request identity, disposal, independent daemon clients and stock host tool/checkpoint behavior. The separate plugin-host gate activates the actual entry with stock Cordis/Loader/Include/ConfigEditor/LLM and checks awaited cleanup, configuration remounts and nested title-policy discovery.
 
 Before calling this live-accepted, verify with the intended signed-in account: text, one local tool and its follow-up, user/tool-result images, compaction and a fresh Project, provider switching, cancellation, interrupted delivery, DSH/daemon restarts, and two independently disposed clients. Record browser/OS/DSH versions and the resulting journal/session evidence. No current fixture result substitutes for that account-bound acceptance.

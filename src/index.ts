@@ -57,10 +57,10 @@ export const Config = z.object({
   contextWindowLimit: z.number().step(1).min(1024).volatile(),
   /** Exact model IDs with budgets that override the global context budget. */
   modelContextWindowLimits: z.dict(z.number().step(1).min(1024)).volatile(),
-  /** Optional executable for the dedicated local Chrome profile. */
-  webChromeExecutable: z.string().volatile(),
-  /** Local byte admission limit for the complete Web prompt envelope. */
-  webMaxInputBytes: z.number().step(1).min(1024).volatile(),
+  /** Startup option; changing the dedicated Chrome executable remounts this plugin. */
+  webChromeExecutable: z.string(),
+  /** Startup byte admission limit; changing it remounts this plugin. */
+  webMaxInputBytes: z.number().step(1).min(1024),
 })
 
 /** The configuration one installation supplies, as the harness resolves it. */
@@ -72,8 +72,8 @@ export type Config = {
   proxyUrl: Volatile<string>
   contextWindowLimit: Volatile<number>
   modelContextWindowLimits: Volatile<Record<string, number>>
-  webChromeExecutable: Volatile<string>
-  webMaxInputBytes: Volatile<number>
+  webChromeExecutable?: string
+  webMaxInputBytes?: number
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -201,10 +201,12 @@ export class HarnessAdapter extends LlmAdapter {
 }
 
 /** Read active stock title policies through the public Loader/ConfigEditor entry surface. */
-function titleRoutes(ctx: Context): { name: string, provider?: string, model?: string }[] {
+export function titleRoutes(ctx: Pick<Context, 'get'>): { name: string, provider?: string, model?: string }[] {
   // Cordis exports a const enum. Keep its public ACTIVE value typed without a runtime enum import.
   const active: FiberState.ACTIVE = 2
-  const service = (ctx.get('configEditor') ?? ctx.get('loader')) as { entries?: () => Iterable<{
+  // ConfigEditor exposes only editable profile rows and omits nested Includes.
+  // Loader's public iterator covers every active entry in all nested trees.
+  const service = (ctx.get('loader') ?? ctx.get('configEditor')) as { entries?: () => Iterable<{
     options: { name?: string }, fiber?: { state: number, effectiveConfig: unknown, runtime?: { name?: string } | null },
   }> } | undefined
   const result: { name: string, provider?: string, model?: string }[] = []
@@ -245,9 +247,8 @@ export function apply(ctx: Context, config: Config): void {
   const baseUrl = config.baseUrl.get() ?? ''
   const transport = createScopedFetch(config.proxyUrl.get())
   ctx.effect(() => () => {
-    // Cordis disposers are synchronous; observe the asynchronous shutdown so
-    // failures are reported instead of becoming unhandled rejections.
-    void transport.close().catch(error => {
+    // Cordis awaits async disposers before unload/remount completes.
+    return transport.close().catch(error => {
       console.error('chatgpt: failed to close proxy transport', error)
     })
   })
@@ -272,8 +273,8 @@ export function apply(ctx: Context, config: Config): void {
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 
-  const executable = config.webChromeExecutable?.get()
-  const maxInputBytes = config.webMaxInputBytes?.get()
+  const executable = config.webChromeExecutable
+  const maxInputBytes = config.webMaxInputBytes
   const web = new WebProvider({
     provider: route,
     runtime: new ManagedWebRuntime({ stateDirectory: join(stateDir, 'web'), provider: route,
@@ -287,8 +288,8 @@ export function apply(ctx: Context, config: Config): void {
       ...requestId === undefined ? {} : { requestId } }),
     onChanged: () => { ctx.emit('llm/adapters-updated') },
   })
-  ctx.effect(() => () => { void web.dispose().catch(error => { console.error('chatgpt: Web client shutdown failed',
-    error instanceof WebBridgeError ? error.code : 'WEB_SHUTDOWN_FAILED') }) })
+  ctx.effect(() => () => web.dispose().catch(error => { console.error('chatgpt: Web client shutdown failed',
+    error instanceof WebBridgeError ? error.code : 'WEB_SHUTDOWN_FAILED') }))
   const adapter = new HarnessAdapter(inner, route, web)
   const handle: AdapterRegistrationHandle = ctx.llm.registerAdapter([route], adapter)
   ctx.effect(() => () => { handle() })

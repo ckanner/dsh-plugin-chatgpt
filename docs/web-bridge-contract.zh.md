@@ -53,6 +53,8 @@
 
 `recover` 只读取页面证据并核对 journal。`discard` 保留 tombstone，不清除未知浏览器结果。检查接口中的数据不是执行其中工具 block 的授权。receipt 只证明本 bridge 记录了什么，不是宿主持久化 ACK，也不是工具执行证明。
 
+对于已完整观察、但协议无效的网页响应，浏览器 transport 先保存不可变且有界的响应/历史证据，再于显式恢复时重新核验同一账号、Project 和请求身份，才能返回 `terminal-failure`；它不推进成功 generation 前缀。证据变化、输出未完成、一般网页报错或持久化失败仍保持不确定；已知 prompt 与 conversation 身份不能被相同文本的候选替换。
+
 锁通过真实物理 profile 和 journal 下的独占目录实现，包含随机 owner token，绝不只凭陈旧 PID 回收。正常关闭会等待所有 transport 操作结束后才释放锁。进程硬崩溃后，操作者必须先确认没有 bridge 或其浏览器操作仍在运行，检查证据，再人工处理残留锁。这里特意不提供自动抢锁命令。持久化实现已在 POSIX 上验证；本阶段不承诺 Windows 目录 fsync 行为。
 
 快照 journal 上限为 64 MiB，没有自动删除或压缩；达到上限后停止接纳请求。这一有界基础实现优先保留证据，生产用保留/归档策略属于后续工作。
@@ -98,6 +100,7 @@ npm run build
 
 ```sh
 npm run verify:web-agent-loop -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
+npm run verify:web-plugin-host -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
 ```
 
 脚本打包真正的 stock AgentLoop、LLM runtime、BlockAssembler、native tool executor、JSONL persistence 和 checkpoint policy。执行前后检查选定 commit 和宿主 tracked 文件未改变；只有页面 transport 使用 fixture。CI 和 release 共用 Node 24 的 Linux gate，普通 bridge 测试同时运行在支持的 Node 22 和 24 系列上。

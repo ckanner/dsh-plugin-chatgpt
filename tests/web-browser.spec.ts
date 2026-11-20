@@ -6,9 +6,10 @@ import { chromeFixture, type ChromeFixture } from './fixtures/web-browser/chrome
 import { accountBindingForVisibleIdentity, createChromePageTransport, inspectChromeSetup } from '../src/web-browser/index.ts'
 import { BROWSER_LEDGER_FILE } from '../src/web-browser/ledger.ts'
 import { parseResponse, renderPrompt } from '../src/web-browser/envelope.ts'
-import { createResponse, requestHash, validatePageResponse } from '../src/web-bridge/protocol.ts'
+import { createResponse, requestHash, validatePageResponse, WEB_MAX_JSON_BYTES } from '../src/web-bridge/protocol.ts'
 import { imageDigest, uploadName } from '../src/web-bridge/attachments.ts'
 import { WebBridgeError, type PageTurn, type WebRequest, type WebResponse } from '../src/web-bridge/contracts.ts'
+import { openWebBridge } from '../src/web-bridge/engine.ts'
 
 const fixtures: ChromeFixture[] = []
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fixture.close() })
@@ -131,6 +132,43 @@ describe('owned Chromium website transport', { skip: process.env['DSH_TEST_BROWS
     assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
   })
 
+  it('recovery never replaces a positively observed prompt ID with another same-text message', async () => {
+    const f = await fixture(), current = turn(), transport = await f.transport()
+    await transport.prepare(current, signal()); const sent = await transport.submit(current, signal())
+    await transport.close()
+    await f.page.evaluate(() => {
+      const page = window as unknown as { fixture: { messages: Array<{ role: string, id: string }> }, renderFixture(): void }
+      page.fixture.messages.find(message => message.role === 'user')!.id = 'replacement-user-with-same-text'
+      page.renderFixture()
+    })
+    const reopened = await f.transport({ initialize: false })
+    assert.equal((await reopened.recover(current)).kind, 'unknown')
+    const saved = JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data
+    assert.equal(saved.turns[0].promptId, sent.promptId)
+    assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
+  it('recovery never replaces a known conversation URL after a same-Project redirect', async () => {
+    const f = await fixture(), current = turn(), transport = await f.transport()
+    await transport.prepare(current, signal()); await transport.submit(current, signal())
+    const knownUrl = f.page.url()
+    await transport.close()
+    // The replacement is otherwise a self-consistent chat in the same Project;
+    // only the earlier positive URL evidence distinguishes it from our chat.
+    await f.page.evaluate(() => {
+      const page = window as unknown as { fixture: { currentProject: { chat: string } }, renderFixture(): void }
+      page.fixture.currentProject.chat = '/c/unowned-redirect'
+      page.renderFixture()
+    })
+    await f.page.goto(f.origin)
+    f.redirect(new URL(knownUrl).pathname, '/c/unowned-redirect')
+    const reopened = await f.transport({ initialize: false })
+    assert.equal((await reopened.recover(current)).kind, 'unknown')
+    const saved = JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data
+    assert.equal(saved.generations[0].conversationUrl, knownUrl)
+    assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
   it('never repeats an uncertain Project creation after restart', async () => {
     const f = await fixture(); const current = turn()
     const transport = await f.transport({ testOnlyLedgerFault(point, action) { if (point === 'before-observed' && action.kind === 'project-create') throw new Error('simulated post-create crash') } })
@@ -155,6 +193,64 @@ describe('owned Chromium website transport', { skip: process.env['DSH_TEST_BROWS
     await assert.rejects(transport.observe(current, sent.promptId, AbortSignal.timeout(200)), error => error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
     assert.equal((await transport.recover(current)).kind, 'unknown')
     assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
+  for (const mode of ['prose', 'wrong-request', 'malformed-json', 'bad-tool']) it(`recovers a strictly finished ${mode} response as terminal failure without another Send`, async () => {
+    const f = await fixture(); await f.set({ answerMode: mode })
+    const current = turn(), transport = await f.transport()
+    await transport.prepare(current, signal()); const sent = await transport.submit(current, signal())
+    await assert.rejects(transport.observe(current, sent.promptId, signal()), code('WEB_INVALID_RESPONSE'))
+    const stored = JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data
+    assert.equal(stored.turns[0].terminalFailure.kind, 'invalid-response')
+    assert.equal(stored.turns[0].completed, undefined)
+    assert.equal(stored.generations[0].lastTurnId, undefined)
+    assert.deepEqual(stored.generations[0].transcript, [])
+    await transport.close()
+    const reopened = await f.transport({ initialize: false })
+    assert.equal((await reopened.recover(current)).kind, 'terminal-failure')
+    await assert.rejects(reopened.prepare(current, signal()), code('WEB_BROWSER_TERMINAL'))
+    await assert.rejects(reopened.submit(current, signal()))
+    assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
+  it('keeps recovery unknown when a terminally invalid response changes after its proof was saved', async () => {
+    const f = await fixture(); await f.set({ answerMode: 'prose' })
+    const current = turn(), transport = await f.transport()
+    await transport.prepare(current, signal()); const sent = await transport.submit(current, signal())
+    await assert.rejects(transport.observe(current, sent.promptId, signal()), code('WEB_INVALID_RESPONSE'))
+    const proof = JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data.turns[0].terminalFailure
+    await transport.close()
+    await f.page.evaluate(() => {
+      const fixture = window as unknown as { fixture: { messages: Array<{ role: string, text: string }> }, renderFixture(): void }
+      fixture.fixture.messages.findLast(message => message.role === 'assistant')!.text += ' edited after observation'
+      fixture.renderFixture()
+    })
+    const reopened = await f.transport({ initialize: false })
+    assert.equal((await reopened.recover(current)).kind, 'unknown')
+    assert.deepEqual(JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data.turns[0].terminalFailure, proof)
+    assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
+  it('engine recovery retains an invalid-response tombstone and admits fresh work only in a new generation', async () => {
+    const f = await fixture(); await f.set({ answerMode: 'prose' })
+    const current = turn(), request = current.request, transport = await f.transport()
+    const engine = await openWebBridge({ directory: join(f.directory, 'engine'), profileDirectory: f.profileDirectory, initialize: true, transport,
+      binding: { protocolVersion: 1, installationId: request.installationId, provider: request.provider, profileId: request.profileId, accountBinding: request.accountBinding } })
+    try {
+      await assert.rejects(engine.execute(request), code('WEB_UNCERTAIN'))
+      const recovered = await engine.administration.recover(current.turnId)
+      assert.equal(recovered.state, 'failed')
+      assert.equal(recovered.response, undefined)
+      assert.equal(recovered.deliveryState, 'unclaimed')
+      await assert.rejects(engine.execute(request), code('WEB_REMOTE_FAILED'))
+      assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+      await f.set({ answerMode: 'text' })
+      const next = await engine.execute(turn({ sessionId: 'new-after-terminal-failure' }).request)
+      assert.equal(next.finishReason, 'stop')
+      assert.notEqual(next.receipt.generationId, recovered.generationId)
+      assert.equal(f.actions.filter(action => action.kind === 'create').length, 2)
+      assert.equal(f.actions.filter(action => action.kind === 'send').length, 2)
+    } finally { await engine.close() }
   })
 
   it('refuses a missing existing ledger and a mismatched dedicated profile', async () => {
@@ -191,6 +287,25 @@ describe('owned Chromium website transport', { skip: process.env['DSH_TEST_BROWS
     await f.set({ email: 'changed@example.test' })
     await f.page.evaluate(() => (window as unknown as { finishFixture(): void }).finishFixture())
     await rejected
+    assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
+  })
+
+  it('does not establish terminal failure when final account inspection changes same-URL Project membership', async () => {
+    const f = await fixture(); await f.set({ answerMode: 'prose' })
+    const transport = await f.transport(), current = turn()
+    await transport.prepare(current, signal()); const sent = await transport.submit(current, signal())
+    const url = f.page.url()
+    const text = await f.page.locator('[data-message-author-role="assistant"] [data-message-content]').innerText()
+    // observe's admission binding opens the account twice; the third opening
+    // occurs only after completed() has rechecked Project settings and sharing.
+    await f.set({ projectOnAccountInspect: '/g/g-p-unowned/project', projectAfterAccountInspections: 3, accountInspectionCount: 0 })
+    await assert.rejects(transport.observe(current, sent.promptId, signal()), code('WEB_BROWSER_DRIFT'))
+    assert.equal(f.page.url(), url)
+    assert.equal(await f.page.locator('[data-message-author-role="assistant"] [data-message-content]').innerText(), text)
+    const saved = JSON.parse(await readFile(join(f.stateDirectory, BROWSER_LEDGER_FILE), 'utf8')).data
+    assert.equal(saved.turns[0].terminalFailure, undefined)
+    assert.equal(saved.turns[0].completed, undefined)
+    assert.equal((await transport.recover(current)).kind, 'unknown')
     assert.equal(f.actions.filter(action => action.kind === 'send').length, 1)
   })
 
@@ -254,5 +369,14 @@ describe('website envelope', () => {
     assert.throws(() => parseResponse(valid.replace(current.turnId, 'other-request'), current), code('WEB_INVALID_RESPONSE'))
     assert.throws(() => parseResponse(valid.replace('"version":1', '"version":0,"version":1'), current), code('WEB_INVALID_RESPONSE'))
     assert.throws(() => renderPrompt(current, 1024), code('WEB_INPUT_LIMIT'))
+  })
+
+  it('rejects a bounded page envelope that cannot fit its complete receipt and transport framing', () => {
+    const current = turn()
+    const response = { version: 1, complete: true, blocks: [{ type: 'text', text: 'x'.repeat(WEB_MAX_JSON_BYTES - 512) }] }
+    const raw = JSON.stringify({ ...response, requestId: current.turnId })
+    assert.ok(Buffer.byteLength(raw, 'utf8') <= WEB_MAX_JSON_BYTES)
+    assert.doesNotThrow(() => validatePageResponse(response, current.request, current.turnId))
+    assert.throws(() => parseResponse(raw, current), code('WEB_RESPONSE_LIMIT'))
   })
 })
