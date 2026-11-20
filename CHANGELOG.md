@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.22
+
+Add explicit GPT-6.2 UltraFast service-tier variants.
+
+- When GPT-6.2 Astra or Sol is available, offer
+  `gpt-6.2-astra-ultrafast` and `gpt-6.2-sol-ultrafast` in the selector. Their
+  requests use the base model id with `service_tier: "ultrafast"`.
+- UltraFast is a speed tier, not a separate model; DSH's GenerateOptions has no
+  speed field, so the adapter exposes the tier as a selectable model variant.
+- UltraFast pricing is higher than Standard. Availability still follows the
+  account entitlement and the endpoint's response.
+
 ## 0.1.21
 
 Add current GPT-6.2 model metadata.
