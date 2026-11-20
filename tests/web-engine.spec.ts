@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openWebBridge, type OpenWebBridgeOptions } from '../src/web-bridge/engine.ts'
 import { JOURNAL_FILE, JOURNAL_LOCK, PROFILE_LOCK, type JournalFaultPoint } from '../src/web-bridge/journal.ts'
-import { requestHash } from '../src/web-bridge/protocol.ts'
+import { requestHash, validateResponse, WEB_MAX_JSON_BYTES } from '../src/web-bridge/protocol.ts'
 import {
   WebBridgeError, type PageTurn, type WebBinding, type WebBridgeEngine, type WebMessage,
   type WebPageTransport, type WebRequest, type WebResponse,
@@ -306,6 +306,61 @@ describe('durable Web bridge engine', () => {
     await close(engine)
     const reopened = await open({ ...paths, transport: transport() })
     await assert.rejects(reopened.execute(request()), code('WEB_UNCERTAIN'))
+  })
+
+  it('rejects oversized completed responses before normal/recovery commits and reopens without corrupting the profile', async () => {
+    const paths = await fixture()
+    const tooLarge = { version: 1, complete: true, blocks: [{ type: 'text', text: 'x'.repeat(1_048_476) }] }
+    const input = request()
+    const engine = await open({ ...paths, initialize: true, transport: transport({ async observe() { return tooLarge } }) })
+    await assert.rejects(engine.execute(input), code('WEB_UNCERTAIN'))
+    assert.equal((await snapshot(paths.directory)).turns[0].state, 'uncertain')
+    assert.equal((await snapshot(paths.directory)).turns[0].response, undefined)
+    await close(engine)
+
+    let recovery = tooLarge
+    const recovered = await open({ ...paths, transport: transport({
+      async submit() { throw new Error('Recovery must not submit again') },
+      async recover() { return { kind: 'completed', response: recovery } },
+    }) })
+    await assert.rejects(recovered.recover(turnId(input), access(input)), code('WEB_RESPONSE_LIMIT'))
+    assert.equal((await snapshot(paths.directory)).turns[0].state, 'uncertain')
+    assert.equal((await snapshot(paths.directory)).turns[0].response, undefined)
+    recovery = { version: 1, complete: true, blocks: [{ type: 'text', text: 'x'.repeat(WEB_MAX_JSON_BYTES - 4096) }] }
+    const inspected = await recovered.recover(turnId(input), access(input))
+    assert.equal(inspected.state, 'completed')
+    assert.ok(Buffer.byteLength(JSON.stringify(inspected)) <= WEB_MAX_JSON_BYTES)
+    assert.ok(inspected.response)
+    assert.deepEqual(validateResponse(inspected.response, input), inspected.response)
+    await close(recovered)
+
+    const reopened = await open({ ...paths, transport: transport({ async submit() { throw new Error('Completed cache must survive restart') } }) })
+    assert.deepEqual(await reopened.execute(input), inspected.response)
+    assert.ok(Buffer.byteLength(JSON.stringify(await reopened.inspect(turnId(input), access(input)))) <= WEB_MAX_JSON_BYTES)
+  })
+
+  it('keeps near-limit normal tool responses inspectable even when a later owner has maximally escaped identifiers', async () => {
+    const paths = await fixture()
+    const page = { ...toolPage, blocks: [...toolPage.blocks, { type: 'text', text: 'x'.repeat(WEB_MAX_JSON_BYTES - 8192) }] }
+    const engine = await open({ ...paths, initialize: true, transport: transport({ async observe() { return page } }) })
+    const input = request()
+    // Completed model response precedes delivery ownership. A different lease
+    // may legitimately make the first claim later, with longer identifiers.
+    await assert.rejects(engine.execute(input, { authorizeDelivery() { throw new WebBridgeError('WEB_LEASE_EXPIRED', 'Expired before delivery') } }), code('WEB_LEASE_EXPIRED'))
+    assert.equal((await snapshot(paths.directory)).turns[0].state, 'completed')
+    const owner = request({ clientLeaseId: '\u0000'.repeat(256), deliveryAttemptId: '\u0000'.repeat(256) })
+    const response = await engine.execute(owner)
+    assert.equal(response.finishReason, 'tool-calls')
+    assert.deepEqual(validateResponse(response, owner), response)
+    const inspected = await engine.inspect(turnId(owner), access(owner))
+    assert.equal(inspected.deliveryOwner?.clientLeaseId, owner.clientLeaseId)
+    assert.ok(Buffer.byteLength(JSON.stringify(inspected)) <= WEB_MAX_JSON_BYTES)
+    await close(engine)
+
+    const reopened = await open({ ...paths, transport: transport({ async submit() { throw new Error('Claimed tool response must not submit again') } }) })
+    const rejoined = request({ clientLeaseId: 'rejoined' })
+    await assert.rejects(reopened.execute(rejoined), code('WEB_DELIVERY_CLAIMED'))
+    assert.deepEqual((await reopened.inspect(turnId(rejoined), access(rejoined))).response, response)
   })
 
   it('validates complete tool result sets, reuses only the current exact prefix and forks stale tips', async () => {

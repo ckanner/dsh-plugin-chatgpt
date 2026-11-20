@@ -3,13 +3,14 @@ import { createHash } from 'node:crypto'
 import { Ajv, type ValidateFunction } from 'ajv'
 import {
   WEB_EFFORT, WEB_MODEL, WebBridgeError,
-  type JsonValue, type WebBinding, type WebInputBlock, type WebMessage,
+  type JsonValue, type TurnInspection, type WebBinding, type WebInputBlock, type WebMessage,
   type WebOutputBlock, type WebPurpose, type WebReceipt, type WebRequest,
   type WebResponse, type WebTool, type WebToolHistory,
 } from './contracts.ts'
 
 export const WEB_MAX_JSON_BYTES = 1024 * 1024
 export const WEB_MAX_JSON_DEPTH = 64
+const MAX_ID_CODE_UNITS = 256
 
 function invalid(message: string, code = 'WEB_INVALID_REQUEST'): never {
   throw new WebBridgeError(code, message, 400)
@@ -70,7 +71,7 @@ function keys(value: Record<string, unknown>, allowed: readonly string[], label:
   if (Object.keys(value).some(key => !allowed.includes(key))) invalid(`${label} contains an unsupported field`)
 }
 
-function string(value: unknown, label: string, max = 256, empty = false): string {
+function string(value: unknown, label: string, max = MAX_ID_CODE_UNITS, empty = false): string {
   if (typeof value !== 'string' || !empty && value.length === 0 || typeof value === 'string' && value.length > max) {
     invalid(`${label} must be ${empty ? 'a' : 'a nonempty'} string of at most ${max} characters`)
   }
@@ -322,7 +323,7 @@ export function validatePageResponse(value: unknown, request: WebRequest, turnId
 }
 
 export function createResponse(request: WebRequest, turnId: string, generationId: string, blocks: WebOutputBlock[]): WebResponse {
-  return {
+  const response: WebResponse = {
     protocolVersion: 1, turnId, blocks: cloneJson(blocks),
     finishReason: blocks.some(block => block.type === 'tool-call') ? 'tool-calls' : 'stop',
     receipt: {
@@ -331,6 +332,42 @@ export function createResponse(request: WebRequest, turnId: string, generationId
       sessionId: request.sessionId, purpose: request.purpose, model: WEB_MODEL,
       generationId, turnId, requestHash: request.idempotencyKey, responseDigest: digest(blocks),
     },
+  }
+  validateResponseBudget(response)
+  // Normal observation and read-only recovery both pass here before the engine
+  // commits completed. A persisted response must survive the exact validator
+  // used when the journal is reopened, including its receipt and namespaced IDs.
+  return validateResponse(response, request)
+}
+
+/**
+ * Bound the complete response and its actual transport/control envelopes, not
+ * merely the page's blocks. These checks precede any completed journal commit.
+ */
+function validateResponseBudget(response: WebResponse): void {
+  try {
+    const payload = canonical(response)
+    const finish = canonical({ turnId: response.turnId, reason: response.finishReason,
+      responseDigest: response.receipt.responseDigest, state: 'completed' })
+    const stream = `event: response\ndata: ${payload}\n\nevent: finish\ndata: ${finish}\n\n`
+    if (Buffer.byteLength(stream, 'utf8') > WEB_MAX_JSON_BYTES) throw new Error('SSE framing exceeds the response budget')
+
+    // A different admitted participant may claim the first tool delivery later.
+    // Reserve the largest legal identifiers, including JSON escaping, rather
+    // than assuming the currently admitting client's short lease will own it.
+    const largestIdentifier = '\u0000'.repeat(MAX_ID_CODE_UNITS)
+    const inspected: TurnInspection = {
+      turnId: response.turnId, sessionId: response.receipt.sessionId, state: 'completed',
+      requestHash: response.receipt.requestHash, generationId: response.receipt.generationId,
+      discarded: false, deliveryState: response.finishReason === 'tool-calls' ? 'delivery-intent' : 'unclaimed',
+      ...response.finishReason === 'tool-calls' ? {
+        deliveryOwner: { clientLeaseId: largestIdentifier, deliveryAttemptId: largestIdentifier },
+      } : {},
+      response,
+    }
+    canonical(inspected)
+  } catch (cause) {
+    throw new WebBridgeError('WEB_RESPONSE_LIMIT', 'The completed response does not fit the bridge response and inspection limits.', 502, { cause })
   }
 }
 

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { WEB_MODEL, type WebBinding, type WebRequest } from '../src/web-bridge/contracts.ts'
+import { WEB_MODEL, type WebBinding, type WebRequest, type WebResponse } from '../src/web-bridge/contracts.ts'
 import { captureWebRequest, prepareWebRequest, type WebGenerateOptions } from '../src/web-bridge/request.ts'
 import { canonical, createResponse, digest, requestHash, validateContinuation,
-  validatePageResponse, validateRequest, validateResponse } from '../src/web-bridge/protocol.ts'
+  validatePageResponse, validateRequest, validateResponse, WEB_MAX_JSON_BYTES } from '../src/web-bridge/protocol.ts'
 
 const binding: WebBinding = { protocolVersion: 1, installationId: 'installation', provider: 'chatgpt',
   profileId: 'profile', accountBinding: 'account' }
@@ -114,6 +114,49 @@ test('tool response is validated as a whole with schema-checked arguments and re
   }
   assert.throws(() => validatePageResponse(pageTool(), request({ ...input(), purpose: 'compaction' }), 'turn'), { code: 'WEB_INVALID_RESPONSE' })
   assert.throws(() => request({ ...input(), tools: [{ ...definition, parameters: { $ref: 'https://example.com/schema' } }] }), { code: 'WEB_UNSUPPORTED_SCHEMA' })
+})
+
+function framedResponse(response: WebResponse): string {
+  return `event: response\ndata: ${JSON.stringify(response)}\n\nevent: finish\ndata: ${JSON.stringify({
+    turnId: response.turnId, reason: response.finishReason,
+    responseDigest: response.receipt.responseDigest, state: 'completed',
+  })}\n\n`
+}
+
+test('rejects page blocks that fit alone but exceed the complete receipt-bearing response budget', () => {
+  const admitted = request()
+  const page = { version: 1, complete: true, blocks: [{ type: 'text', text: 'x'.repeat(1_048_476) }] }
+  assert.ok(Buffer.byteLength(canonical(page)) <= WEB_MAX_JSON_BYTES)
+  const blocks = validatePageResponse(page, admitted, 'turn-limit')
+  assert.throws(() => createResponse(admitted, 'turn-limit', 'generation', blocks), { code: 'WEB_RESPONSE_LIMIT' })
+})
+
+test('includes both SSE frames and the inspection wrapper in the pre-commit response budget', () => {
+  const admitted = request()
+  const seed = createResponse(admitted, 'turn-limit', 'generation', [{ type: 'text', text: 'x' }])
+  const overhead = Buffer.byteLength(JSON.stringify(seed)) - 1
+  // The response JSON itself fits exactly. The HTTP client also has to read
+  // response/finish SSE framing, which is larger than that individual object.
+  const blocks = [{ type: 'text' as const, text: 'x'.repeat(WEB_MAX_JSON_BYTES - overhead) }]
+  const unchecked = { ...seed, blocks, receipt: { ...seed.receipt, responseDigest: digest(blocks) } }
+  assert.equal(Buffer.byteLength(canonical(unchecked)), WEB_MAX_JSON_BYTES)
+  assert.ok(Buffer.byteLength(framedResponse(unchecked)) > WEB_MAX_JSON_BYTES)
+  assert.throws(() => createResponse(admitted, seed.turnId, 'generation', blocks), { code: 'WEB_RESPONSE_LIMIT' })
+
+  const toolBlocks = validatePageResponse(pageTool(), admitted, seed.turnId)
+  const toolSeed = createResponse(admitted, seed.turnId, 'generation', [...toolBlocks, { type: 'text', text: 'x' }])
+  const framedOverhead = Buffer.byteLength(framedResponse(toolSeed)) - 1
+  const oversizedInspectionBlocks = [...toolBlocks, { type: 'text' as const, text: 'x'.repeat(WEB_MAX_JSON_BYTES - framedOverhead) }]
+  const inspectionCandidate = { ...toolSeed, blocks: oversizedInspectionBlocks,
+    receipt: { ...toolSeed.receipt, responseDigest: digest(oversizedInspectionBlocks) } }
+  assert.equal(Buffer.byteLength(framedResponse(inspectionCandidate)), WEB_MAX_JSON_BYTES)
+  assert.ok(Buffer.byteLength(JSON.stringify({
+    turnId: seed.turnId, sessionId: admitted.sessionId, state: 'completed', requestHash: admitted.idempotencyKey,
+    generationId: 'generation', discarded: false, deliveryState: 'delivery-intent',
+    deliveryOwner: { clientLeaseId: '\u0000'.repeat(256), deliveryAttemptId: '\u0000'.repeat(256) },
+    response: inspectionCandidate,
+  })) > WEB_MAX_JSON_BYTES)
+  assert.throws(() => createResponse(admitted, seed.turnId, 'generation', oversizedInspectionBlocks), { code: 'WEB_RESPONSE_LIMIT' })
 })
 
 test('parent receipt is bound to hashed assistant content and full tool results', () => {
