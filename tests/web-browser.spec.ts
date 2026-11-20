@@ -46,6 +46,7 @@ describe('owned Chromium website transport', { skip: process.env['DSH_TEST_BROWS
     const f = await fixture()
     const evidence = await inspectChromeSetup(f.options)
     assert.equal(evidence.ready, true)
+    assert.equal(evidence.visibleAccount, 'owner@example.test')
     assert.equal(evidence.accountBinding, f.options.expectedAccountBinding)
     assert.equal(evidence.model, 'GPT-6'); assert.equal(evidence.effort, 'Pro')
     assert.equal(f.process.exitCode, null)

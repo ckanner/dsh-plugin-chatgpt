@@ -31,7 +31,16 @@ export function readPageEvidence(): PageEvidence {
     || all('[role="menuitem"],button,a', menu).some(item => /^(Log out|Sign out|注销|退出登录)$/i.test(text(item))))
   const identities = new Set<string>()
   for (const root of accountRoots) {
-    for (const match of text(root).matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) identities.add(match[0].toLowerCase())
+    // Whole-menu innerText can join an inline email and an adjacent action:
+    // <span>owner@example.test</span><button>Log out</button> becomes a false
+    // "owner@example.testLog" address. Only accept a complete visible address
+    // within one text node; never invent an identity across element boundaries.
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const parent = node.parentElement
+      if (!parent || !visible(parent) || !outsideMessages(parent)) continue
+      for (const match of (node.textContent ?? '').matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) identities.add(match[0].toLowerCase())
+    }
   }
   const controls = menus.flatMap(menu => all('[role="menuitemradio"],[role="radio"]', menu))
   const contradictorySelection = controls.filter(node => /^(?:GPT-[\w.-]+|Pro|High|Medium|Low|Instant|Extra High)$/i.test(text(node))).some(node => {
