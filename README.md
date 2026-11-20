@@ -210,11 +210,15 @@ The adapter preserves reusable prefixes and opaque reasoning across tool turns a
 
 ## Dev Note
 
+The [experimental Web bridge](docs/web-bridge-contract.md) implements the stock-DSH protocol and durability foundation with offline page fixtures. It does not yet expose a selectable Web model; the implementation status describes the remaining Chrome and setup work.
+
 ```text
 npm test          # node --test, no build step
+npm run test:web  # experimental bridge protocol, persistence, HTTP and client regressions
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+npm run verify:web-agent-loop -- /path/to/deepseek-harness --deps /path/to/host-deps # stock rc.5 AgentLoop and checkpoint policy
 npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 

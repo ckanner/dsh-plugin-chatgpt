@@ -210,11 +210,15 @@ modelContextWindowLimits:
 
 ## Dev Note
 
+[实验性 Web bridge](web-bridge-contract.zh.md)通过离线页面 fixture 实现 stock DSH 协议与持久化基础。目前尚未开放可选择的 Web 模型；实现状态说明了剩余的 Chrome 和 setup 工作。
+
 ```text
 npm test          # node --test, no build step
+npm run test:web  # experimental bridge protocol, persistence, HTTP and client regressions
 npm run typecheck # entry point checked against dev-types/ shims
 npm run build     # tsc emits the host half and the declarations, esbuild the browser bundle
 npm run verify:harness -- /path/to/deepseek-harness # actual DSH assembler, offline
+npm run verify:web-agent-loop -- /path/to/deepseek-harness --deps /path/to/host-deps # stock rc.5 AgentLoop and checkpoint policy
 npm run verify:install # install candidate with real rc.3 host peers; registry access required
 ```
 
