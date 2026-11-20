@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.23
+
+Use the requested UltraFast display labels: **GPT-6.2-Astra · UltraFast** and
+**GPT-6.2-Sol · UltraFast**. Behavior and model IDs are unchanged.
+
 ## 0.1.22
 
 Add explicit GPT-6.2 UltraFast service-tier variants.
