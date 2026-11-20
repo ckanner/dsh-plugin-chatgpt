@@ -2,8 +2,9 @@
 
 [English](chatgpt-web-sidecar.md) | 中文
 
-状态：**拟议架构，已根据源码复审修订**。本 PR 只修改设计文档，没有实现 bridge
-或完成其验收。它取代 [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
+状态：**已复审的架构，后续实现正在交付**。PR #14 承载设计，PR #15 承载持久化基础，
+后续浏览器与 provider 候选实现设置、图片和恢复。参见[设置与验收指南](../web-provider.zh.md)；
+fixture 覆盖不等于真实登录网页验收。它取代 [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
 和 [flywheel #57](https://github.com/ckanner/flywheel/pull/57)；两者均已关闭、未合并。
 本方案不修改 DSH 源码。
 

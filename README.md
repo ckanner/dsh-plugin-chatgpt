@@ -94,6 +94,8 @@ The grant is stored owner-only under `stateDir`. `attempt.submit()` rejects a ma
 
 One provider route, listed in **Settings → Models** like any built-in provider, with the model roster, context windows, and reasoning levels the account is entitled to. Selecting a model there is what puts it in the model selector; no separate picker is involved.
 
+The opt-in [GPT-6 Pro Web route](docs/web-provider.md) adds `gpt-6-pro-web / pro` after dedicated Chrome setup, visible account verification and explicit host compaction policy. It is an unreleased candidate; real signed-in acceptance remains separate from the Chrome fixtures and stock-host tests. Web usage is unknown, and unsupported output controls fail explicitly.
+
 Model metadata comes from the account listing. The bundled catalog now describes **GPT-6.2 Astra** and **GPT-6.2 Sol** (`gpt-6.2-astra`, `gpt-6.2-sol`) with their 1,050,000-token context, 128,000-token output cap and reasoning levels; they appear when the signed-in account's catalog advertises them. When Astra or Sol is available, the selector also offers their **UltraFast** service-tier variants (`gpt-6.2-astra-ultrafast`, `gpt-6.2-sol-ultrafast`), which send `service_tier: "ultrafast"` and cost more. By default the adapter follows each model's advertised context window, including updates when the catalog refreshes. Set `contextWindowLimit` for a global budget or `modelContextWindowLimits` for individual models; explicit values are used as-is. Sign-in lives on that row's card.
 
 For example, add this field to the plugin's configuration to set DSH's context budget to 1,000,000 tokens for models without an individual override, even if the catalog reports a maximum of 872,000. Remove it to restore account defaults for those models. These settings are independent of Codex settings. DSH still reserves headroom for compaction; they do not change service-side request limits.
@@ -210,7 +212,7 @@ The adapter preserves reusable prefixes and opaque reasoning across tool turns a
 
 ## Dev Note
 
-The [experimental Web bridge](docs/web-bridge-contract.md) implements the stock-DSH protocol and durability foundation with offline page fixtures. It does not yet expose a selectable Web model; the implementation status describes the remaining Chrome and setup work.
+The [Web bridge contract](docs/web-bridge-contract.md) documents request identity, exact image versions, durable submission/delivery and recovery. The [setup guide](docs/web-provider.md) covers the managed daemon, provider card, explicit auxiliary routes, CLI and live acceptance boundary.
 
 ```text
 npm test          # node --test, no build step

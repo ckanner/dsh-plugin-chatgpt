@@ -79,7 +79,7 @@ test('unimplemented controls, modalities and future options fail before admissio
     assert.throws(() => request({ ...input(), ...controls }), { code: 'WEB_UNSUPPORTED_CONTROL' })
   }
   for (const type of ['file', 'image']) {
-    assert.throws(() => request({ ...input(), messages: [{ id: 'x', role: 'user', content: [{ type, attachment: { path: '/private' } }] }] }), { code: 'WEB_UNSUPPORTED_CONTENT' })
+    assert.throws(() => request({ ...input(), messages: [{ id: 'x', role: 'user', content: [{ type, attachment: { path: '/private' } }] }] }), { code: type === 'image' ? 'WEB_INVALID_REQUEST' : 'WEB_UNSUPPORTED_CONTENT' })
   }
   assert.throws(() => captureWebRequest({ ...input(), futureOption: true } as WebGenerateOptions), { code: 'WEB_UNSUPPORTED_OPTION' })
   assert.throws(() => request({ ...input(), reasoningEffort: 'high' }), { code: 'WEB_UNSUPPORTED_MODEL' })
@@ -185,4 +185,19 @@ test('parent receipt is bound to hashed assistant content and full tool results'
   const siwc = { ...options, messages: options.messages.map(message => message.role === 'assistant'
     ? { ...message, source: { kind: 'model', provider: 'chatgpt', model: 'gpt-6.2-astra', replayState: { response: { kind: 'chatgpt-responses' } } } } : message) }
   assert.equal(request(siwc).parentReceipt, null)
+})
+
+test('valid request history above the response limit can still continue its exact parent prefix', () => {
+  const options = { ...input(), messages: [
+    { id: 'one', role: 'user', content: [{ type: 'text', text: 'x'.repeat(600_000) }] },
+    { id: 'two', role: 'user', content: [{ type: 'text', text: 'y'.repeat(600_000) }] },
+  ] }
+  const parent = request(options)
+  const response = createResponse(parent, 'turn-parent', 'generation', [{ type: 'text', text: 'ok' }])
+  const next = request({ ...options, messages: [...options.messages,
+    { id: 'assistant', role: 'assistant', content: response.blocks,
+      source: { kind: 'model', provider: binding.provider, model: WEB_MODEL, replayState: { response: response.receipt } } },
+    { id: 'three', role: 'user', content: [{ type: 'text', text: 'Continue' }] },
+  ] })
+  assert.equal(validateContinuation(next, parent, response), true)
 })

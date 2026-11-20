@@ -2,7 +2,7 @@
 
 English | [中文](web-bridge-contract.zh.md)
 
-This implements the protocol/durability phase of the [stock-DSH sidecar design](design/chatgpt-web-sidecar.md). The normal installed `chatgpt` provider continues to use SIWC. **There is no production Chrome transport or selectable Web model in this phase.** The bridge starts only when a developer explicitly supplies a `WebPageTransport` implementation. Tests supply an offline page fixture; they never contact ChatGPT or use an account.
+This documents the protocol/durability foundation of the [stock-DSH sidecar design](design/chatgpt-web-sidecar.md). The installed provider keeps SIWC for its existing models and adds an opt-in Web route through the [managed browser setup](web-provider.md). Programmatic users may still supply a `WebPageTransport` explicitly. Offline contract tests never contact ChatGPT or use an account; real signed-in acceptance is a separate requirement.
 
 ## Implemented boundary
 
@@ -59,13 +59,13 @@ The snapshot journal has a 64 MiB bound and no automatic deletion/compaction. Re
 
 ## HTTP and client lifecycle
 
-`startWebBridgeServer({ engine })` binds an ephemeral `127.0.0.1` port and generates a private launch bearer token. Every endpoint requires it. Host must match the literal listener authority; browser Origin headers, ambiguous credentials, redirects, encoded bodies and non-JSON POST bodies are refused. Bodies/responses are bounded to 1 MiB, nesting to 64 levels, headers to 16 KiB and request-body reading to 10 seconds. The model operation itself is not given that 10-second deadline.
+`startWebBridgeServer({ engine })` binds an ephemeral `127.0.0.1` port and generates a private launch bearer token. Every endpoint requires it. Host must match the literal listener authority; browser Origin headers, ambiguous credentials, redirects, encoded bodies and non-JSON POST bodies are refused. Model request bodies allow 32 MiB including exact inline images; all other bodies and responses retain the 1 MiB limit. Nesting is bounded to 64 levels, headers to 16 KiB and request-body reading to 10 seconds. The model operation itself is not given that 10-second deadline.
 
 `WebBridgeClient({ url, token, expectedBinding, errorFactory })` checks the handshake and registers its own private lease. Its `stream(options)` captures the caller input immediately, before iterator advancement or connection setup. Heartbeats renew only that lease. `dispose()` releases its lease and cancels its owned work; another client's server/work remains alive. The host adapter supplies an `errorFactory` creating its public `LlmError`. The real-host fixture demonstrates that public integration without a DSH patch.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /health` | Authenticated experimental instance/binding handshake. |
+| `GET /health` | Authenticated instance/binding handshake identifying the `experimental` or `browser` transport. |
 | `POST /v1/clients` | Register a private lease with `{}`; default TTL is 60 seconds. |
 | `POST /v1/clients/:id/heartbeat` | Renew only that lease using `{}`. |
 | `DELETE /v1/clients/:id` | Release only that lease. |
@@ -77,13 +77,13 @@ The snapshot journal has a 64 MiB bound and no automatic deletion/compaction. Re
 
 Lease-scoped requests carry `X-Web-Client-Lease`. Turn controls use `{ "sessionId": "..." }` for POST. A new lease cannot gain control by supplying a session ID alone: it must first re-admit the identical hashed request. Joining records its participation even if the reply is `WEB_UNCERTAIN` or `WEB_DELIVERY_CLAIMED`; it does not resend the page prompt or grant executable replay. Turn IDs are deterministic: `turn-` followed by the request SHA-256 hex digest. Only the original admitting client may cancel the underlying operation.
 
-The page-transport seam is deliberately narrow: `prepare` is read-only, `submit` is the sole mutation boundary, `observe` supplies the complete envelope, and optional `recover` supplies read-only terminal evidence. A future Chrome transport must add its own persisted intent/evidence for Project creation, uploads and cleanup before those mutations are allowed.
+The page-transport seam is deliberately narrow: `prepare` is read-only, `submit` is the sole remote mutation boundary, `observe` supplies the complete envelope, and optional `recover` supplies read-only terminal evidence. Chrome records separate durable intent/evidence for each Project, model-selection, upload, input and Send mutation. The optional `discard` hook only records local abandonment; it does not mutate the website or clear an uncertain model outcome.
 
-## What remains unavailable
+## Browser integration and remaining acceptance
 
-Real Chrome discovery/launch, account login and verification, GPT-6/Pro selection, private Project isolation, DOM response extraction, setup/recovery UI, discovery/daemon startup and browser-process cleanup are not implemented. A caller-provided `accountBinding` in these offline tests is not a live account verification.
+The follow-on browser/provider implementation adds Chrome discovery/launch, visible account and GPT-6/Pro verification, Project isolation, DOM extraction, setup/recovery UI and an independently owned daemon. Its setup guide records the exact limits. A caller-provided `accountBinding` in an offline fixture remains no proof of a live account, and a Chromium fixture remains no proof of the signed-in website layout.
 
-Images, files and attachment transfer are rejected. `temperature`, `maxTokens` and `stop` are rejected rather than silently ignored. Stock compaction and title producers request output caps, so they require an explicit supported auxiliary provider/model before Web is enabled in a future setup flow. No Web usage estimate, enforceable hard budget or Flywheel task-completion claim is provided here. Flywheel integration follows after real browser transport and setup acceptance.
+Exact host-owned image versions are now transferred and stored by digest, with journal references verified on reopen. Files remain unsupported. `temperature`, `maxTokens` and `stop` are rejected rather than silently ignored. The installed provider requires an explicit supported summary route and local context budget; known model-title plugins also need a separate route or must be disabled. No Web usage estimate, enforceable hard budget or Flywheel task-completion claim is provided here. Flywheel has its own consumer integration and acceptance requirements.
 
 ## Reproduce validation
 

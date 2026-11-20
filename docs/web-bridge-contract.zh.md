@@ -2,7 +2,7 @@
 
 [English](web-bridge-contract.md) | 中文
 
-本阶段实现 [stock DSH sidecar 设计](design/chatgpt-web-sidecar.zh.md)中的协议与持久化基础。正常安装后的 `chatgpt` provider 继续使用 SIWC。**本阶段没有生产用 Chrome transport，也不会出现可选择的 Web 模型。** 只有开发者明确提供 `WebPageTransport` 实现后，bridge 才会启动。测试注入离线页面 fixture，不访问 ChatGPT，也不使用账号。
+本文说明 [stock DSH sidecar 设计](design/chatgpt-web-sidecar.zh.md)中的协议与持久化基础。正常 provider 的既有模型继续使用 SIWC，并通过[受管理的浏览器设置](web-provider.zh.md)增加显式启用的 Web 路由。程序调用者仍可明确提供 `WebPageTransport`。离线协议测试不访问 ChatGPT，也不使用账号；真实登录账号验收是独立要求。
 
 ## 已实现的边界
 
@@ -59,13 +59,13 @@
 
 ## HTTP 与客户端生命周期
 
-`startWebBridgeServer({ engine })` 监听 `127.0.0.1` 的临时端口，生成私有 launch bearer token。所有 endpoint 都要求该 token。Host 必须精确匹配监听地址；拒绝浏览器 Origin、含糊凭据、重定向、编码后的正文和非 JSON POST。正文/响应上限为 1 MiB、嵌套 64 层、header 16 KiB、读取请求正文 10 秒。模型操作本身不受该 10 秒截止限制。
+`startWebBridgeServer({ engine })` 监听 `127.0.0.1` 的临时端口，生成私有 launch bearer token。所有 endpoint 都要求该 token。Host 必须精确匹配监听地址；拒绝浏览器 Origin、含糊凭据、重定向、编码后的正文和非 JSON POST。模型请求正文允许 32 MiB，包括精确内联图片；其他正文与响应保留 1 MiB 上限。嵌套最多 64 层、header 16 KiB、读取请求正文 10 秒。模型操作本身不受该 10 秒截止限制。
 
 `WebBridgeClient({ url, token, expectedBinding, errorFactory })` 检查握手并注册自己的私有 lease。`stream(options)` 立即复制调用方输入，早于 iterator 推进或连接建立。心跳只续租这一 lease。`dispose()` 释放自己的 lease 并取消自己拥有的工作；其他客户端的 server/工作继续运行。host adapter 提供创建公共 `LlmError` 的 `errorFactory`。真实宿主 fixture 展示了该公共接入方式，不需要 DSH 补丁。
 
 | Endpoint | 用途 |
 | --- | --- |
-| `GET /health` | 已鉴权的实验性 instance/binding 握手。 |
+| `GET /health` | 已鉴权的 instance/binding 握手，并标明 `experimental` 或 `browser` transport。 |
 | `POST /v1/clients` | 使用 `{}` 注册私有 lease；默认 TTL 为 60 秒。 |
 | `POST /v1/clients/:id/heartbeat` | 使用 `{}` 只续租该 lease。 |
 | `DELETE /v1/clients/:id` | 只释放该 lease。 |
@@ -77,13 +77,13 @@
 
 lease 范围内的请求携带 `X-Web-Client-Lease`。turn 控制 POST 使用 `{ "sessionId": "..." }`。新 lease 不能仅凭 session ID 获得控制权限：必须先重新接纳完全相同的哈希请求。即使回复为 `WEB_UNCERTAIN` 或 `WEB_DELIVERY_CLAIMED`，也会登记其参与身份；这不会重发页面 prompt，也不会授权工具回放。turn ID 是确定性的：`turn-` 加请求 SHA-256 的十六进制摘要。只有原始接纳客户端能取消底层操作。
 
-页面 transport 接口刻意保持狭窄：`prepare` 只读，`submit` 是唯一变更边界，`observe` 提供完整 envelope，可选 `recover` 提供只读终态证据。后续 Chrome transport 必须先为 Project 创建、上传和清理加入各自持久化 intent/证据，才能执行这些变更。
+页面 transport 接口刻意保持狭窄：`prepare` 只读，`submit` 是唯一远端变更边界，`observe` 提供完整 envelope，可选 `recover` 提供只读终态证据。Chrome 为每次 Project、模型选择、上传、输入与 Send 变更分别记录持久化 intent/证据。可选 `discard` hook 只记录本地放弃，不修改网站，也不清除不确定的模型结果。
 
-## 尚不可用的部分
+## 浏览器接入与剩余验收
 
-尚未实现真实 Chrome 发现/启动、账号登录与核验、GPT-6/Pro 选择、私有 Project 隔离、DOM 响应提取、setup/recovery UI、discovery/daemon 启动及浏览器进程清理。这些离线测试中由调用方提供的 `accountBinding`，不等于真实账号核验。
+后续浏览器/provider 实现已增加 Chrome 发现与启动、可见账号和 GPT-6/Pro 核验、Project 隔离、DOM 提取、setup/recovery UI，以及独立拥有生命周期的 daemon。设置指南记录具体限制。离线 fixture 由调用方提供的 `accountBinding` 仍不等于真实账号核验，Chromium fixture 也不证明登录后的网页布局。
 
-图片、文件和附件传输会被拒绝。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。stock 压缩和标题生产者会请求输出上限，因此后续 setup 在启用 Web 前必须明确配置支持这些控制项的辅助 provider/model。本阶段不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明。Flywheel 接入将跟随真实浏览器 transport 和 setup 验收推进。
+宿主拥有的精确图片版本现在会按摘要传输、保存，并在重新打开 journal 时逐一验证引用。文件仍不支持。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。已安装 provider 要求显式、受支持的摘要路由和本地上下文预算；已知的模型标题插件也需独立路由，或显式关闭。这里不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明；Flywheel 具有自己的消费端集成与验收要求。
 
 ## 复现验证
 

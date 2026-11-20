@@ -2,8 +2,10 @@
 
 English | [中文](chatgpt-web-sidecar.zh.md)
 
-Status: **proposed architecture, revised after source review**. This is a
-design-only PR; the bridge and its acceptance tests are not implemented here.
+Status: **reviewed architecture with follow-on implementation**. PR #14 owns the
+design, PR #15 the durability foundation, and the following browser/provider
+candidate implements setup, images and recovery. See the [setup and acceptance
+guide](../web-provider.md); fixture coverage is not signed-in website acceptance.
 It supersedes [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
 and [flywheel #57](https://github.com/ckanner/flywheel/pull/57), both closed
 without merging. No DSH source modification is part of this design.

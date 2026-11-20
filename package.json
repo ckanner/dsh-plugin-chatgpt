@@ -29,6 +29,9 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
+  "bin": {
+    "dsh-chatgpt-web": "lib/web-runtime/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -42,6 +45,10 @@
     "./experimental/web-bridge": {
       "types": "./lib/types/web-bridge/index.d.ts",
       "default": "./lib/web-bridge/index.js"
+    },
+    "./web-runtime": {
+      "types": "./lib/types/web-runtime/index.d.ts",
+      "default": "./lib/web-runtime/index.js"
     },
     "./client": {
       "default": "./lib/client.js"
@@ -59,7 +66,9 @@
     "docs/design/chatgpt-web-sidecar.md",
     "docs/design/chatgpt-web-sidecar.zh.md",
     "docs/web-bridge-contract.md",
-    "docs/web-bridge-contract.zh.md"
+    "docs/web-bridge-contract.zh.md",
+    "docs/web-provider.md",
+    "docs/web-provider.zh.md"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -80,6 +89,7 @@
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "node --test \"tests/*.spec.ts\"",
     "test:web": "node --test \"tests/web-*.spec.ts\"",
+    "test:web-browser": "DSH_TEST_BROWSER=1 node --test \"tests/web-browser*.spec.ts\"",
     "prepare": "npm run build",
     "check:i18n": "node scripts/align-readme-i18n.mjs --check",
     "build:client": "node scripts/build-client.mjs",
@@ -118,6 +128,7 @@
   },
   "dependencies": {
     "ajv": "^8.20.0",
+    "playwright-core": "^1.65.1",
     "undici": "^6.29.1"
   }
 }

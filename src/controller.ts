@@ -18,20 +18,24 @@
 
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ChatGptSession, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
+import type { WebProvider, WebProviderStatus } from './web-provider.ts'
+import { WebBridgeError, type TurnInspection } from './web-bridge/contracts.ts'
 
 export type { ChatGptPendingView, ChatGptSignOutOutcome, ChatGptStatusView } from './session.ts'
 
 /** Remote owner of the ChatGPT sign-in and account surface. */
 export class ChatGptController extends TypertRemoteService {
   private readonly session: ChatGptSession
+  private readonly web: WebProvider | undefined
 
   /**
    * @param ctx - the plugin context.
    * @param session - the state machine this service carries.
    */
-  constructor(ctx: unknown, session: ChatGptSession) {
+  constructor(ctx: unknown, session: ChatGptSession, web?: WebProvider) {
     super(ctx, 'chatgptController', { namespace: 'chatgpt' })
     this.session = session
+    this.web = web
   }
 
   /**
@@ -80,4 +84,34 @@ export class ChatGptController extends TypertRemoteService {
   async signOut(subject?: string): Promise<ChatGptSignOutOutcome> {
     return await this.session.signOut(subject)
   }
+
+  private webProvider(): WebProvider {
+    if (!this.web) throw new WebBridgeError('WEB_DISABLED', 'This installation does not provide Web setup.', 409)
+    return this.web
+  }
+
+  /** Public setup facts only; neither browser credentials nor daemon tokens leave the host. */
+  @Remote
+  async webStatus(): Promise<WebProviderStatus> { return this.webProvider().status() }
+
+  @Remote
+  async webSetup(): Promise<WebProviderStatus> { return this.webProvider().setup() }
+
+  @Remote
+  async webVerify(): Promise<WebProviderStatus> { return this.webProvider().verify() }
+
+  @Remote
+  async webSetEnabled(enabled: boolean): Promise<WebProviderStatus> { return this.webProvider().setEnabled(enabled) }
+
+  @Remote
+  async webTurns(): Promise<TurnInspection[]> { return this.webProvider().listTurns() }
+
+  @Remote
+  async webInspect(turnId: string): Promise<TurnInspection> { return this.webProvider().inspectTurn(turnId) }
+
+  @Remote
+  async webRecover(turnId: string): Promise<TurnInspection> { return this.webProvider().recoverTurn(turnId) }
+
+  @Remote
+  async webDiscard(turnId: string): Promise<TurnInspection> { return this.webProvider().discardTurn(turnId) }
 }

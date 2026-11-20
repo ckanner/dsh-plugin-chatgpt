@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import {
   WebBridgeError, type BridgeHealth, type ClientLease, type TurnAccess, type WebBridgeEngine,
 } from './contracts.ts'
-import { validateRequest, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH } from './protocol.ts'
+import { validateRequest, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH, WEB_MAX_REQUEST_BYTES } from './protocol.ts'
 
 export const WEB_HTTP_BODY_TIMEOUT_MS = 10_000
 export const WEB_HTTP_MAX_HEADER_BYTES = 16_384
@@ -17,12 +17,14 @@ export interface WebBridgeServerOptions {
   token?: string
   leaseTtlMs?: number
   now?: () => number
+  transport?: BridgeHealth['transport']
 }
 
 export interface WebBridgeServer {
   url: string
   token: string
   health: BridgeHealth
+  activity(): { clients: number, activeTurns: number }
   close(): Promise<void>
 }
 
@@ -77,7 +79,7 @@ function checkJsonDepth(text: string): void {
   }
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readJson(request: IncomingMessage, maxBytes = WEB_MAX_JSON_BYTES): Promise<unknown> {
   const contentType = request.headers['content-type']
   if (typeof contentType !== 'string'
     || !/^application\/json(?:\s*;\s*charset\s*=\s*utf-8)?$/i.test(contentType.trim())
@@ -85,7 +87,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     throw failure('WEB_HTTP_CONTENT_TYPE', 'An unencoded application/json body is required', 415)
   }
   const declared = request.headers['content-length']
-  if (declared !== undefined && (!/^\d+$/.test(declared) || Number(declared) > WEB_MAX_JSON_BYTES)) {
+  if (declared !== undefined && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
     throw failure('WEB_HTTP_BODY_LIMIT', 'JSON body size limit exceeded', 413)
   }
   const body = await new Promise<Buffer>((resolve, reject) => {
@@ -101,7 +103,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     const stop = (error: Error): void => { cleanup(); request.pause(); reject(error) }
     const onData = (chunk: Buffer): void => {
       size += chunk.byteLength
-      if (size > WEB_MAX_JSON_BYTES) {
+      if (size > maxBytes) {
         stop(failure('WEB_HTTP_BODY_LIMIT', 'JSON body size limit exceeded', 413))
       } else chunks.push(chunk)
     }
@@ -182,13 +184,18 @@ export async function startWebBridgeServer(options: WebBridgeServerOptions): Pro
     return value
   }
   clock()
-  const health: BridgeHealth = Object.freeze({ ...engine.binding, instanceId: engine.instanceId, transport: 'experimental' })
+  const health: BridgeHealth = Object.freeze({ ...engine.binding, instanceId: engine.instanceId, transport: options.transport ?? 'experimental' })
   const leases = new Map<string, LeaseEntry>()
   const releases = new Set<Promise<void>>()
   const releaseErrors: unknown[] = []
   let closing = false
   let closePromise: Promise<void> | undefined
   let authority = ''
+  let activeTurns = 0
+  const duringTurn = async <T>(action: () => Promise<T>): Promise<T> => {
+    activeTurns++
+    try { return await action() } finally { activeTurns-- }
+  }
 
   const revoke = (entry: LeaseEntry): Promise<void> => {
     if (leases.get(entry.clientLeaseId) !== entry) return Promise.resolve()
@@ -237,7 +244,9 @@ export async function startWebBridgeServer(options: WebBridgeServerOptions): Pro
     const code = known && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code) ? error.code : 'WEB_INTERNAL_ERROR'
     const message = known ? error.message.replaceAll(token, '[redacted]').slice(0, 1_024) : 'Bridge request failed'
     const status = known && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : 500
-    const payload = { error: { code, message } }
+    const identity = known ? error.requestId ?? ('turnId' in error && typeof error.turnId === 'string' ? error.turnId : undefined) : undefined
+    const requestId = identity !== undefined && /^turn-[a-f0-9]{64}$/.test(identity) ? identity : undefined
+    const payload = { error: { code, message, ...requestId === undefined ? {} : { requestId } } }
     if (response.headersSent) response.end(`event: error\ndata: ${jsonText(payload)}\n\n`)
     else jsonResponse(response, status, payload)
   }
@@ -294,11 +303,11 @@ export async function startWebBridgeServer(options: WebBridgeServerOptions): Pro
       }
     }
     if (method === 'POST' && url.pathname === '/v1/turns' && url.search === '') {
-      const raw = await readJson(request)
+      const raw = await readJson(request, WEB_MAX_REQUEST_BYTES)
       const envelope = validateRequest(raw, engine.binding)
       if (envelope.clientLeaseId !== lease.clientLeaseId) throw failure('WEB_LEASE_OWNER', 'Request lease does not match its authenticated client', 403)
       liveDelivery(response, lease.clientLeaseId)
-      const result = await engine.execute(envelope, { authorizeDelivery: () => liveDelivery(response, lease.clientLeaseId) })
+      const result = await duringTurn(() => engine.execute(envelope, { authorizeDelivery: () => liveDelivery(response, lease.clientLeaseId) }))
       liveDelivery(response, lease.clientLeaseId)
       const payload = jsonText(result)
       const finish = jsonText({ turnId: result.turnId, reason: result.finishReason, responseDigest: result.receipt.responseDigest, state: 'completed' })
@@ -322,9 +331,9 @@ export async function startWebBridgeServer(options: WebBridgeServerOptions): Pro
       } else throw failure('WEB_HTTP_ROUTE', 'Unknown bridge route', 404)
       liveDelivery(response, lease.clientLeaseId)
       const access: TurnAccess = { clientLeaseId: lease.clientLeaseId, sessionId }
-      const result = action === undefined ? await engine.inspect(turnId, access)
+      const result = await duringTurn(async () => action === undefined ? await engine.inspect(turnId, access)
         : action === 'cancel' ? await engine.cancel(turnId, access)
-        : action === 'recover' ? await engine.recover(turnId, access) : await engine.discard(turnId, access)
+        : action === 'recover' ? await engine.recover(turnId, access) : await engine.discard(turnId, access))
       liveDelivery(response, lease.clientLeaseId)
       jsonResponse(response, 200, result)
       return
@@ -356,6 +365,7 @@ export async function startWebBridgeServer(options: WebBridgeServerOptions): Pro
     url: `http://${authority}`,
     token,
     health,
+    activity: () => ({ clients: leases.size, activeTurns }),
     close(): Promise<void> {
       closePromise ??= (async () => {
         closing = true

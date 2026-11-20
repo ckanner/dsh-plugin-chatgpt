@@ -43,8 +43,9 @@ try {
     import assert from 'node:assert/strict'
     import { apply, HarnessAdapter } from 'dsh-plugin-chatgpt'
     import { LlmAdapter } from '@deepseek-ai/dsh-llm'
-    import { contentCapabilities } from 'dsh-plugin-chatgpt/capabilities'
+    import { contentCapabilities, webCapabilities } from 'dsh-plugin-chatgpt/capabilities'
     import { WebBridgeClient, openWebBridge, WEB_PROTOCOL_VERSION } from 'dsh-plugin-chatgpt/experimental/web-bridge'
+    import { ManagedWebRuntime, runWebBridgeCli } from 'dsh-plugin-chatgpt/web-runtime'
     assert.equal(typeof apply, 'function')
     assert.ok(HarnessAdapter.prototype instanceof LlmAdapter)
     assert.equal(contentCapabilities.version, 1)
@@ -52,6 +53,12 @@ try {
     assert.equal(typeof WebBridgeClient, 'function')
     assert.equal(typeof openWebBridge, 'function')
     assert.equal(WEB_PROTOCOL_VERSION, 1)
+    assert.equal(webCapabilities.model, 'gpt-6-pro-web')
+    assert.deepEqual(webCapabilities.reasoningEfforts, ['pro'])
+    assert.equal(typeof ManagedWebRuntime, 'function')
+    const help = []
+    assert.equal(await runWebBridgeCli(['--help'], text => help.push(text)), 0)
+    assert.match(help.join(''), /dsh-chatgpt-web/)
   `)
   execFileSync(process.execPath, [check], { cwd: temporary, stdio: 'inherit' })
   console.log('PASS: exact candidate installed and imported with real Cordis 4.1.0, Schemastery 3.19.0 and DSH 0.2.2-rc.3 peers')

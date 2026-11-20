@@ -1,14 +1,16 @@
 /** Strict normalization and validation shared by both sides of the local bridge. */
 import { createHash } from 'node:crypto'
 import { Ajv, type ValidateFunction } from 'ajv'
+import { attachmentIdentity, validateAttachmentVersions } from './attachments.ts'
 import {
-  WEB_EFFORT, WEB_MODEL, WebBridgeError,
+  WEB_EFFORT, WEB_MODEL, WEB_MAX_REQUEST_BYTES, WebBridgeError,
   type JsonValue, type TurnInspection, type WebBinding, type WebInputBlock, type WebMessage,
   type WebOutputBlock, type WebPurpose, type WebReceipt, type WebRequest,
   type WebResponse, type WebTool, type WebToolHistory,
 } from './contracts.ts'
 
 export const WEB_MAX_JSON_BYTES = 1024 * 1024
+export { WEB_MAX_REQUEST_BYTES } from './contracts.ts'
 export const WEB_MAX_JSON_DEPTH = 64
 const MAX_ID_CODE_UNITS = 256
 
@@ -17,7 +19,7 @@ function invalid(message: string, code = 'WEB_INVALID_REQUEST'): never {
 }
 
 /** No lossy JSON coercions (undefined, NaN, getters, cycles or sparse arrays). */
-export function canonical(value: unknown): string {
+export function canonical(value: unknown, maxBytes = WEB_MAX_JSON_BYTES): string {
   const ancestors = new Set<object>()
   let nodes = 0
   function visit(item: unknown, depth: number): JsonValue {
@@ -50,16 +52,16 @@ export function canonical(value: unknown): string {
     return result
   }
   const text = JSON.stringify(visit(value, 0))
-  if (Buffer.byteLength(text, 'utf8') > WEB_MAX_JSON_BYTES) invalid('JSON payload exceeds the bridge limit')
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) invalid('JSON payload exceeds the bridge limit')
   return text
 }
 
-export function cloneJson<T>(value: T): T {
-  return JSON.parse(canonical(value)) as T
+export function cloneJson<T>(value: T, maxBytes = WEB_MAX_JSON_BYTES): T {
+  return JSON.parse(canonical(value, maxBytes)) as T
 }
 
-export function digest(value: unknown): string {
-  return `sha256:${createHash('sha256').update(canonical(value)).digest('hex')}`
+export function digest(value: unknown, maxBytes = WEB_MAX_JSON_BYTES): string {
+  return `sha256:${createHash('sha256').update(canonical(value, maxBytes)).digest('hex')}`
 }
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -147,7 +149,10 @@ function inputBlock(value: unknown): WebInputBlock {
     case 'tool-addition': case 'tool-removal':
       keys(item, ['type', 'toolName'], 'tool update')
       return { type: item['type'], toolName: string(item['toolName'], 'toolName', 128) }
-    default: invalid('This experimental bridge accepts text and tools only; image/file transport is not implemented', 'WEB_UNSUPPORTED_CONTENT')
+    case 'image':
+      keys(item, ['type', 'attachmentVersion'], 'image block')
+      return { type: 'image', attachmentVersion: hash(item['attachmentVersion'], 'image attachment version') }
+    default: invalid('The Web bridge does not support this content block', 'WEB_UNSUPPORTED_CONTENT')
   }
 }
 
@@ -158,6 +163,7 @@ function message(value: unknown, scope: WebBinding & { sessionId: string, purpos
   if (role !== 'system' && role !== 'developer' && role !== 'user' && role !== 'assistant' && role !== 'tool') invalid('Unsupported message role')
   const content = array(item['content'], 'message.content').map(inputBlock)
   if (content.some(block => block.type === 'tool-call' && role !== 'assistant'
+    || block.type === 'image' && role !== 'user' && role !== 'tool'
     || (block.type === 'tool-addition' || block.type === 'tool-removal') && role !== 'developer')) invalid('Invalid role for a tool block')
   const result: WebMessage = { role, content }
   if (item['id'] !== undefined && scope.purpose !== 'session-title') result.id = string(item['id'], 'message.id')
@@ -244,13 +250,13 @@ export function requestHash(request: WebRequest): string {
       ...request.system === undefined ? {} : { system: request.system },
       messages, tools: request.tools,
       ...request.toolHistory === undefined ? {} : { toolHistory: request.toolHistory },
-      controls: request.controls, attachmentVersions: request.attachmentVersions, parentReceipt: request.parentReceipt },
-  })
+      controls: request.controls, attachmentVersions: request.attachmentVersions.map(attachmentIdentity).sort((a, b) => a.id.localeCompare(b.id)), parentReceipt: request.parentReceipt },
+  }, WEB_MAX_REQUEST_BYTES)
 }
 
 /** Parse, detach and independently recompute identity before any journal/cache access. */
 export function validateRequest(value: unknown, binding: WebBinding): WebRequest {
-  const item = object(cloneJson(value), 'request')
+  const item = object(cloneJson(value, WEB_MAX_REQUEST_BYTES), 'request')
   keys(item, ['protocolVersion', 'installationId', 'provider', 'profileId', 'accountBinding',
     'clientLeaseId', 'deliveryAttemptId', 'idempotencyKey', 'sessionId', 'purpose', 'model', 'reasoningEffort',
     'system', 'messages', 'tools', 'toolHistory', 'controls', 'attachmentVersions', 'parentReceipt'], 'request')
@@ -269,14 +275,17 @@ export function validateRequest(value: unknown, binding: WebBinding): WebRequest
   if (new Set(ids).size !== ids.length) invalid('Message IDs must be unique within an input')
   const controls = object(item['controls'], 'controls')
   if (Object.keys(controls).length !== 0) invalid('Website-enforced generation controls are not implemented; route capped auxiliary calls elsewhere', 'WEB_UNSUPPORTED_CONTROL')
-  const attachmentVersions = array(item['attachmentVersions'], 'attachmentVersions')
-  if (attachmentVersions.length !== 0) invalid('Web attachment transport is not implemented', 'WEB_UNSUPPORTED_CONTENT')
+  const attachmentVersions = validateAttachmentVersions(item['attachmentVersions'])
+  const references = new Set(messages.flatMap(message => message.content.flatMap(block => block.type === 'image' ? [block.attachmentVersion] : [])))
+  if (references.size !== attachmentVersions.length || attachmentVersions.some(version => !references.has(version.id))) {
+    invalid('Image blocks and exact attachment versions must match', 'WEB_INVALID_ATTACHMENT')
+  }
   const result: WebRequest = {
     ...scope, clientLeaseId: string(item['clientLeaseId'], 'clientLeaseId'),
     deliveryAttemptId: string(item['deliveryAttemptId'], 'deliveryAttemptId'),
     idempotencyKey: hash(item['idempotencyKey'], 'idempotencyKey'),
     model: WEB_MODEL, reasoningEffort: WEB_EFFORT, messages, tools: tools(item['tools']),
-    controls: {}, attachmentVersions: [], parentReceipt: item['parentReceipt'] === null ? null : validateReceipt(item['parentReceipt']),
+    controls: {}, attachmentVersions, parentReceipt: item['parentReceipt'] === null ? null : validateReceipt(item['parentReceipt']),
   }
   if (item['system'] !== undefined) {
     if (messages[0]?.role === 'system' || messages[0]?.role === 'developer') invalid('A leading instruction message takes precedence over system')
@@ -390,10 +399,10 @@ export function validateContinuation(request: WebRequest, parentRequest: WebRequ
   }
   if (pending.size !== seen.size) invalid('Missing tool results; inspect the previous delivery instead of replaying tools', 'WEB_INVALID_CONTINUATION')
   return assistantIndex === parentRequest.messages.length
-    && canonical(request.messages.slice(0, assistantIndex)) === canonical(parentRequest.messages)
-    && request.system === parentRequest.system && canonical(request.tools) === canonical(parentRequest.tools)
-    && canonical(request.toolHistory ?? null) === canonical(parentRequest.toolHistory ?? null)
-    && canonical(request.controls) === canonical(parentRequest.controls)
+    && canonical(request.messages.slice(0, assistantIndex), WEB_MAX_REQUEST_BYTES) === canonical(parentRequest.messages, WEB_MAX_REQUEST_BYTES)
+    && request.system === parentRequest.system && canonical(request.tools, WEB_MAX_REQUEST_BYTES) === canonical(parentRequest.tools, WEB_MAX_REQUEST_BYTES)
+    && canonical(request.toolHistory ?? null, WEB_MAX_REQUEST_BYTES) === canonical(parentRequest.toolHistory ?? null, WEB_MAX_REQUEST_BYTES)
+    && canonical(request.controls, WEB_MAX_REQUEST_BYTES) === canonical(parentRequest.controls, WEB_MAX_REQUEST_BYTES)
 }
 
 /** Client-side defense: the authenticated server still must satisfy its wire contract. */
