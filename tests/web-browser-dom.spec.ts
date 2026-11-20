@@ -159,6 +159,9 @@ test('production DOM adapter runs against real Chromium fixtures', async (t) => 
         await terminate('SIGTERM')
         if(!await awaitClose(5_000)){
           await terminate('SIGKILL')
+          // A helper process may keep the stderr pipe open after the browser
+          // itself has exited; close the owned stream before the final wait.
+          child.stderr?.destroy()
           if(!await awaitClose(5_000))throw new Error('Owned fixture browser did not close after termination')
         }
       }
