@@ -111,11 +111,11 @@ async function connect(options: ChromeConnectionOptions): Promise<{ browser: Bro
   if (!['http:', 'ws:'].includes(endpoint.protocol) || endpoint.hostname !== '127.0.0.1' || !endpoint.port
     || endpoint.username || endpoint.password || endpoint.search || endpoint.hash
     || endpoint.protocol === 'http:' && endpoint.pathname !== '/'
-    || endpoint.protocol === 'ws:' && !/^\/devtools\/browser\/[a-zA-Z0-9-]+$/.test(endpoint.pathname)) {
+    || endpoint.protocol === 'ws:' && !/^\/devtools\/browser(?:\/[a-zA-Z0-9-]+)?$/.test(endpoint.pathname)) {
     failure('WEB_BROWSER_SETUP', 'Chrome must expose its dedicated CDP endpoint on literal loopback')
   }
   const origin = originFor(options)
-  const browser = await chromium.connectOverCDP(endpoint.href, { timeout: UI_TIMEOUT })
+  const browser = await chromium.connectOverCDP(endpoint.href, { timeout: options.attached === true ? 30_000 : UI_TIMEOUT })
   try {
     if (options.attached !== true) {
       const session = await browser.newBrowserCDPSession()

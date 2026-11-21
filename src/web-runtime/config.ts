@@ -9,8 +9,9 @@ function attachUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false
   try {
     const url = new URL(value)
-    return url.protocol === 'http:' && url.hostname === '127.0.0.1' && Boolean(url.port)
-      && url.pathname === '/' && url.search === '' && url.hash === '' && url.username === '' && url.password === ''
+    const path = url.protocol === 'http:' ? url.pathname === '/' : /^\/devtools\/browser(?:\/[a-zA-Z0-9-]+)?$/.test(url.pathname)
+    return (url.protocol === 'http:' || url.protocol === 'ws:') && url.hostname === '127.0.0.1' && Boolean(url.port)
+      && path && url.search === '' && url.hash === '' && url.username === '' && url.password === ''
   } catch { return false }
 }
 
