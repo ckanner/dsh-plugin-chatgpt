@@ -519,7 +519,10 @@ class Transport implements ChromePageTransport {
       const uploadState = await this.page.evaluate(readUploads)
       if (uploadState.busy || uploadState.failed || uploadState.cards.some(card => !card.ready)
         || canonical(uploadState.cards.map(card => card.name).sort()) !== canonical([...expectedUploads].sort())) drift('The exact complete image set is not ready at Send')
-      const button = await unique(composer.locator('xpath=ancestor::form[1]').locator('button[data-testid="send-button"],button[data-testid="composer-send-button"],button[aria-label="Send prompt"],button[aria-label="发送提示"]'), 'A unique Send control is unavailable')
+      const sendSelector = 'button[data-testid="send-button"],button[data-testid="composer-send-button"],button[aria-label="Send"],button[aria-label="Send prompt"],button[aria-label="发送提示"]'
+      const form = composer.locator('xpath=ancestor::form[1]')
+      const button = await unique(await form.count() === 1 ? form.locator(sendSelector) : this.page.locator(sendSelector),
+        'A unique Send control is unavailable')
       const beforeIds = new Set(generation.transcript.map(message => message.id))
       const accepted = await this.mutation(turn, 'send', signal, async () => {
         await button.click()

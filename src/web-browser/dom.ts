@@ -69,6 +69,14 @@ export function readPageEvidence(): PageEvidence {
   // role=menuitem while the model entries remain role=menuitemradio.
   const proItems = menus.flatMap(menu => all('[role="menuitem"]', menu)).filter(node => /^Pro$/i.test(text(node)))
   if (proItems.length === 1) efforts.add('Pro')
+  // The current model picker animates between two rendered tracks. Its
+  // selected model carries data-model-selected="true" even when the visible
+  // track is marked aria-hidden for transitions. Reading the selected value
+  // here is weaker than a role/checked assertion, so it is added only when
+  // every selected-data candidate agrees.
+  const selectedModels = new Set([...document.querySelectorAll('[data-model-selected="true"]')]
+    .map(node => text(node)).filter(value => /^GPT-[\w.-]+$/i.test(value)))
+  if (selectedModels.size === 1) models.add([...selectedModels][0]!)
   for (const slider of menus.flatMap(menu => all('[data-reasoning-slider] [role="slider"],[data-model-picker-power-slider] [role="slider"]', menu))) {
     const value = slider.getAttribute('aria-valuetext')?.trim()
     if (value && /^(Pro|High|Medium|Low|Instant)(?:\s*[,，].*)?$/i.test(value)) efforts.add(value.split(/[,，]/)[0]!.trim())
