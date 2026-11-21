@@ -2,7 +2,7 @@
 
 [English](web-bridge-contract.md) | 中文
 
-本阶段实现 [stock DSH sidecar 设计](design/chatgpt-web-sidecar.zh.md)中的协议与持久化基础。正常安装后的 `chatgpt` provider 继续使用 SIWC。**本阶段没有生产用 Chrome transport，也不会出现可选择的 Web 模型。** 只有开发者明确提供 `WebPageTransport` 实现后，bridge 才会启动。测试注入离线页面 fixture，不访问 ChatGPT，也不使用账号。
+本文说明 [stock DSH sidecar 设计](design/chatgpt-web-sidecar.zh.md)中的协议与持久化基础。正常 provider 的既有模型继续使用 SIWC，并通过[受管理的浏览器设置](web-provider.zh.md)增加显式启用的 Web 路由。程序调用者仍可明确提供 `WebPageTransport`。离线协议测试不访问 ChatGPT，也不使用账号；真实登录账号验收是独立要求。
 
 ## 已实现的边界
 
@@ -53,19 +53,21 @@
 
 `recover` 只读取页面证据并核对 journal。`discard` 保留 tombstone，不清除未知浏览器结果。检查接口中的数据不是执行其中工具 block 的授权。receipt 只证明本 bridge 记录了什么，不是宿主持久化 ACK，也不是工具执行证明。
 
+对于已完整观察、但协议无效的网页响应，浏览器 transport 先保存不可变且有界的响应/历史证据，再于显式恢复时重新核验同一账号、Project 和请求身份，才能返回 `terminal-failure`；它不推进成功 generation 前缀。证据变化、输出未完成、一般网页报错或持久化失败仍保持不确定；已知 prompt 与 conversation 身份不能被相同文本的候选替换。
+
 锁通过真实物理 profile 和 journal 下的独占目录实现，包含随机 owner token，绝不只凭陈旧 PID 回收。正常关闭会等待所有 transport 操作结束后才释放锁。进程硬崩溃后，操作者必须先确认没有 bridge 或其浏览器操作仍在运行，检查证据，再人工处理残留锁。这里特意不提供自动抢锁命令。持久化实现已在 POSIX 上验证；本阶段不承诺 Windows 目录 fsync 行为。
 
 快照 journal 上限为 64 MiB，没有自动删除或压缩；达到上限后停止接纳请求。这一有界基础实现优先保留证据，生产用保留/归档策略属于后续工作。
 
 ## HTTP 与客户端生命周期
 
-`startWebBridgeServer({ engine })` 监听 `127.0.0.1` 的临时端口，生成私有 launch bearer token。所有 endpoint 都要求该 token。Host 必须精确匹配监听地址；拒绝浏览器 Origin、含糊凭据、重定向、编码后的正文和非 JSON POST。正文/响应上限为 1 MiB、嵌套 64 层、header 16 KiB、读取请求正文 10 秒。模型操作本身不受该 10 秒截止限制。
+`startWebBridgeServer({ engine })` 监听 `127.0.0.1` 的临时端口，生成私有 launch bearer token。所有 endpoint 都要求该 token。Host 必须精确匹配监听地址；拒绝浏览器 Origin、含糊凭据、重定向、编码后的正文和非 JSON POST。模型请求正文允许 32 MiB，包括精确内联图片；其他正文与响应保留 1 MiB 上限。嵌套最多 64 层、header 16 KiB、读取请求正文 10 秒。模型操作本身不受该 10 秒截止限制。
 
 `WebBridgeClient({ url, token, expectedBinding, errorFactory })` 检查握手并注册自己的私有 lease。`stream(options)` 立即复制调用方输入，早于 iterator 推进或连接建立。心跳只续租这一 lease。`dispose()` 释放自己的 lease 并取消自己拥有的工作；其他客户端的 server/工作继续运行。host adapter 提供创建公共 `LlmError` 的 `errorFactory`。真实宿主 fixture 展示了该公共接入方式，不需要 DSH 补丁。
 
 | Endpoint | 用途 |
 | --- | --- |
-| `GET /health` | 已鉴权的实验性 instance/binding 握手。 |
+| `GET /health` | 已鉴权的 instance/binding 握手，并标明 `experimental` 或 `browser` transport。 |
 | `POST /v1/clients` | 使用 `{}` 注册私有 lease；默认 TTL 为 60 秒。 |
 | `POST /v1/clients/:id/heartbeat` | 使用 `{}` 只续租该 lease。 |
 | `DELETE /v1/clients/:id` | 只释放该 lease。 |
@@ -77,13 +79,13 @@
 
 lease 范围内的请求携带 `X-Web-Client-Lease`。turn 控制 POST 使用 `{ "sessionId": "..." }`。新 lease 不能仅凭 session ID 获得控制权限：必须先重新接纳完全相同的哈希请求。即使回复为 `WEB_UNCERTAIN` 或 `WEB_DELIVERY_CLAIMED`，也会登记其参与身份；这不会重发页面 prompt，也不会授权工具回放。turn ID 是确定性的：`turn-` 加请求 SHA-256 的十六进制摘要。只有原始接纳客户端能取消底层操作。
 
-页面 transport 接口刻意保持狭窄：`prepare` 只读，`submit` 是唯一变更边界，`observe` 提供完整 envelope，可选 `recover` 提供只读终态证据。后续 Chrome transport 必须先为 Project 创建、上传和清理加入各自持久化 intent/证据，才能执行这些变更。
+页面 transport 接口刻意保持狭窄：`prepare` 只读，`submit` 是唯一远端变更边界，`observe` 提供完整 envelope，可选 `recover` 提供只读终态证据。Chrome 为每次 Project、模型选择、上传、输入与 Send 变更分别记录持久化 intent/证据。可选 `discard` hook 只记录本地放弃，不修改网站，也不清除不确定的模型结果。
 
-## 尚不可用的部分
+## 浏览器接入与剩余验收
 
-尚未实现真实 Chrome 发现/启动、账号登录与核验、GPT-6/Pro 选择、私有 Project 隔离、DOM 响应提取、setup/recovery UI、discovery/daemon 启动及浏览器进程清理。这些离线测试中由调用方提供的 `accountBinding`，不等于真实账号核验。
+后续浏览器/provider 实现已增加 Chrome 发现与启动、可见账号和 GPT-6/Pro 核验、Project 隔离、DOM 提取、setup/recovery UI，以及独立拥有生命周期的 daemon。设置指南记录具体限制。离线 fixture 由调用方提供的 `accountBinding` 仍不等于真实账号核验，Chromium fixture 也不证明登录后的网页布局。
 
-图片、文件和附件传输会被拒绝。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。stock 压缩和标题生产者会请求输出上限，因此后续 setup 在启用 Web 前必须明确配置支持这些控制项的辅助 provider/model。本阶段不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明。Flywheel 接入将跟随真实浏览器 transport 和 setup 验收推进。
+宿主拥有的精确图片版本现在会按摘要传输、保存，并在重新打开 journal 时逐一验证引用。文件仍不支持。`temperature`、`maxTokens` 和 `stop` 会被拒绝，而非悄悄忽略。Web v1 只接受普通 turn：`compaction` 和 `session-title` 会以 `WEB_AUXILIARY_UNSUPPORTED` 失败，因此 DSH 必须把这些 purpose 路由到其他 provider，或关闭可选的标题插件。已安装 provider 只要求本地上下文预算，不读取 Loader fiber 或私有 compaction 配置。这里不提供 Web usage 估算、可强制执行的硬预算或 Flywheel 任务完成证明；Flywheel 具有自己的消费端集成与验收要求。
 
 ## 复现验证
 
@@ -98,6 +100,7 @@ npm run build
 
 ```sh
 npm run verify:web-agent-loop -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
+npm run verify:web-plugin-host -- /path/to/deepseek-harness --deps /path/to/isolated-host-dependencies
 ```
 
 脚本打包真正的 stock AgentLoop、LLM runtime、BlockAssembler、native tool executor、JSONL persistence 和 checkpoint policy。执行前后检查选定 commit 和宿主 tracked 文件未改变；只有页面 transport 使用 fixture。CI 和 release 共用 Node 24 的 Linux gate，普通 bridge 测试同时运行在支持的 Node 22 和 24 系列上。

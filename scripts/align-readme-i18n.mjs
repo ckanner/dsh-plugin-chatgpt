@@ -31,8 +31,10 @@ const chinesePath = join(here, '..', 'docs', 'README.zh.md')
 
 /** Chinese text for each English line that carries prose, keyed exactly. */
 const LINE_TRANSLATIONS = {
-  "The [experimental Web bridge](docs/web-bridge-contract.md) implements the stock-DSH protocol and durability foundation with offline page fixtures. It does not yet expose a selectable Web model; the implementation status describes the remaining Chrome and setup work.":
-    "[实验性 Web bridge](web-bridge-contract.zh.md)通过离线页面 fixture 实现 stock DSH 协议与持久化基础。目前尚未开放可选择的 Web 模型；实现状态说明了剩余的 Chrome 和 setup 工作。",
+  "The opt-in [GPT-6 Pro Web route](docs/web-provider.md) adds `gpt-6-pro-web / pro` after dedicated Chrome setup, visible account verification and an explicit local context budget. It is an unreleased candidate; real signed-in acceptance remains separate from the Chrome fixtures and stock-host tests. Web usage is unknown, auxiliary purposes are rejected, and unsupported output controls fail explicitly.":
+    "显式启用的 [GPT-6 Pro Web 路由](web-provider.zh.md)在专用 Chrome 设置、可见账号验证和显式本地上下文预算就绪后增加 `gpt-6-pro-web / pro`。这是尚未发布的候选实现，真实登录验收与 Chrome fixture、stock 宿主测试分开记录。Web usage 保持未知，辅助 purpose 会被拒绝，不支持的输出控制项会明确失败。",
+  "The [Web bridge contract](docs/web-bridge-contract.md) documents request identity, exact image versions, durable submission/delivery and recovery. The [setup guide](docs/web-provider.md) covers the managed daemon, provider card, non-Web auxiliary routing requirement, CLI and live acceptance boundary.":
+    "[Web bridge 契约](web-bridge-contract.zh.md)说明请求身份、精确图片版本、持久化提交与交付及恢复。[设置指南](web-provider.zh.md)介绍托管 daemon、provider 卡片、非 Web 辅助路由要求、CLI 和真实验收边界。",
   "English | [中文](docs/README.zh.md)":
     "[English](../README.md) | 中文",
   "Adds one DeepSeek Harness provider route, `chatgpt`, that answers model calls from a signed-in ChatGPT subscription rather than an API key. Signing in uses OpenAI's published *Sign in with ChatGPT* flow, so the account's own plan pays for inference. The route is named `chatgpt` and not `openai` because the built-in pi-ai plugin already owns that name. Models, their context windows, and their reasoning levels come from your account's own listing, so the roster follows your plan rather than a hard-coded list.":

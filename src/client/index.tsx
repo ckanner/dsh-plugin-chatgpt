@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import { remoteContribution } from './remote.ts'
 import { unwrap, type RemoteResult } from './result.ts'
+import { WebCard, type WebRemote } from './web-card.tsx'
 
 /** The browser context this plugin runs against. */
 type ClientContext = CordisContext & ClientContextServices
@@ -64,7 +65,7 @@ interface SignOutOutcome {
 }
 
 /** The Remote surface this card calls, as the Gateway actually resolves it. */
-interface ChatGptRemote {
+interface ChatGptRemote extends WebRemote {
   status(): Promise<RemoteResult<StatusView>>
   begin(): Promise<RemoteResult<StatusView>>
   submit(value: string): Promise<RemoteResult<StatusView>>
@@ -147,8 +148,13 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register(
     { name: 'settings.models.provider-card', key: SETTINGS_NS },
-    () => <ChatGptCard ctx={ctx} mounting={mounting} />,
+    () => <ProviderCard ctx={ctx} mounting={mounting} />,
   ))
+}
+
+function ProviderCard({ ctx, mounting }: { ctx: ClientContext, mounting: Promise<string | undefined> }) {
+  const getRemote = useCallback(() => waitForRemote(ctx), [ctx])
+  return <><ChatGptCard ctx={ctx} mounting={mounting} /><WebCard getRemote={getRemote} mounting={mounting} /></>
 }
 
 /**

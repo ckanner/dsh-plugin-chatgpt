@@ -16,6 +16,7 @@
 
 import z, { type Volatile } from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
+import { join } from 'node:path'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import type {
   AdapterRegistrationHandle, DirectoryRegistrationHandle, GenerateOptions, StreamChunk,
@@ -27,7 +28,10 @@ import { ChatGptSession } from './session.ts'
 import type { AdapterChunk } from './convert/blocks.ts'
 import { requestOf } from './convert/harness.ts'
 import { createScopedFetch } from './http.ts'
-export { contentCapabilities } from './capabilities.ts'
+import { WebProvider } from './web-provider.ts'
+import { ManagedWebRuntime } from './web-runtime/index.ts'
+import { WEB_MODEL, WebBridgeError } from './web-bridge/contracts.ts'
+export { contentCapabilities, webCapabilities } from './capabilities.ts'
 
 /**
  * Route and endpoint policy for one installation.
@@ -53,6 +57,14 @@ export const Config = z.object({
   contextWindowLimit: z.number().step(1).min(1024).volatile(),
   /** Exact model IDs with budgets that override the global context budget. */
   modelContextWindowLimits: z.dict(z.number().step(1).min(1024)).volatile(),
+  /** Startup option; changing the dedicated Chrome executable remounts this plugin. */
+  webChromeExecutable: z.string(),
+  /** Attach to a user-launched loopback Chrome CDP endpoint instead of spawning an owned browser. */
+  webCdpUrl: z.string(),
+  /** Opt-in legacy project-only isolation; default false uses a fresh ordinary Chat. */
+  webProjectIsolation: z.boolean(),
+  /** Startup byte admission limit; changing it remounts this plugin. */
+  webMaxInputBytes: z.number().step(1).min(1024),
 })
 
 /** The configuration one installation supplies, as the harness resolves it. */
@@ -64,6 +76,10 @@ export type Config = {
   proxyUrl: Volatile<string>
   contextWindowLimit: Volatile<number>
   modelContextWindowLimits: Volatile<Record<string, number>>
+  webChromeExecutable?: string
+  webCdpUrl?: string
+  webProjectIsolation?: boolean
+  webMaxInputBytes?: number
 }
 
 /** What this plugin calls itself in diagnostics. */
@@ -112,7 +128,9 @@ export const inject = ['llm']
 function asHostError(error: unknown, fallbackCode: string): Error {
   if (error instanceof LlmError) return error
   if (isCodedError(error)) {
-    return new LlmError(error.message, error.code, error.status === undefined ? {} : { status: error.status })
+    const requestId = 'requestId' in error && typeof error.requestId === 'string' ? error.requestId : undefined
+    return new LlmError(error.message, error.code, { ...error.status === undefined ? {} : { status: error.status },
+      ...requestId === undefined ? {} : { requestId } })
   }
   return new LlmError(error instanceof Error ? error.message : String(error), fallbackCode)
 }
@@ -127,15 +145,17 @@ function asHostError(error: unknown, fallbackCode: string): Error {
 export class HarnessAdapter extends LlmAdapter {
   private readonly inner: ChatGptAdapter
   private readonly route: string
+  private readonly web: WebProvider | undefined
 
   /**
    * @param inner - the adapter that talks to the API.
    * @param route - the provider route this instance serves.
    */
-  constructor(inner: ChatGptAdapter, route: string) {
+  constructor(inner: ChatGptAdapter, route: string, web?: WebProvider) {
     super()
     this.inner = inner
     this.route = route
+    this.web = web
   }
 
   override providerInfo(provider: string): { id: string, name: string } {
@@ -145,18 +165,35 @@ export class HarnessAdapter extends LlmAdapter {
   override async listModels(provider: string): Promise<readonly { provider: string, id: string, name: string }[]> {
     void provider
     try {
-      const models = await this.inner.listModels()
-      return models.map(model => ({ provider: this.route, id: model.id, name: model.name }))
+      const [siwc, web] = await Promise.allSettled([this.inner.listModels(), this.web?.listModels() ?? Promise.resolve([])])
+      const browserModels = web.status === 'fulfilled' ? web.value : []
+      if (siwc.status === 'rejected' && browserModels.length === 0) throw siwc.reason
+      const models = siwc.status === 'fulfilled' ? siwc.value : []
+      return [...models.filter(model => model.id !== WEB_MODEL).map(model => ({ provider: this.route, id: model.id, name: model.name })), ...browserModels]
     } catch (error) {
       throw asHostError(error, 'chatgpt_listing_failed')
     }
   }
 
-  override async resolveModel(provider: string, model: string): Promise<ReturnType<LlmAdapter['resolveModel']> extends Promise<infer T> ? T : never> {
+  override async resolveModel(provider: string, model: string, signal?: AbortSignal): Promise<ReturnType<LlmAdapter['resolveModel']> extends Promise<infer T> ? T : never> {
+    if (model === WEB_MODEL) {
+      if (provider !== this.route || !this.web) throw new LlmError('GPT-6 Pro Web is not enabled for this provider.', 'WEB_DISABLED')
+      try { return await this.web.resolveModel(signal) } catch (error) { throw asHostError(error, 'WEB_SETUP_REQUIRED') }
+    }
     return await this.inner.resolveModel(provider, model) as never
   }
 
-  override async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk, void, undefined> {
+  override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    if (options.model === WEB_MODEL) {
+      if (!this.web) return this.unavailableWeb()
+      return this.web.stream(options)
+    }
+    return this.streamSiwc(options)
+  }
+
+  private async *unavailableWeb(): AsyncGenerator<StreamChunk> { throw new LlmError('GPT-6 Pro Web is not enabled.', 'WEB_DISABLED') }
+
+  private async *streamSiwc(options: GenerateOptions): AsyncGenerator<StreamChunk, void, undefined> {
     const chunks: AsyncGenerator<AdapterChunk, void, undefined> = this.inner.stream(
       options.provider,
       requestOf(options),
@@ -195,9 +232,8 @@ export function apply(ctx: Context, config: Config): void {
   const baseUrl = config.baseUrl.get() ?? ''
   const transport = createScopedFetch(config.proxyUrl.get())
   ctx.effect(() => () => {
-    // Cordis disposers are synchronous; observe the asynchronous shutdown so
-    // failures are reported instead of becoming unhandled rejections.
-    void transport.close().catch(error => {
+    // Cordis awaits async disposers before unload/remount completes.
+    return transport.close().catch(error => {
       console.error('chatgpt: failed to close proxy transport', error)
     })
   })
@@ -222,7 +258,25 @@ export function apply(ctx: Context, config: Config): void {
     ...baseUrl.length === 0 ? {} : { baseUrl },
   })
 
-  const adapter = new HarnessAdapter(inner, route)
+  const executable = config.webChromeExecutable
+  const attachCdpUrl = config.webCdpUrl
+  const projectIsolation = config.webProjectIsolation
+  const maxInputBytes = config.webMaxInputBytes
+  const web = new WebProvider({
+    provider: route,
+    runtime: new ManagedWebRuntime({ stateDirectory: join(stateDir, 'web'), provider: route,
+      ...executable ? { chromeExecutable: executable } : {}, ...attachCdpUrl ? { attachCdpUrl } : {},
+      ...projectIsolation === undefined ? {} : { projectIsolation },
+      ...maxInputBytes === undefined ? {} : { maxInputBytes } }),
+    contextBudget: () => config.modelContextWindowLimits.get()?.[WEB_MODEL] ?? config.contextWindowLimit.get(),
+    resolveAttachments: () => ctx.get('attachments'),
+    errorFactory: (message, code, status, requestId) => new LlmError(message, code, { status,
+      ...requestId === undefined ? {} : { requestId } }),
+    onChanged: () => { ctx.emit('llm/adapters-updated') },
+  })
+  ctx.effect(() => () => web.dispose().catch(error => { console.error('chatgpt: Web client shutdown failed',
+    error instanceof WebBridgeError ? error.code : 'WEB_SHUTDOWN_FAILED') }))
+  const adapter = new HarnessAdapter(inner, route, web)
   const handle: AdapterRegistrationHandle = ctx.llm.registerAdapter([route], adapter)
   ctx.effect(() => () => { handle() })
 
@@ -245,5 +299,5 @@ export function apply(ctx: Context, config: Config): void {
     // after a sign-in that the selector slept through, so it has to be told.
     onRosterChanged: () => { ctx.emit('llm/adapters-updated') },
   })
-  new ChatGptController(ctx, session)
+  new ChatGptController(ctx, session, web)
 }

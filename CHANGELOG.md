@@ -1,10 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.2.0-alpha.1
 
-Implement the experimental Web bridge protocol and durability foundation from
-the stock-DSH sidecar design. This phase uses an injected page transport and does
-not make a Web model available in the installed plugin.
+Add the opt-in `chatgpt / gpt-6-pro-web / pro` route on an unmodified DSH host.
+
+- Add a managed dedicated Chrome runtime, visible-account/model/Pro binding,
+  project-only prompt isolation, exact image transport and provider-card setup
+  and recovery controls.
+- Keep DSH authoritative for history, tools, retries and compaction. Web v1
+  accepts only normal turns; `compaction` and `session-title` fail explicitly
+  before Chrome with `WEB_AUXILIARY_UNSUPPORTED`. DSH must route auxiliary
+  calls to a separate provider or disable the optional title plugin.
+- Do not inspect or depend on Loader fibers or private compaction configuration;
+  provider readiness is based on the explicit local context budget and the
+  public runtime status.
+- Implement the experimental Web bridge protocol and durability foundation from
+  the stock-DSH sidecar design, including an injected page-transport test seam
+  and the real Chrome runtime.
 
 - Capture immutable public host requests, including durable message IDs,
   effective system instructions, tool history and scoped replay receipts.

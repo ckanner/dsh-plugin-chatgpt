@@ -114,6 +114,56 @@ interface OwnedLock {
   release(): Promise<void>
 }
 
+/** An in-process capability; spreading or reconstructing this object is invalid. */
+export interface ProfileOwnership {
+  readonly profileDirectory: string
+  readonly instanceId: string
+  release(): Promise<void>
+}
+
+interface ProfileOwnerState {
+  lock: OwnedLock
+  borrowed: boolean
+  released: boolean
+}
+
+const profileOwners = new WeakMap<ProfileOwnership, ProfileOwnerState>()
+
+/** Verify the unforgeable capability before a daemon launches its browser. */
+export function assertProfileOwnership(owner: ProfileOwnership, profileDirectory: string): void {
+  const state = profileOwners.get(owner)
+  if (state === undefined || state.released || owner.profileDirectory !== profileDirectory) {
+    throw new WebBridgeError('WEB_PROFILE_OWNERSHIP', 'A live physical-profile ownership capability is required before launching Chrome.', 409)
+  }
+}
+
+/** Acquire before launching Chrome, including the initial interactive login. */
+export async function acquireProfileOwnership(options: {
+  profileDirectory: string, instanceId?: string, initialize?: boolean,
+}): Promise<ProfileOwnership> {
+  if (typeof process.getuid !== 'function' || constants.O_NOFOLLOW === undefined) {
+    throw new WebBridgeError('WEB_PLATFORM_UNSUPPORTED', 'Profile ownership currently requires POSIX storage.', 503)
+  }
+  if (options.initialize) await initializeDirectory(options.profileDirectory)
+  const profileDirectory = await realpath(options.profileDirectory)
+  requirePrivate(await lstat(profileDirectory), 'directory')
+  const instanceId = options.instanceId ?? randomUUID()
+  const state: ProfileOwnerState = {
+    lock: await acquireLock(join(profileDirectory, PROFILE_LOCK), instanceId), borrowed: false, released: false,
+  }
+  const owner: ProfileOwnership = Object.freeze({
+    profileDirectory, instanceId,
+    async release() {
+      if (state.released) return
+      if (state.borrowed) throw new WebBridgeError('WEB_PROFILE_IN_USE', 'The active engine must close before profile ownership is released.', 409)
+      await state.lock.release()
+      state.released = true
+    },
+  })
+  profileOwners.set(owner, state)
+  return owner
+}
+
 async function acquireLock(directory: string, instanceId: string): Promise<OwnedLock> {
   try {
     await mkdir(directory, { mode: 0o700 })
@@ -168,6 +218,7 @@ interface OpenJournalOptions<T> {
   initial: T
   validate(value: unknown): T
   fault?: JournalFault
+  profileOwnership?: ProfileOwnership
 }
 
 /**
@@ -193,7 +244,18 @@ export async function openJournal<T>(options: OpenJournalOptions<T>): Promise<Jo
   }
   requirePrivate(await lstat(directory), 'directory')
   requirePrivate(await lstat(profileDirectory), 'directory')
-  const profileLock = await acquireLock(join(profileDirectory, PROFILE_LOCK), options.instanceId)
+  const owner = options.profileOwnership ?? await acquireProfileOwnership({ profileDirectory, instanceId: options.instanceId })
+  const ownerState = profileOwners.get(owner)
+  if (ownerState === undefined || ownerState.released || ownerState.borrowed
+    || owner.profileDirectory !== profileDirectory || owner.instanceId !== options.instanceId) {
+    if (options.profileOwnership === undefined) await owner.release()
+    throw new WebBridgeError('WEB_PROFILE_OWNERSHIP', 'A live, matching, unborrowed profile ownership capability is required.', 409)
+  }
+  ownerState.borrowed = true
+  const releaseOwnership = async () => {
+    ownerState.borrowed = false
+    if (options.profileOwnership === undefined) await owner.release()
+  }
   let journalLock: OwnedLock | undefined
   try {
     journalLock = await acquireLock(join(directory, JOURNAL_LOCK), options.instanceId)
@@ -240,13 +302,13 @@ export async function openJournal<T>(options: OpenJournalOptions<T>): Promise<Jo
         closed = true
         // The engine must await all transport operations before reaching here.
         await journalLock?.release()
-        await profileLock.release()
+        await releaseOwnership()
       },
     }
     return store
   } catch (error) {
     await journalLock?.release().catch(() => undefined)
-    await profileLock.release().catch(() => undefined)
+    await releaseOwnership().catch(() => undefined)
     throw error
   }
 }

@@ -1,0 +1,160 @@
+# GPT-6 Pro Web：设置与恢复
+
+[English](web-provider.md) | 中文
+
+本分支在未修改的 DSH 上实现显式启用的 `chatgpt / gpt-6-pro-web / pro` 路由，包括专用 Chrome 进程、私有本地 daemon、持久化浏览器与请求 journal、精确图片版本，以及现有 ChatGPT provider 卡片中的设置和恢复操作。这是尚未发布的候选实现；registry 中的旧版本不会自动获得这些改动。
+
+仍需用目标账号和操作系统完成真实 ChatGPT 网页验收。真实 Chromium fixture 在本地网站上验证浏览器机制，stock AgentLoop 测试验证宿主工具和 checkpoint；两者都不能证明账号权限、当前登录网页布局或真实 Pro 的端到端结果。网页证据缺失或冲突时，请求会停止。
+
+## 前提与显式宿主策略
+
+使用支持的 Node 22/24、具备图形桌面的本机 Chrome/Chromium，以及 POSIX 宿主。实现包含 macOS 和 Linux 的 Chrome 路径发现。stock 宿主 gate 使用已发布 DSH `0.2.2-rc.5`；更宽的 peer 范围和包导入成功，不代表每个版本都完成了真实验收。尚未实现 Windows profile 持久化。
+
+DSH 继续拥有所有工具、权限、权威历史、重试与压缩。Web v1 只接受 `purpose: "normal"`；因为网页没有可强制执行的 `maxTokens`、`temperature`、`stop`，provider 会以 `WEB_AUXILIARY_UNSUPPORTED` 拒绝 `compaction` 和 `session-title`。请把 DSH 压缩和已启用的模型标题插件配置到明确的**非 Web** provider/model，或关闭可选的标题插件。只有 Web 的配置可以启用普通 turn；如果辅助路由仍选择 Web，会在派发时明确失败。插件不会读取 Loader fiber 或私有 compaction 配置。还需设置显式的本地 token 预算，它用于准入，并不是检测到的 ChatGPT 上下文容量。
+
+### 附加到已登录的 Chrome
+
+全新托管 profile 需要单独登录 ChatGPT。如果 Google/OpenAI 把这当成自动化浏览器而拒绝登录，请使用显式的 **attach 模式**，不要复制 cookie 或伪装浏览器。
+
+退出 Chrome，然后使用现有 Chrome user-data 目录启动一次，并只绑定 loopback 调试端点（下面是 macOS 默认目录）：
+
+```sh
+open -na "Google Chrome" --args \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir="$HOME/Library/Application Support/Google/Chrome"
+```
+
+只保留一个 ChatGPT 页面，然后配置：
+
+```yaml
+- id: chatgpt
+  config:
+    webCdpUrl: http://127.0.0.1:9222
+    modelContextWindowLimits:
+      gpt-6-pro-web: 32768
+```
+
+不要同时设置 `webChromeExecutable`。attach 模式：
+
+- 使用你自己启动的 Chrome profile；
+- 不接管、不加锁、不启动、不关闭该 Chrome；
+- 不要求 `--enable-automation`；
+- 仍然要求唯一 ChatGPT 页面、可见 GPT-6/Pro 选择和账号验证；
+- 会把已运行的本机调试端点暴露给本地 runtime。只使用你自己启动的 loopback 端点。
+
+provider 卡片以及 `verify`/`enable` 步骤其余不变。
+
+对于条目名为 `chatgpt`、`compaction-basic`、`session-title-llm` 的 stock profile，把以下字段合并到对应的现有配置中：
+
+```yaml
+- id: chatgpt
+  config:
+    # 保留该条目现有的 provider、stateDir 等设置。
+    modelContextWindowLimits:
+      gpt-6-pro-web: 32768
+    webMaxInputBytes: 262144
+    # Chrome 不在标准位置时可显式设置：
+    # webChromeExecutable: /absolute/path/to/chrome
+
+- id: compaction-basic
+  config:
+    auto: true
+    modelPolicies:
+      - provider: chatgpt
+        model: gpt-6-pro-web
+        headroomTokens: 4096
+        retainTokens: 4096
+        summarizationProvider: chatgpt
+        summarizationModel: gpt-6.2-sol
+        maxTokens: 4096
+
+- id: session-title-llm
+  config:
+    # 保留标题插件现有的目标长度与超时字段。
+    provider: chatgpt
+    model: gpt-6.2-sol
+```
+
+摘要和标题模型必须在你配置的 provider 中可用；`gpt-6.2-sol` 只是示例，不是账号权限证明。精确模型策略覆盖压缩默认值。Web v1 不读取这些设置，不会静默重写，也不会擅自选择会计费的备用模型。如果 DSH 为辅助请求选择了 Web，provider 会在接触 Chrome 之前拒绝。请把压缩和模型生成的标题保持在非 Web 路由；也可以关闭可选的标题插件，保留宿主的确定性标题服务。
+
+## 启用模型
+
+1. 把构建后的候选包安装到目标 DSH profile，并重启该宿主。
+2. 打开 **设置 → 模型 → ChatGPT → GPT-6 Pro Web**，点击 **Open dedicated Chrome**。它在 `<stateDir>/web/profile` 下创建私有 profile，不连接日常浏览器。
+3. 在专用窗口中手动登录，只保留一个 ChatGPT 页面。选择可见的 **GPT-6** 模型和 **Pro** effort。登录、验证挑战和账号提示由你自己完成。
+4. 点击 **Verify account and Pro**。宿主从可见账号和模型控件读取证据，把 profile 绑定到该账号；不会读取 cookie/token 存储，也不会修改账号的记忆或隐私设置。
+5. 解决列出的宿主策略问题，再点击 **Enable Web model**。普通模型选择器会增加 **GPT-6 Pro Web**，唯一 effort 为 `pro`。
+
+Web 账号与 SIWC 授权相互独立。如果显式摘要或标题路由使用 SIWC，该授权也必须可用。GPT-6.2 与 UltraFast 继续走原 SIWC 路由。禁用 Web 会阻止新 Web 请求；释放一个插件客户端不会终止 daemon 或其他客户端的工作。
+
+Chrome 路径、提示字节上限与空闲超时由显式 setup 保存。后续 setup 在没有活动 Chrome/engine 时，可以更新明确传入的值；省略的字段保留旧值。活动 runtime 使用不同配置时，需释放其客户端、等待空闲关闭，再重试 setup。状态查询、核验和连接不会静默改写这些设置。
+
+默认情况下，每个新代次都会打开 ChatGPT 首页并使用新的普通 **Chat**，不创建也不声明 Project。只有 DSH prefix、receipt 链、账号、conversation 和可见网页历史都一致时，才接纳继续追加。压缩、fork、指令或工具历史变化会基于当前宿主输入创建新代次。bridge 不维护第二套摘要，也不截断历史来适应网页。发送前再次核验账号、普通 chat URL 和精确模型控件。
+
+旧版 `webProjectIsolation: true` 仍是显式可选项；如果当前 UI 提供 Project 创建，它会使用私有的 project-only Project。它不是默认值，也不是普通使用的必要条件。当前 ChatGPT 布局没有 Project 创建入口时，不应阻塞普通 Chat。
+
+DSH 的角色、指令、历史和工具定义会投影为网页提示；这不会替换网站本身的系统指令，也不证明所有账号个性化设置均不存在。adapter 不创建分享链接，也不会检查每个已存在的会话分享链接；单独的私有 Project 检查不代表任何人都不可能分享过 chat。普通 Chat 不是私有 Project 边界：账号记忆和个性化可能跨 chat 延续。只有当更强边界可用且确实需要时，才使用私有/Temporary Chat 或旧版 project 模式；账号隐私和记忆设置仍由账号所有者控制。
+
+## 图片与完整响应
+
+用户图片和工具结果图片通过公开 DSH attachment service，从已脱离调用方可变数据的请求快照解析。宿主已 offload 的图片保持 offload。PNG、JPEG、WebP、GIF 字节会核对声明的 MIME、长度和 SHA-256。传输限制为每张 20 MiB、最多 20 个不同版本，以及包含 base64 开销在内的完整本地请求体 32 MiB。这些是本地边界，不承诺网页能接纳同样大小。
+
+私有 blob store 对每个精确图片版本只保存一次。journal 请求保存摘要引用，重新打开时逐一验证，并在使用前恢复同一版本字节。网页上传使用按内容命名的文件名；bridge 同时检查 composer 和已接纳提示中的完整图片集合。缺少或损坏字节会停止该 profile，而不是静默丢图。不接受任意路径、远端 URL 或文件附件。
+
+完整网页提示 envelope 默认最多 256 KiB。响应、receipt framing 和 inspection 保持在 1 MiB 边界内。网页必须返回对应精确请求的完整 JSON envelope；engine 在持久化前验证每个 block 和工具 schema，客户端在暴露任何 DSH chunk 前验证 response、finish 和 EOF。不伪造思考文本或 usage。工具只在有限模型响应结束后，由原版 DSH AgentLoop 执行。
+
+浏览器 transport 当前的单次操作/响应观察截止时间为 10 分钟，UI 控件还使用较短等待时间；宿主取消信号可以提前结束。Pro 响应超过观察时间后，结果仍为不确定，可稍后从网页恢复；超时不授权再次 Send。目标账号验收需包含长时间思考和排队场景。
+
+## 检查、恢复与放弃
+
+provider 卡片提供 **Load turns**、**Inspect**、**Recover from page evidence** 及显式放弃操作。列表显示最新 100 轮的摘要；更早的请求仍可通过 CLI 按精确 ID 检查。检查展示已记录状态和完整响应，不会执行其中的工具 block。恢复只观察网页、更新本地证据，绝不点击 Send 或运行工具。profile 阻断错误会指向真正未解决的那一轮，即使触发该错误的是另一个新请求。
+
+| 状态或错误 | 含义与下一步 |
+| --- | --- |
+| `WEB_UNCERTAIN` | 已派发请求没有完整验证的交付结果。用 `requestId`/turn ID 检查并恢复，然后才能继续新请求。 |
+| `WEB_DELIVERY_CLAIMED` | 工具响应已提交唯一交付所有者。重新连接不能重放，需核对 DSH session 和工具历史。 |
+| 网页已结束，但响应 envelope 无效 | 显式恢复只有重新核对精确提示、账号、conversation、响应身份/原文及历史，并与持久化证据一致，才能判定终态失败。原请求保留失败 tombstone，不执行任何 block，也不建立成功续接前缀。证据变化或不足仍保持不确定。 |
+| `failed` 且保留 Send 前浏览器证据 | 恢复可以证明从未出现 Send intent。原请求保持终态；显式放弃该浏览器证据后才能继续，并检查残留草稿或上传。 |
+| `discarded` 且 `uncertain` | 结果已放弃，远端操作仍不确定。继续只读恢复；放弃操作不会解除该阻断。 |
+| 绑定、journal、图片或所有权错误 | 检查已保存状态。重新运行 setup 不会替换现有账号绑定或抹掉证据。 |
+
+相同精确请求的完整文本响应可以重放。带工具的响应只有一次持久化交付声明，即使相同所有者也不能再次获取可执行重放。这不是宿主持久化 ACK，也不是工具已执行的证明。新的语义请求、新的 DSH session 和新的 Flywheel 任务都是不同身份，因此 Flywheel 仍需消费端的不确定结果阻断。
+
+协议无效的终态证据最多保存 1 MiB 响应原文，并包含完整宿主响应与 framing 预算检查。一般网页报错、账号变化、超时、生成未完成或证据写入失败，都不能证明终态失败。bridge 已记录 prompt ID 或 conversation URL 后，恢复不能用另一个恰好包含相同文本的页面替换它。
+
+CLI 使用相同管理接口：
+
+```sh
+dsh-chatgpt-web setup --state-directory /absolute/stateDir/web --provider chatgpt
+dsh-chatgpt-web status --state-directory /absolute/stateDir/web
+dsh-chatgpt-web verify --state-directory /absolute/stateDir/web
+dsh-chatgpt-web enable --state-directory /absolute/stateDir/web
+dsh-chatgpt-web turns --state-directory /absolute/stateDir/web
+dsh-chatgpt-web inspect --state-directory /absolute/stateDir/web 'turn-<sha256>'
+dsh-chatgpt-web recover --state-directory /absolute/stateDir/web 'turn-<sha256>'
+dsh-chatgpt-web discard --state-directory /absolute/stateDir/web 'turn-<sha256>'
+```
+
+CLI 的 `enable` 控制 daemon 可用性；已安装 provider 仍会在模型解析和派发前检查显式本地预算，并在接触 Chrome 之前拒绝任何辅助 purpose 请求。token 保存在仅属主可读文件中，不会由 setup/status 打印或发送到 provider 卡片。管理和模型 HTTP listener 都绑定字面值 loopback，并拒绝浏览器 Origin。握手同时验证私有凭据、协议和包版本、instance nonce、物理 profile、安装和账号绑定。
+
+daemon 在启动 Chrome 前取得物理 profile 所有权，并验证浏览器实际命令行。插件客户端只释放自己的 lease。空闲关闭会等待所有客户端、活动操作和不确定结果；Chrome 清理只针对已证明属于自己的进程。不能仅凭 PID 回收缺失或改变的锁。崩溃后，必须先确认没有所属浏览器或 bridge 操作仍在运行，并检查 journal，再离线修复锁。没有自动抢锁或删除证据的命令。快照 journal 上限为 64 MiB，达到上限后停止新请求，不删除历史。
+
+## 验证与发布边界
+
+```sh
+npm ci --ignore-scripts
+npm test
+npm run build
+npm run typecheck
+npm run verify:client
+npm run verify:install
+npm run verify:web-agent-loop -- /path/to/stock-dsh --deps /path/to/host-dependencies
+npm run verify:web-plugin-host -- /path/to/stock-dsh --deps /path/to/host-dependencies
+npx playwright-core install --with-deps chromium
+DSH_TEST_CHROMIUM=/absolute/path/to/chromium npm run test:web-browser
+```
+
+独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。独立 plugin-host gate 用 stock Cordis/Loader/LLM 激活实际插件入口，核验等待异步清理和配置重载；不再读取 Loader fiber 或模型标题路由。
+
+宣称真实验收通过前，应使用目标登录账号验证：文本、一个本地工具及其后续请求、用户与工具结果图片、新的普通 Chat、provider 切换、取消、交付中断、DSH/daemon 重启，以及两个独立释放的客户端。记录浏览器、OS、DSH 版本和 journal/session 证据。任何 fixture 结果都不能替代这项账号绑定的验收。

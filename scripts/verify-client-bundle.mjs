@@ -155,7 +155,9 @@ assert.equal(mounted.length, 1, 'the bundle must mount exactly one Remote contri
 assert.equal(mounted[0].package, packageName)
 assert.deepEqual(
   mounted[0].descriptors.map(descriptor => `${descriptor.namespace}/${descriptor.method}`),
-  ['chatgpt/status', 'chatgpt/begin', 'chatgpt/submit', 'chatgpt/cancel', 'chatgpt/signOut'],
+  ['chatgpt/status', 'chatgpt/begin', 'chatgpt/submit', 'chatgpt/cancel', 'chatgpt/signOut',
+    'chatgpt/webStatus', 'chatgpt/webSetup', 'chatgpt/webVerify', 'chatgpt/webSetEnabled',
+    'chatgpt/webTurns', 'chatgpt/webInspect', 'chatgpt/webRecover', 'chatgpt/webDiscard'],
   'every method the card calls must be mounted, or the call fails at the click',
 )
 

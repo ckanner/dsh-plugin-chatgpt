@@ -35,7 +35,7 @@ jobs:
     uses: ./.github/workflows/web-contract.yml
 
   release:
-    needs: stock-web-agent-loop
+    needs: [stock-web-agent-loop, real-chrome-web]
     runs-on: ubuntu-latest
     env:
       # Empty when the secret is absent, which is what selects the second step.
@@ -181,3 +181,8 @@ jobs:
               --generate-notes \
               dsh-plugin-chatgpt.tgz
           fi
+
+  real-chrome-web:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/web-browser.yml

@@ -5,7 +5,8 @@ import {
   type TurnState, type WebBinding, type WebBridgeEngine, type WebPageTransport,
   type WebRequest, type WebResponse,
 } from './contracts.ts'
-import { openJournal, type JournalFault, type JournalStore } from './journal.ts'
+import { openJournal, type JournalFault, type JournalStore, type ProfileOwnership } from './journal.ts'
+import type { WebImageStore } from './image-store.ts'
 import {
   canonical, createResponse, requestHash, validateBinding, validateContinuation,
   validatePageResponse, validateRequest, validateResponse,
@@ -41,6 +42,22 @@ export interface OpenWebBridgeOptions {
   instanceId?: string
   /** Explicit local fault-injection seam for durability tests; not a wire option. */
   journalFault?: JournalFault
+  /** The daemon retains ownership until both the engine and its Chrome have stopped. */
+  profileOwnership?: ProfileOwnership
+  imageStore?: WebImageStore
+}
+
+/** In-process management capability; never offered through normal client leases. */
+export interface WebBridgeAdministration {
+  list(): Promise<TurnInspection[]>
+  inspect(turnId: string): Promise<TurnInspection>
+  recover(turnId: string): Promise<TurnInspection>
+  discard(turnId: string): Promise<TurnInspection>
+  activity(): { activeTurns: number, uncertainTurns: number }
+}
+
+export interface ManagedWebBridgeEngine extends WebBridgeEngine {
+  readonly administration: WebBridgeAdministration
 }
 
 const STATES = new Set<TurnState>(['accepted', 'preparing', 'submit_intent', 'submitted',
@@ -60,14 +77,14 @@ function freeze<T>(value: T): T {
   return value
 }
 
-function inspection(turn: StoredTurn, clientLeaseId: string): TurnInspection {
+function inspection(turn: StoredTurn, clientLeaseId?: string): TurnInspection {
   return structuredClone({
     turnId: turn.turnId, sessionId: turn.sessionId, state: turn.state,
     requestHash: turn.requestHash, generationId: turn.generationId,
     discarded: turn.discarded, deliveryState: turn.deliveryState,
     // Lease IDs are control capabilities. An admitted observer may inspect the
     // outcome, but must not learn another client's cancellation credential.
-    ...turn.deliveryOwner?.clientLeaseId !== clientLeaseId ? {} : { deliveryOwner: turn.deliveryOwner },
+    ...clientLeaseId === undefined || turn.deliveryOwner?.clientLeaseId !== clientLeaseId ? {} : { deliveryOwner: turn.deliveryOwner },
     ...turn.fenceReason === undefined ? {} : { fenceReason: turn.fenceReason },
     ...turn.response === undefined ? {} : { response: turn.response },
   })
@@ -78,7 +95,9 @@ function turnIdFor(request: WebRequest): string {
 }
 
 function failure(code: string, message: string, turn?: StoredTurn, cause?: unknown): WebBridgeError {
-  const error = new WebBridgeError(code, message, 409, cause === undefined ? undefined : { cause })
+  const error = new WebBridgeError(code, message, 409, {
+    ...cause === undefined ? {} : { cause }, ...turn === undefined ? {} : { requestId: turn.turnId },
+  })
   // Keep the public Error shape compatible while making recovery identifiers
   // available to callers. The ID is also deterministically derived from the key.
   if (turn !== undefined) Object.assign(error, { turnId: turn.turnId })
@@ -141,11 +160,12 @@ function validateJournal(value: unknown, binding: WebBinding): JournalData {
   return { version: 1, binding, turns }
 }
 
-class DurableWebBridge implements WebBridgeEngine {
+class DurableWebBridge implements ManagedWebBridgeEngine {
   readonly binding: WebBinding
   readonly instanceId: string
   private readonly store: JournalStore<JournalData>
   private readonly transport: WebPageTransport
+  private readonly imageStore: WebImageStore | undefined
   private data: JournalData
   private transactions: Promise<void> = Promise.resolve()
   private profileQueue: Promise<void> = Promise.resolve()
@@ -153,13 +173,31 @@ class DurableWebBridge implements WebBridgeEngine {
   private readonly participants = new Map<string, Set<string>>()
   private readonly releasedClients = new Set<string>()
   private readonly recoveries = new Set<Promise<void>>()
+  private readonly pendingDiscards = new Set<string>()
+  private readonly discardOperations = new Map<string, Promise<void>>()
   private closing = false
   private closePromise: Promise<void> | undefined
   private journalFailure: unknown
+  readonly administration: WebBridgeAdministration = {
+    list: () => this.transaction(() => {
+      this.assertOpen()
+      return this.data.turns.map(turn => {
+        const result = inspection(turn)
+        delete result.response
+        return result
+      })
+    }),
+    inspect: turnId => this.transaction(() => { this.assertOpen(); return inspection(this.turn(turnId)) }),
+    recover: turnId => this.recoverFor(turnId),
+    discard: turnId => this.discardFor(turnId),
+    activity: () => ({ activeTurns: this.operations.size + this.recoveries.size,
+      uncertainTurns: this.data.turns.filter(turn => turn.state === 'uncertain').length }),
+  }
 
   constructor(store: JournalStore<JournalData>, options: OpenWebBridgeOptions, instanceId: string) {
     this.store = store
     this.transport = options.transport
+    this.imageStore = options.imageStore
     this.instanceId = instanceId
     this.binding = freeze(structuredClone(store.value.binding))
     this.data = store.value
@@ -234,11 +272,34 @@ class DurableWebBridge implements WebBridgeEngine {
       || MAY_HAVE_SUBMITTED.has(turn.state) && !this.operations.has(turn.turnId))
   }
 
-  private page(turn: StoredTurn): PageTurn {
-    return freeze(structuredClone({ request: turn.request, turnId: turn.turnId, generationId: turn.generationId }))
+  private assertDiscardedEvidence(): void {
+    const turnId = this.pendingDiscards.values().next().value
+    if (turnId !== undefined) throw failure('WEB_DISCARD_PENDING', 'A durable discard still needs its local browser evidence reconciled. Repeat discard or reopen before more submissions.', this.turn(turnId))
+  }
+
+  private async reconcileDiscard(turnId: string): Promise<void> {
+    if (this.transport.discard === undefined) return
+    try {
+      const page = await this.page(this.turn(turnId))
+      await this.transport.discard(page)
+      this.pendingDiscards.delete(turnId)
+    } catch (error) {
+      throw failure('WEB_DISCARD_PENDING', 'The durable discard is saved, but its local browser evidence needs reconciliation. Repeat discard or reopen.', this.turn(turnId), error)
+    }
+  }
+
+  private async page(turn: StoredTurn): Promise<PageTurn> {
+    const request = this.imageStore === undefined ? turn.request : await this.imageStore.hydrate(turn.request)
+    if (requestHash(request) !== turn.requestHash) throw failure('WEB_ATTACHMENT_EVIDENCE', 'Hydrated image evidence changed the admitted request identity.', turn)
+    return freeze(structuredClone({ request, turnId: turn.turnId, generationId: turn.generationId }))
   }
 
   async restore(): Promise<void> {
+    for (const turn of this.data.turns) {
+      if (turn.request.attachmentVersions.length === 0) continue
+      if (this.imageStore === undefined) throw failure('WEB_ATTACHMENT_STORE_MISSING', 'This journal requires its private image evidence store.', turn)
+      await this.imageStore.verify(turn.request)
+    }
     const next = structuredClone(this.data)
     let changed = false
     for (const turn of next.turns) {
@@ -255,6 +316,12 @@ class DurableWebBridge implements WebBridgeEngine {
       }
     }
     if (changed) await this.commit(next)
+    // The engine tombstone is committed before the transport's local one. A
+    // crash between those writes is repaired without creating a remote action.
+    if (this.transport.discard !== undefined) {
+      for (const turn of this.data.turns) if (turn.discarded) this.pendingDiscards.add(turn.turnId)
+      for (const turnId of this.pendingDiscards) await this.reconcileDiscard(turnId)
+    }
   }
 
   async execute(value: WebRequest, options: ExecuteOptions = {}): Promise<WebResponse> {
@@ -262,19 +329,23 @@ class DurableWebBridge implements WebBridgeEngine {
     const admitted = await this.transaction(async () => {
       this.assertOpen()
       this.assertClient(request.clientLeaseId)
+      if (request.attachmentVersions.length > 0 && this.imageStore === undefined) throw failure('WEB_ATTACHMENT_STORE_MISSING', 'Images require a durable private evidence store before admission.')
       const parentGeneration = this.checkParent(request)
       const existing = this.data.turns.find(turn => turn.requestHash === request.idempotencyKey)
       if (existing !== undefined) {
         if (requestHash(existing.request) !== requestHash(request)) throw failure('WEB_IDEMPOTENCY_CONFLICT', 'This key belongs to a different request.', existing)
+        if (this.imageStore !== undefined) await this.imageStore.verify(existing.request)
         this.participants.get(existing.turnId)?.add(request.clientLeaseId)
         return { turnId: existing.turnId, operation: this.operations.get(existing.turnId)?.done }
       }
+      this.assertDiscardedEvidence()
       const fenced = this.fence()
       if (fenced !== undefined) throw failure('WEB_UNCERTAIN', 'This profile has an unresolved browser outcome; inspect its existing request.', fenced)
       const now = Date.now()
+      const storedRequest = this.imageStore === undefined ? request : validateRequest(await this.imageStore.store(request), this.binding)
       const turn: StoredTurn = {
         turnId: turnIdFor(request), sessionId: request.sessionId, requestHash: request.idempotencyKey,
-        generationId: parentGeneration ?? randomUUID(), request, ownerClientLeaseId: request.clientLeaseId,
+        generationId: parentGeneration ?? randomUUID(), request: storedRequest, ownerClientLeaseId: request.clientLeaseId,
         state: 'accepted', discarded: false, deliveryState: 'unclaimed', createdAt: now, updatedAt: now,
       }
       const next = structuredClone(this.data)
@@ -321,12 +392,15 @@ class DurableWebBridge implements WebBridgeEngine {
         this.assertOpen()
         const turn = this.turn(turnId)
         if (turn.discarded || turn.state !== 'accepted') throw storedFailure(turn)
+        this.assertDiscardedEvidence()
         const fenced = this.fence()
         if (fenced !== undefined) throw failure('WEB_UNCERTAIN', 'This profile has an unresolved browser outcome; inspect its existing request.', fenced)
         signal.throwIfAborted()
         await this.update(turnId, current => { current.state = 'preparing' })
       })
-      await this.transport.prepare(this.page(this.turn(turnId)), signal)
+      let page = await this.page(this.turn(turnId))
+      signal.throwIfAborted()
+      await this.transport.prepare(page, signal)
       signal.throwIfAborted()
       await this.transaction(async () => {
         this.assertOpen()
@@ -335,8 +409,9 @@ class DurableWebBridge implements WebBridgeEngine {
         await this.update(turnId, current => { current.state = 'submit_intent' })
         intent = true
       })
+      page = await this.page(this.turn(turnId))
       signal.throwIfAborted()
-      const submitted = await this.transport.submit(this.page(this.turn(turnId)), signal)
+      const submitted = await this.transport.submit(page, signal)
       signal.throwIfAborted()
       if (typeof submitted?.promptId !== 'string' || submitted.promptId.length === 0) throw new Error('No positive prompt identity was observed')
       await this.transaction(async () => {
@@ -345,7 +420,9 @@ class DurableWebBridge implements WebBridgeEngine {
         await this.update(turnId, current => { current.state = 'submitted'; current.promptId = submitted.promptId })
         await this.update(turnId, current => { current.state = 'observing' })
       })
-      const value = await this.transport.observe(this.page(this.turn(turnId)), submitted.promptId, signal)
+      page = await this.page(this.turn(turnId))
+      signal.throwIfAborted()
+      const value = await this.transport.observe(page, submitted.promptId, signal)
       signal.throwIfAborted()
       const record = this.turn(turnId)
       const response = createResponse(record.request, turnId, record.generationId, validatePageResponse(value, record.request, turnId))
@@ -419,18 +496,40 @@ class DurableWebBridge implements WebBridgeEngine {
   }
 
   async discard(turnId: string, access: TurnAccess): Promise<TurnInspection> {
-    return this.transaction(async () => {
+    return this.discardFor(turnId, access)
+  }
+
+  private async discardFor(turnId: string, access?: TurnAccess): Promise<TurnInspection> {
+    const admitted = await this.transaction(async () => {
       this.assertOpen()
-      this.access(turnId, access)
+      if (access !== undefined) this.access(turnId, access)
       const turn = await this.update(turnId, current => { current.discarded = true })
-      return inspection(turn, access.clientLeaseId)
+      if (this.transport.discard === undefined) return { done: undefined }
+      this.pendingDiscards.add(turnId)
+      const existing = this.discardOperations.get(turnId)
+      if (existing !== undefined) return { done: existing }
+      // Never mutate local page evidence concurrently with an uncooperative
+      // in-flight submit. Tombstoning does not grant another lease cancellation.
+      const done = this.profileQueue.then(() => this.reconcileDiscard(turn.turnId))
+      this.profileQueue = done.then(() => undefined, () => undefined)
+      this.discardOperations.set(turnId, done)
+      this.recoveries.add(done)
+      const clear = () => { this.discardOperations.delete(turnId); this.recoveries.delete(done) }
+      void done.then(clear, clear)
+      return { done }
     })
+    await admitted.done
+    return access === undefined ? this.administration.inspect(turnId) : this.inspect(turnId, access)
   }
 
   async recover(turnId: string, access: TurnAccess): Promise<TurnInspection> {
+    return this.recoverFor(turnId, access)
+  }
+
+  private async recoverFor(turnId: string, access?: TurnAccess): Promise<TurnInspection> {
     const admitted = await this.transaction(() => {
       this.assertOpen()
-      const turn = this.access(turnId, access)
+      const turn = access === undefined ? this.turn(turnId) : this.access(turnId, access)
       if (this.operations.has(turnId)) throw failure('WEB_BUSY', 'The original transport must settle before recovery can establish a new outcome.', turn)
       if (turn.state !== 'uncertain') return { done: undefined }
       if (this.transport.recover === undefined) throw failure('WEB_RECOVERY_UNAVAILABLE', 'This transport has no read-only recovery implementation.', turn)
@@ -438,7 +537,9 @@ class DurableWebBridge implements WebBridgeEngine {
         this.assertOpen()
         const current = this.turn(turnId)
         if (current.state !== 'uncertain') return
-        const recovery = await this.transport.recover!(this.page(current))
+        const page = await this.page(current)
+        this.assertOpen()
+        const recovery = await this.transport.recover!(page)
         await this.transaction(async () => {
           this.assertOpen()
           if (recovery.kind === 'unknown') return
@@ -468,7 +569,7 @@ class DurableWebBridge implements WebBridgeEngine {
       return { done }
     })
     await admitted.done
-    return this.inspect(turnId, access)
+    return access === undefined ? this.administration.inspect(turnId) : this.inspect(turnId, access)
   }
 
   async releaseClient(clientLeaseId: string): Promise<void> {
@@ -520,14 +621,15 @@ class DurableWebBridge implements WebBridgeEngine {
   }
 }
 
-export async function openWebBridge(options: OpenWebBridgeOptions): Promise<WebBridgeEngine> {
+export async function openWebBridge(options: OpenWebBridgeOptions): Promise<ManagedWebBridgeEngine> {
   const binding = validateBinding(options.binding)
-  const instanceId = options.instanceId ?? randomUUID()
+  const instanceId = options.instanceId ?? options.profileOwnership?.instanceId ?? randomUUID()
   const store = await openJournal({
     directory: options.directory, profileDirectory: options.profileDirectory, binding, instanceId,
     initialize: options.initialize === true, initial: { version: 1, binding, turns: [] } as JournalData,
     validate: value => validateJournal(value, binding),
     ...options.journalFault === undefined ? {} : { fault: options.journalFault },
+    ...options.profileOwnership === undefined ? {} : { profileOwnership: options.profileOwnership },
   })
   const engine = new DurableWebBridge(store, options, instanceId)
   try {

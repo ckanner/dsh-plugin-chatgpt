@@ -1,6 +1,6 @@
 /** Capture the raw public GenerateOptions seam before starting any asynchronous work. */
-import { WEB_EFFORT, WEB_MODEL, type WebBinding, type WebMessage, type WebRequest, WebBridgeError } from './contracts.ts'
-import { cloneJson, receiptMatches, requestHash, validateReceipt, validateRequest } from './protocol.ts'
+import { WEB_EFFORT, WEB_MODEL, type WebAttachmentVersion, type WebBinding, type WebMessage, type WebRequest, WebBridgeError } from './contracts.ts'
+import { cloneJson, receiptMatches, requestHash, validateReceipt, validateRequest, WEB_MAX_REQUEST_BYTES } from './protocol.ts'
 
 /** Structural public host input: one-shot messages may lack a durable id/source. */
 export interface WebGenerateOptions {
@@ -29,10 +29,19 @@ export interface WebGenerateOptions {
 export interface CapturedWebRequest {
   readonly body: Omit<WebGenerateOptions, 'signal'>
   readonly signal: AbortSignal | undefined
+  readonly attachmentVersions?: WebAttachmentVersion[]
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function immutable<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const child of Object.values(value)) immutable(child)
+    Object.freeze(value)
+  }
+  return value
 }
 
 /** Opaque state from SIWC or another adapter is not forwarded to the Web model. */
@@ -70,7 +79,7 @@ export function captureWebRequest(options: WebGenerateOptions): CapturedWebReque
     ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
     ...options.stop === undefined ? {} : { stop: options.stop },
   }
-  return { body: cloneJson(body), signal: options.signal }
+  return { body: immutable(cloneJson(body, WEB_MAX_REQUEST_BYTES)), signal: options.signal }
 }
 
 /** Finalize the immutable snapshot against this launch's authenticated binding. */
@@ -98,7 +107,7 @@ export function prepareWebRequest(snapshot: CapturedWebRequest, binding: WebBind
       ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
       ...options.stop === undefined ? {} : { stop: options.stop },
     },
-    attachmentVersions: [],
+    attachmentVersions: snapshot.attachmentVersions ?? [],
     parentReceipt: messages.findLast(message => message.role === 'assistant')?.source?.replayState.response ?? null,
   // This candidate is not admitted until validateRequest below checks every field.
   } as unknown as WebRequest

@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import { createServer, type ServerResponse } from 'node:http'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { WebBridgeClient } from '../src/web-bridge/client.ts'
 import { createResponse, validatePageResponse } from '../src/web-bridge/protocol.ts'
 import { type WebBinding, type WebRequest, type WebResponse, WEB_MODEL } from '../src/web-bridge/contracts.ts'
-import type { WebGenerateOptions } from '../src/web-bridge/request.ts'
+import { captureWebRequest, prepareWebRequest, type WebGenerateOptions } from '../src/web-bridge/request.ts'
+import { openWebBridge } from '../src/web-bridge/engine.ts'
+import { startWebBridgeServer } from '../src/web-bridge/server.ts'
 
 const binding: WebBinding = { protocolVersion: 1, installationId: 'install', provider: 'chatgpt',
   profileId: 'profile', accountBinding: 'account' }
@@ -135,7 +140,7 @@ test('does not emit further executable chunks after cancellation between chunks'
   const first = await iterator.next()
   assert.equal(first.value?.type, 'block-start')
   abort.abort()
-  await assert.rejects(iterator.next(), { name: 'AbortError' })
+  await assert.rejects(iterator.next(), { code: 'WEB_UNCERTAIN' })
 })
 
 test('client rejects external endpoints, URL credentials and weak launch tokens', () => {
@@ -178,4 +183,42 @@ test('dispose cancels and joins in-flight setup without a late lease registratio
   healthResponse!.end(JSON.stringify({ ...binding, instanceId: 'instance', transport: 'experimental' }))
   assert.equal(session.registrations, 0)
   assert.equal(session.releases, 0)
+})
+
+test('a profile fence reports the blocking turn across HTTP without granting another lease access', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'web-client-fence-'))
+  let sends = 0
+  const engine = await openWebBridge({ directory: join(directory, 'journal'), profileDirectory: join(directory, 'profile'),
+    binding, initialize: true, transport: {
+      async prepare() {}, async submit() { sends++; throw Error('Lost browser outcome') },
+      async observe() { throw Error('unused') }, async recover() { return { kind: 'unknown' } },
+    } })
+  const server = await startWebBridgeServer({ engine })
+  const first = new WebBridgeClient({ ...server, expectedBinding: binding })
+  const second = new WebBridgeClient({ ...server, expectedBinding: binding })
+  t.after(async () => {
+    await Promise.allSettled([first.dispose(), second.dispose()])
+    await server.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+  const original = input()
+  const blocked = { ...input(), sessionId: 'different-session' }
+  const originalId = `turn-${prepareWebRequest(captureWebRequest(original), binding, 'lease', 'attempt').idempotencyKey.slice(7)}`
+  const blockedId = `turn-${prepareWebRequest(captureWebRequest(blocked), binding, 'lease', 'attempt').idempotencyKey.slice(7)}`
+  await assert.rejects(collect(first.stream(original)), { code: 'WEB_UNCERTAIN', requestId: originalId })
+  await assert.rejects(collect(second.stream(blocked)), { code: 'WEB_UNCERTAIN', requestId: originalId })
+  assert.equal((await engine.administration.inspect(originalId)).state, 'uncertain')
+  await assert.rejects(engine.administration.inspect(blockedId), { code: 'WEB_NOT_FOUND' })
+  const auth = { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' }
+  const registered = await fetch(`${server.url}/v1/clients`, { method: 'POST', headers: auth, body: '{}' })
+  const lease = await registered.json() as { clientLeaseId: string }
+  const headers = { ...auth, 'X-Web-Client-Lease': lease.clientLeaseId }
+  const denied = await fetch(`${server.url}/v1/turns`, { method: 'POST', headers,
+    body: JSON.stringify(prepareWebRequest(captureWebRequest(blocked), binding, lease.clientLeaseId, 'attempt')) })
+  const failure = await denied.json() as { error: { requestId: string } }
+  assert.equal(failure.error.requestId, originalId)
+  const inspected = await fetch(`${server.url}/v1/turns/${originalId}?sessionId=session`, { headers })
+  assert.equal(inspected.status, 409)
+  assert.equal((await inspected.json() as { error: { code: string } }).error.code, 'WEB_FORBIDDEN')
+  assert.equal(sends, 1)
 })

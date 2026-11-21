@@ -4,5 +4,7 @@ export { WebBridgeClient, type WebBridgeClientOptions } from './client.ts'
 export { openWebBridge, type OpenWebBridgeOptions } from './engine.ts'
 export { startWebBridgeServer, type WebBridgeServer, type WebBridgeServerOptions } from './server.ts'
 export { captureWebRequest, prepareWebRequest, type CapturedWebRequest, type WebGenerateOptions } from './request.ts'
+export { openWebImageStore, type WebImageStore } from './image-store.ts'
+export { resolveWebAttachments, validateAttachmentVersions, attachmentBytes } from './attachments.ts'
 export { canonical, digest, requestHash, validateBinding, validateRequest, validateReceipt,
-  validateResponse, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH } from './protocol.ts'
+  validateResponse, WEB_MAX_JSON_BYTES, WEB_MAX_JSON_DEPTH, WEB_MAX_REQUEST_BYTES } from './protocol.ts'

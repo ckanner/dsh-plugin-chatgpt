@@ -1,0 +1,23 @@
+name: real Chrome Web bridge
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  chrome-visible-dom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - run: npm ci --ignore-scripts
+      - name: Install the Chromium build matching the locked Playwright driver
+        run: npx playwright-core install --with-deps chromium
+      - name: Exercise real Chrome DOM, upload, isolation and recovery fixtures
+        run: |
+          export DSH_TEST_CHROMIUM="$(node --input-type=module -e 'import { chromium } from "playwright-core"; process.stdout.write(chromium.executablePath())')"
+          npm run test:web-browser

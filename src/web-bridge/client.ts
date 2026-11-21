@@ -4,15 +4,17 @@ import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import {
   WebBridgeError, type BridgeHealth, type ClientLease, type WebBinding, type WebRequest, type WebResponse,
 } from './contracts.ts'
-import { canonical, validateBinding, validateResponse, WEB_MAX_JSON_BYTES } from './protocol.ts'
+import { canonical, validateBinding, validateResponse, WEB_MAX_JSON_BYTES, WEB_MAX_REQUEST_BYTES } from './protocol.ts'
 import { captureWebRequest, prepareWebRequest, type CapturedWebRequest, type WebGenerateOptions } from './request.ts'
+import { resolveWebAttachments } from './attachments.ts'
 
 export interface WebBridgeClientOptions {
   url: string
   token: string
   expectedBinding?: WebBinding
   /** A host adapter supplies its public LlmError constructor without a runtime peer dependency here. */
-  errorFactory?: (message: string, code: string, status: number) => Error
+  errorFactory?: (message: string, code: string, status: number, requestId?: string) => Error
+  resolveAttachments?: () => unknown
 }
 
 function error(message: string): never { throw new WebBridgeError('WEB_PROTOCOL_ERROR', message, 502) }
@@ -52,7 +54,9 @@ function json(text: string): unknown {
 function failure(value: unknown, status: number): WebBridgeError {
   const item = record(record(value)['error'])
   if (typeof item['code'] !== 'string' || !/^WEB_[A-Z_]+$/.test(item['code']) || typeof item['message'] !== 'string') error('Invalid bridge error')
-  return new WebBridgeError(item['code'], item['message'], status)
+  const requestId = item['requestId']
+  if (requestId !== undefined && (typeof requestId !== 'string' || !/^turn-[a-f0-9]{64}$/.test(requestId))) error('Invalid bridge recovery request ID')
+  return new WebBridgeError(item['code'], item['message'], status, requestId === undefined ? undefined : { requestId: requestId as string })
 }
 
 function lease(value: unknown): ClientLease {
@@ -126,7 +130,7 @@ export class WebBridgeClient {
     if (path === '/v1/turns') headers['accept'] = 'text/event-stream'
     const response = await fetch(`${this.baseUrl}${path}`, {
       method, headers, redirect: 'error',
-      ...body === undefined ? {} : { body: canonical(body) },
+      ...body === undefined ? {} : { body: canonical(body, path === '/v1/turns' ? WEB_MAX_REQUEST_BYTES : WEB_MAX_JSON_BYTES) },
       signal: signal ?? AbortSignal.timeout(5000),
     })
     if (!response.ok) throw failure(json(await bodyText(response)), response.status)
@@ -155,13 +159,13 @@ export class WebBridgeClient {
     const value = record(await this.json('/health', 'GET', undefined, signal))
     signal.throwIfAborted()
     const binding = validateBinding(value)
-    if (typeof value['instanceId'] !== 'string' || !value['instanceId'] || value['transport'] !== 'experimental') error('Invalid bridge health handshake')
+    if (typeof value['instanceId'] !== 'string' || !value['instanceId'] || !['experimental', 'browser'].includes(String(value['transport']))) error('Invalid bridge health handshake')
     if (this.options.expectedBinding && canonical(binding) !== canonical(this.options.expectedBinding)) {
       throw new WebBridgeError('WEB_BINDING_MISMATCH', 'Bridge binding differs from the configured installation', 409)
     }
     const registered = lease(await this.json('/v1/clients', 'POST', {}, signal))
     this.leaseValue = registered
-    this.healthValue = { ...binding, instanceId: value['instanceId'], transport: 'experimental' }
+    this.healthValue = { ...binding, instanceId: value['instanceId'], transport: value['transport'] as BridgeHealth['transport'] }
     if (this.disposed) {
       await this.release()
       throw new WebBridgeError('WEB_CLIENT_CLOSED', 'The Web bridge client was disposed during setup', 409)
@@ -203,10 +207,20 @@ export class WebBridgeClient {
     return this.generate(captured)
   }
 
+  /** The provider captures before its asynchronous readiness/auxiliary checks. */
+  streamSnapshot(snapshot: CapturedWebRequest): AsyncIterable<StreamChunk> {
+    return this.generate(snapshot)
+  }
+
   private async *failed(cause: unknown): AsyncGenerator<StreamChunk> { throw this.hostError(cause) }
 
-  private hostError(cause: unknown): Error {
-    if (cause instanceof WebBridgeError) return this.options.errorFactory?.(cause.message, cause.code, cause.status) ?? cause
+  private hostError(cause: unknown, requestId?: string): Error {
+    if (cause instanceof WebBridgeError) {
+      const identity = cause.requestId ?? requestId
+      return this.options.errorFactory?.(cause.message, cause.code, cause.status, identity)
+        ?? new WebBridgeError(cause.code, cause.message, cause.status, { cause,
+          ...identity === undefined ? {} : { requestId: identity } })
+    }
     if (cause instanceof Error && cause.name === 'AbortError') return cause
     return this.options.errorFactory?.('Web bridge connection failed; inspect the admitted turn before retrying', 'WEB_CONNECTION_LOST', 502)
       ?? new WebBridgeError('WEB_CONNECTION_LOST', 'Web bridge connection failed; inspect the admitted turn before retrying', 502, { cause })
@@ -214,12 +228,16 @@ export class WebBridgeClient {
 
   private async *generate(snapshot: CapturedWebRequest): AsyncGenerator<StreamChunk> {
     let request: WebRequest | undefined
+    let posted = false
     const signal = snapshot.signal ? AbortSignal.any([snapshot.signal, this.shutdown.signal]) : this.shutdown.signal
     try {
       signal.throwIfAborted()
+      const prepared = await resolveWebAttachments({ ...snapshot, signal }, this.options.resolveAttachments)
+      signal.throwIfAborted()
       const health = await this.connect()
       signal.throwIfAborted()
-      request = prepareWebRequest(snapshot, validateBinding(health), this.leaseValue!.clientLeaseId, randomUUID())
+      request = prepareWebRequest(prepared, validateBinding(health), this.leaseValue!.clientLeaseId, randomUUID())
+      posted = true
       const http = await this.fetch('/v1/turns', 'POST', request, signal)
       if (!(http.headers.get('content-type') ?? '').startsWith('text/event-stream')) error('Expected a finite SSE bridge response')
       const response = readSse(await bodyText(http), request)
@@ -246,7 +264,13 @@ export class WebBridgeClient {
       if (signal.aborted && request && this.leaseValue && !this.disposed) {
         await this.json(`/v1/turns/turn-${request.idempotencyKey.slice(7)}/cancel`, 'POST', { sessionId: request.sessionId }).catch(() => {})
       }
-      throw this.hostError(cause)
+      const requestId = request === undefined ? undefined : `turn-${request.idempotencyKey.slice(7)}`
+      const ambiguous = posted && (signal.aborted || !(cause instanceof WebBridgeError)
+        || ['WEB_PROTOCOL_ERROR', 'WEB_INVALID_RESPONSE', 'WEB_INVALID_REQUEST', 'WEB_INVALID_ARGUMENTS'].includes(cause.code))
+      throw this.hostError(ambiguous
+        ? new WebBridgeError('WEB_UNCERTAIN', 'The Web request did not deliver a complete verified response. Inspect or recover this request before retrying.', 409, { cause,
+          ...cause instanceof WebBridgeError && cause.requestId !== undefined ? { requestId: cause.requestId } : {} })
+        : cause, requestId)
     }
   }
 

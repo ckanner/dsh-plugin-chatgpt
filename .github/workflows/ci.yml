@@ -54,3 +54,6 @@ jobs:
 
   stock-web-agent-loop:
     uses: ./.github/workflows/web-contract.yml
+
+  real-chrome-web:
+    uses: ./.github/workflows/web-browser.yml

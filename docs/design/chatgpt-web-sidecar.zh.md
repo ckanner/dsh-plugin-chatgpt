@@ -2,8 +2,9 @@
 
 [English](chatgpt-web-sidecar.md) | 中文
 
-状态：**拟议架构，已根据源码复审修订**。本 PR 只修改设计文档，没有实现 bridge
-或完成其验收。它取代 [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
+状态：**已复审的架构，后续实现正在交付**。PR #14 承载设计，PR #15 承载持久化基础，
+后续浏览器与 provider 候选实现设置、图片和恢复。参见[设置与验收指南](../web-provider.zh.md)；
+fixture 覆盖不等于真实登录网页验收。它取代 [chatgpt #9](https://github.com/ckanner/dsh-plugin-chatgpt/pull/9)
 和 [flywheel #57](https://github.com/ckanner/flywheel/pull/57)；两者均已关闭、未合并。
 本方案不修改 DSH 源码。
 
@@ -30,6 +31,24 @@ Web 模型仍仅为 **GPT-6 Pro**：
 已发行 DSH `0.2.2-rc.5` tag 为 `9c2670d3bce5275e0d1610272958121af87787bb`，
 它是不同的源码树，实施验收必须覆盖该发行版本。声明 0.2/0.3 peer range
 不代表其中每个版本都已经实测。
+
+### 参考实现：Oracle
+
+[steipete/oracle](https://github.com/steipete/oracle) 是 MIT 许可的 CLI/MCP
+项目，其 [browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)
+通过 Chrome CDP 驱动已登录的 ChatGPT 页面。关键做法：
+
+- **attach-running** 连接到用户已启动的本机 Chrome，打开一个专用 tab，不接管
+  profile，只关闭自己的 tab；
+- launcher 模式可启动 Chrome，但不要求 `--enable-automation`；
+- 通过 `/api/auth/session`（失败时 `/backend-api/me`）和可见 composer/profile
+  证据判断登录，不把登录按钮当作唯一依据；
+- 支持当前 Chat/Work 布局，新 chat 切到 Chat，follow-up 拒绝已有 Work
+  conversation，**不创建 Project**；
+- 持久化浏览器 session，长 Pro 任务可 reattach；失败时绝不点 Retry 或自动重发。
+
+本方案采用 Oracle 的普通 Chat 和 attach-running 方向，同时保留 DSH 特有的工具
+闭环、durable journal、幂等性和 uncertain fence。Project-only 创建不再是前置条件。
 
 ## 2. 为什么否决宿主补丁
 
@@ -390,36 +409,38 @@ DSH request surface 是权威输入。bridge 持久记录
 从**当前**请求重新建立上下文。bridge 不能把改写后的全量历史再追加到旧 chat，
 不能静默截断，也不维护第二套摘要。
 
-新代次必须新建空的、私有的 **project-only Project 和 chat**，不只是同 Project
-里的另一条 chat。OpenAI 明确说明
-[project-only memory 仍可引用同 Project 的其他 conversation](https://help.openai.com/en/articles/10169521-projects-in-chatgpt)，
-所以复用旧 Project 可能让 DSH 已删除的历史重新进入模型上下文。
-旧代次保留为可检查证据，不复制进新 Project，也不自动删除。
+新代次默认使用新的普通 **Chat**，不创建也不声明 Project。这与参考实现
+[steipete/oracle](https://github.com/steipete/oracle) 的
+[browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)
+一致：打开首页、验证唯一可用的 composer、提交，然后记录精确 conversation URL
+和 transcript。续接时导航到该精确 conversation。
 
-输入或上传前校验真实账号、Project、conversation、GPT-6/Pro 控件，以及没有
-冲突的活动生成/hosted app mode；上传后和实际发送前再次核验。URL 相同不足以证明
-身份未变。如果上下文隔离或输入容量无法确定，在提交前失败，不能把网页自己截历史
-当成 DSH compaction。
+早期草案要求每个代次创建空的、私有的 **project-only Project**。这是我们自加的
+更强隔离，不是 ChatGPT 的要求；它也假设 UI 始终提供 Project 创建入口，而当前
+真实 UI 并不稳定提供。因此普通 Chat 是默认；`webProjectIsolation: true` 只是
+可选旧模式。普通 Chat 不保证私有记忆隔离——账号个性化可能跨 chat 携带上下文；
+需要更强边界时才使用 Temporary Chat 或可选 project 模式。
+
+输入或上传前校验真实账号、conversation、GPT-6/Pro 控件，以及没有冲突的活动
+生成/hosted app mode；上传后和实际发送前再次核验。URL 相同不足以证明身份未变。
+如果输入容量无法确定，在提交前失败，不能把网页自己截历史当成 DSH compaction。
 
 ### 9.2 辅助请求
 
-`purpose: compaction` 使用独立 purpose 的 Project，禁止工具执行，只返回已验证
-文本。宿主可能为了 prefix 对齐而附带历史工具 schema；它们作为输入参与 hash，
-但不能成为摘要响应中的活动工具。失败或截断摘要不能替换 DSH 历史。
+Web v1 只接受 `purpose: "normal"`。DSH 的压缩和模型生成的会话标题必须使用
+明确的非 Web provider/model，或者关闭可选的标题功能。provider 会在接触 Chrome
+之前以 `WEB_AUXILIARY_UNSUPPORTED` 明确拒绝 `compaction` 和
+`session-title`。
 
-原版 summarizer 可使用自己配置的 provider/model，路由决定仍留在 DSH。
-网页输入/输出限制必须明确：请求中的 `maxTokens`、`temperature`、`stop`
-不会自动成为网页能力。不支持的强制参数应给出明确 option 错误。
-原版摘要 producer 每次都传 `maxTokens`，标题 producer 同样传输出上限。
-在 Web 参数强制能力尚未证明时，启用长 Web 会话前，setup 必须检查现有 DSH
-设置中已显式配置支持这些参数的摘要 provider/model；模型生成标题也需要显式的
-受支持路由，否则可选 title 功能保持禁用。不能静默切换路由，也不能把默认回落
-到 Web 模型算作受支持配置。只有参数语义和 overflow 行为得到验证后，才接纳
-Web 辅助请求。Unknown usage 不能变成零计数或严格 token 预算保证。
+这是有意为之：网页没有可强制执行的 `maxTokens`、`temperature` 或
+`stop`。stock 摘要生产者总会提供 `maxTokens`，标题生产者也会提供输出上限；
+假装能遵守这些控制会造成静默的正确性错误。支持 Web 辅助调用需要另行设计并证明
+输出控制，不在 v1 范围内。
 
-`session-title` 是可选的短文本调用，独立隔离并按 §5 的语义输入寻址。
-不能选择更新的 live user event、执行工具、污染任务 Project，或声称新生成的
-标题 UUID 一定是旧请求的重试。
+provider 不得通过 DSH Loader fiber 或 compaction service 的私有配置来探测路由。
+它不能靠读取内部状态来保证宿主配置安全。setup 只要求明确的本地上下文预算，并记录
+外部 summary/title 路由要求；只有 Web 的配置可以启用普通 turn，但如果 DSH 的
+辅助调用选择了 Web，会在派发时明确失败。
 
 ## 10. 模型选择与元数据
 

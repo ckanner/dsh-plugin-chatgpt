@@ -2,6 +2,8 @@
 export const WEB_PROTOCOL_VERSION = 1 as const
 export const WEB_MODEL = 'gpt-6-pro-web' as const
 export const WEB_EFFORT = 'pro' as const
+/** Includes wire image bytes; responses and inspection keep their smaller independent bound. */
+export const WEB_MAX_REQUEST_BYTES = 32 * 1024 * 1024
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 export type WebPurpose = 'normal' | 'compaction' | 'session-title'
@@ -21,6 +23,18 @@ export type WebOutputBlock =
 export type WebInputBlock = WebOutputBlock
   | { type: 'reasoning', text: string }
   | { type: 'tool-addition' | 'tool-removal', toolName: string }
+  | { type: 'image', attachmentVersion: string }
+
+/** Content-addressed exact bytes; the journal uses blobId, transport may use base64. */
+export interface WebAttachmentVersion {
+  id: string
+  digest: string
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  byteLength: number
+  uploadName: string
+  base64?: string
+  blobId?: string
+}
 
 export interface WebReceipt {
   kind: 'chatgpt-web-receipt'
@@ -73,7 +87,7 @@ export interface WebRequest extends WebBinding {
   tools: WebTool[]
   toolHistory?: WebToolHistory
   controls: { [key: string]: JsonValue }
-  attachmentVersions: JsonValue[]
+  attachmentVersions: WebAttachmentVersion[]
   parentReceipt: WebReceipt | null
 }
 
@@ -121,9 +135,9 @@ export type PageRecovery =
   | { kind: 'completed', response: unknown }
 
 /**
- * Injectable transport contract, not a browser implementation. In this phase
- * prepare is read-only. Any future Project/upload mutation needs its own durable
- * intent before it can be added here. submit is the sole mutation boundary.
+ * Injectable page seam. prepare is read-only. The browser implementation records
+ * its own intent before each Project/upload/input/Send mutation within submit.
+ * Recovery observes remote evidence; abandonment only updates local evidence.
  */
 export interface WebPageTransport {
   prepare(turn: PageTurn, signal: AbortSignal): Promise<void>
@@ -131,6 +145,8 @@ export interface WebPageTransport {
   observe(turn: PageTurn, promptId: string, signal: AbortSignal): Promise<unknown>
   /** Read-only evidence reconciliation. It must never submit or run tools. */
   recover?(turn: PageTurn): Promise<PageRecovery>
+  /** Record explicit abandonment locally; preserve evidence and never mutate the website. */
+  discard?(turn: PageTurn): Promise<void>
 }
 
 export interface ExecuteOptions {
@@ -153,7 +169,7 @@ export interface WebBridgeEngine {
 
 export interface BridgeHealth extends WebBinding {
   instanceId: string
-  transport: 'experimental'
+  transport: 'experimental' | 'browser'
 }
 
 export interface ClientLease {
@@ -165,11 +181,13 @@ export interface ClientLease {
 export class WebBridgeError extends Error {
   readonly code: string
   readonly status: number
+  readonly requestId: string | undefined
 
-  constructor(code: string, message: string, status = 409, options?: ErrorOptions) {
+  constructor(code: string, message: string, status = 409, options?: ErrorOptions & { requestId?: string }) {
     super(message, options)
     this.name = 'WebBridgeError'
     this.code = code
     this.status = status
+    this.requestId = options?.requestId
   }
 }

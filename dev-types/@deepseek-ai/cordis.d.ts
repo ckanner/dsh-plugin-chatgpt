@@ -10,6 +10,7 @@
 declare module '@deepseek-ai/cordis' {
   import type {
     AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmAdapter, LlmConfigurableProvider,
+    LlmResolvedModelInfo,
   } from '@deepseek-ai/dsh-llm'
 
   /** One registered route's owning adapter. */
@@ -17,7 +18,11 @@ declare module '@deepseek-ai/cordis' {
     registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle
     /** Publish provider rows the Models page renders and edits. */
     registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle
+    resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>
   }
+
+  /** Public Cordis lifecycle values, transcribed from vendor/cordis/src/fiber.ts. */
+  export const enum FiberState { PENDING, LOADING, ACTIVE, FAILED, DISPOSED, UNLOADING }
 
   /** The plugin instance a service's policy is registered against. */
   export interface Fiber {
@@ -41,7 +46,7 @@ declare module '@deepseek-ai/cordis' {
     llm: LlmRouteRegistry
     settings: SettingsService
     fiber: Fiber
-    effect(callback: () => () => void): () => void
+    effect(callback: () => () => void | Promise<void>): () => void | Promise<void>
     get(name: string): unknown
     /**
      * Run `callback` once the named services are available, against a context
