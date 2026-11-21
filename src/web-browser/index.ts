@@ -129,7 +129,17 @@ async function connect(options: ChromeConnectionOptions): Promise<{ browser: Bro
       }
     }
     if (browser.contexts().length !== 1) failure('WEB_BROWSER_OWNERSHIP', 'The dedicated Chrome instance has unexpected additional contexts')
-    const candidates = browser.contexts()[0]!.pages().filter(page => { try { return new URL(page.url()).origin === origin } catch { return false } })
+    const context = browser.contexts()[0]!
+    let candidates = context.pages().filter(page => { try { return new URL(page.url()).origin === origin } catch { return false } })
+    if (candidates.length === 0 && options.attached === true) {
+      // Chrome's inspect-server exposes a fresh debugging page. Like Oracle,
+      // open/use one provider-owned tab instead of requiring the user to
+      // pre-open ChatGPT in the live profile.
+      const page = context.pages().find(item => item.url() === 'about:blank') ?? await context.newPage()
+      await page.goto(`${origin}/`, { waitUntil: 'domcontentloaded' })
+      await page.bringToFront()
+      candidates = [page]
+    }
     if (candidates.length !== 1) failure('WEB_BROWSER_SETUP', 'Exactly one ChatGPT page must be open in the dedicated profile')
     const page = candidates[0]!
     await page.bringToFront()
@@ -363,6 +373,18 @@ class Transport implements ChromePageTransport {
         // created or claimed; the conversation boundary is the exact URL and
         // transcript evidence recorded after Send.
         await this.navigate(`${this.origin}/`, signal)
+      }
+      if (!this.projectIsolation) {
+        const composer = await unique(this.page.locator(COMPOSER), 'The prepared composer is unavailable')
+        const current = await composer.evaluate(node => (node instanceof HTMLTextAreaElement ? node.value : (node as HTMLElement).innerText) ?? '')
+        if (current.trim()) {
+          // ChatGPT can retain a draft across navigation. The provider owns this
+          // attached tab, so clear only the composer before read-only preparation.
+          await composer.click()
+          await composer.fill('')
+          const after = await composer.evaluate(node => (node instanceof HTMLTextAreaElement ? node.value : (node as HTMLElement).innerText) ?? '')
+          if (after.trim()) drift('The prepared composer could not be cleared')
+        }
       }
       const facts = await this.binding(signal)
       if (facts.composer.count !== 1 || !facts.composer.ready || facts.composer.text.trim()) drift('The prepared composer must be unique, ready, and empty')
