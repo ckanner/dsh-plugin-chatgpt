@@ -132,6 +132,7 @@ async function connect(options: ChromeConnectionOptions): Promise<{ browser: Bro
     const candidates = browser.contexts()[0]!.pages().filter(page => { try { return new URL(page.url()).origin === origin } catch { return false } })
     if (candidates.length !== 1) failure('WEB_BROWSER_SETUP', 'Exactly one ChatGPT page must be open in the dedicated profile')
     const page = candidates[0]!
+    await page.bringToFront()
     boundUrl(page.url(), origin)
     page.setDefaultTimeout(UI_TIMEOUT)
     page.setDefaultNavigationTimeout(UI_TIMEOUT)
