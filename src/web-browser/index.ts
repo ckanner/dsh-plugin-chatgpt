@@ -23,6 +23,8 @@ export interface ChromePageTransportOptions extends ChromeConnectionOptions {
   expectedAccountBinding: string
   provider: string
   profileId: string
+  /** Optional legacy isolation; default false uses a fresh ordinary Chat, like Oracle. */
+  projectIsolation?: boolean
   initialize?: boolean
   /** Byte admission budget for the complete rendered prompt, not model context capacity. */
   maxInputBytes?: number
@@ -242,9 +244,11 @@ class Transport implements ChromePageTransport {
   private readonly browser: Browser
   private readonly page: Page
   private readonly origin: string
+  private readonly projectIsolation: boolean
   private readonly ledger: BrowserLedger
   constructor(options: ChromePageTransportOptions, browser: Browser, page: Page, origin: string, ledger: BrowserLedger) {
     this.options = options; this.browser = browser; this.page = page; this.origin = origin; this.ledger = ledger
+    this.projectIsolation = options.projectIsolation === true
   }
 
   private async exclusive<T>(body: () => Promise<T>): Promise<T> {
@@ -346,9 +350,18 @@ class Transport implements ChromePageTransport {
       this.admitted(turn)
       const generation = this.generation(turn)
       const prompt = renderPrompt(turn, this.budget(), generation)
-      if (generation?.conversationUrl) {
+      if (this.projectIsolation) {
+        if (generation?.conversationUrl) {
+          await this.navigate(generation.conversationUrl, signal)
+          await this.verifyProject(generation, signal)
+        }
+      } else if (generation?.conversationUrl) {
         await this.navigate(generation.conversationUrl, signal)
-        await this.verifyProject(generation, signal)
+      } else {
+        // Ordinary Chat mode: use the homepage's fresh composer. No Project is
+        // created or claimed; the conversation boundary is the exact URL and
+        // transcript evidence recorded after Send.
+        await this.navigate(`${this.origin}/`, signal)
       }
       const facts = await this.binding(signal)
       if (facts.composer.count !== 1 || !facts.composer.ready || facts.composer.text.trim()) drift('The prepared composer must be unique, ready, and empty')
@@ -468,17 +481,26 @@ class Transport implements ChromePageTransport {
       await this.ledger.admit(turn, prepared.prompt)
       if (this.ledger.mutations(turn.turnId).length) failure('WEB_BROWSER_UNCERTAIN', 'This browser request already has mutation evidence and is never resubmitted')
       let generation = this.generation(turn)!
-      if (generation.projectUrl === undefined) generation = await this.createProject(turn, signal)
-      else {
+      if (this.projectIsolation) {
+        if (generation.projectUrl === undefined) generation = await this.createProject(turn, signal)
+        else {
+          if (facts.url !== generation.conversationUrl) drift('The generation is no longer on its exact conversation')
+          this.ensureTranscript(facts, generation)
+          await this.verifyProject(generation, signal)
+        }
+      } else if (generation.conversationUrl !== undefined) {
         if (facts.url !== generation.conversationUrl) drift('The generation is no longer on its exact conversation')
         this.ensureTranscript(facts, generation)
-        await this.verifyProject(generation, signal)
       }
       await this.selectPro(turn, signal)
       const url = this.page.url()
       facts = await this.binding(signal, url)
       this.ensureTranscript(facts, generation)
-      if (facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The composer is outside its owned Project')
+      if (this.projectIsolation) {
+        if (facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The composer is outside its owned Project')
+      } else if (generation.conversationUrl !== undefined && facts.url !== generation.conversationUrl) {
+        drift('The composer left its exact conversation')
+      }
       const prompt = prepared.prompt
       const encoded = JSON.parse(prompt) as { request: { attachmentVersions: Array<{ id: string }> } }
       const referenced = new Set(encoded.request.attachmentVersions.map(version => version.id))
@@ -506,7 +528,9 @@ class Transport implements ChromePageTransport {
       }
       facts = await this.binding(signal, url)
       this.ensureTranscript(facts, generation)
-      if (facts.composer.text.trim() || facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The prepared input context changed before text entry')
+      if (facts.composer.text.trim()) drift('The prepared input context changed before text entry')
+      if (this.projectIsolation && facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The prepared input context changed before text entry')
+      if (!this.projectIsolation && generation.conversationUrl !== undefined && facts.url !== generation.conversationUrl) drift('The prepared input context changed before text entry')
       const composer = await unique(this.page.locator(COMPOSER), 'The composer is unavailable')
       await this.mutation(turn, 'prompt-input', signal, async () => {
         await composer.fill(prompt)
@@ -515,7 +539,9 @@ class Transport implements ChromePageTransport {
       }, digest => ({ promptDigest: digest }))
       facts = await this.binding(signal, url)
       this.ensureTranscript(facts, generation)
-      if (facts.composer.text !== prompt || facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The input context changed before Send')
+      if (facts.composer.text !== prompt) drift('The input context changed before Send')
+      if (this.projectIsolation && facts.url !== generation.projectUrl && facts.projectUrl !== generation.projectUrl) drift('The input context changed before Send')
+      if (!this.projectIsolation && generation.conversationUrl !== undefined && facts.url !== generation.conversationUrl) drift('The input context changed before Send')
       const uploadState = await this.page.evaluate(readUploads)
       if (uploadState.busy || uploadState.failed || uploadState.cards.some(card => !card.ready)
         || canonical(uploadState.cards.map(card => card.name).sort()) !== canonical([...expectedUploads].sort())) drift('The exact complete image set is not ready at Send')
@@ -532,7 +558,8 @@ class Transport implements ChromePageTransport {
           if (matches.length > 1) drift('The accepted prompt identity is ambiguous')
           if (matches.length !== 1) return undefined
           const match = matches[0]!
-          if (!conversationUrl(state.url, this.origin) || state.projectUrl !== generation.projectUrl) return undefined
+          if (!conversationUrl(state.url, this.origin)) return undefined
+          if (this.projectIsolation && state.projectUrl !== generation.projectUrl) return undefined
           if (canonical(match.attachments) !== canonical([...expectedUploads].sort())) drift('The accepted prompt has different image evidence')
           return { id: match.id, url: state.url }
         }, signal)
@@ -553,7 +580,8 @@ class Transport implements ChromePageTransport {
     const generation = this.generation(turn)!
     const record = this.ledger.turn(turn.turnId)!
     const state = await this.facts()
-    if (state.url !== generation.conversationUrl || state.projectUrl !== generation.projectUrl) drift('The observed response left its exact owned chat')
+    if (state.url !== generation.conversationUrl) drift('The observed response left its exact chat')
+    if (this.projectIsolation && state.projectUrl !== generation.projectUrl) drift('The observed response left its exact owned Project')
     if (state.hostedTools || state.error) failure('WEB_BROWSER_PAGE_ERROR', 'The website reports an error or active hosted tool mode')
     const index = state.messages.findIndex(message => message.id === promptId && message.role === 'user' && message.text === record.prompt)
     if (index < 0) drift('The exact accepted prompt is missing from the visible transcript')
@@ -563,9 +591,9 @@ class Transport implements ChromePageTransport {
     if (after.some(message => message.role !== 'assistant') || after.length > 1) drift('An unowned turn appeared after the submitted prompt')
     const answer = after[0]
     if (state.active || !answer || !answer.finished || answer.busy) return undefined
-    await this.verifyProject(generation, signal)
+    if (this.projectIsolation) await this.verifyProject(generation, signal)
     const finalState = await this.binding(signal, generation.conversationUrl)
-    if (finalState.projectUrl !== generation.projectUrl) drift('The terminal response changed its Project binding during final inspection')
+    if (this.projectIsolation && finalState.projectUrl !== generation.projectUrl) drift('The terminal response changed its Project binding during final inspection')
     if (canonical(transcript(finalState), WEB_MAX_REQUEST_BYTES) !== canonical(transcript(state), WEB_MAX_REQUEST_BYTES)) drift('The terminal transcript changed while account/model binding was rechecked')
     const finalAnswer = finalState.messages[index + 1]
     if (!finalAnswer?.finished || finalAnswer.busy || finalState.active) return undefined
@@ -622,7 +650,8 @@ class Transport implements ChromePageTransport {
         // the original submit has settled; no Send record proves no submission.
         // Uncertain Project/uploads still retain their separate browser fence.
         if (!send) return { kind: 'not-submitted' }
-        if (!generation?.projectUrl) return { kind: 'unknown' }
+        if (!generation) return { kind: 'unknown' }
+        if (this.projectIsolation ? !generation.projectUrl : !generation.conversationUrl) return { kind: 'unknown' }
         const observedPrompt = send.state === 'observed' ? send.evidence?.promptId : undefined
         const observedUrl = send.state === 'observed' ? send.evidence?.conversationUrl : undefined
         if (send.state === 'observed' && (!observedPrompt || !observedUrl)
@@ -632,11 +661,12 @@ class Transport implements ChromePageTransport {
         const knownUrl = generation.conversationUrl ?? observedUrl
         if (knownUrl) await this.navigate(knownUrl, signal)
         let facts = await this.binding(signal, knownUrl, true)
-        if (!conversationUrl(facts.url, this.origin) || facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
+        if (!conversationUrl(facts.url, this.origin)) return { kind: 'unknown' }
+        if (this.projectIsolation && facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
         const candidateUrl = facts.url
-        await this.verifyProject({ ...generation, conversationUrl: candidateUrl }, signal)
+        if (this.projectIsolation) await this.verifyProject({ ...generation, conversationUrl: candidateUrl }, signal)
         facts = await this.binding(signal, candidateUrl, true)
-        if (facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
+        if (this.projectIsolation && facts.projectUrl !== generation.projectUrl) return { kind: 'unknown' }
         const prompts = facts.messages.filter(message => message.role === 'user' && message.text === record.prompt
           && (knownPrompt === undefined || message.id === knownPrompt)
           && canonical(message.attachments) === canonical(this.expectedUploads(record.prompt))

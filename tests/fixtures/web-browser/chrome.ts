@@ -72,7 +72,7 @@ export async function chromeFixture(): Promise<ChromeFixture> {
   if(!page)page=await browser.contexts()[0]!.newPage()
   if(!page.url().startsWith(origin))await page.goto(origin)
   await page.waitForSelector('#prompt-textarea')
-  const options:ChromePageTransportOptions={cdpUrl,expectedProfileDirectory:profileDirectory,stateDirectory,expectedAccountBinding:accountBindingForVisibleIdentity('owner@example.test'),provider:'chatgpt',profileId:'fixture-profile',testOnlyOrigin:origin,timeoutMs:6000,initialize:true}
+  const options:ChromePageTransportOptions={cdpUrl,expectedProfileDirectory:profileDirectory,stateDirectory,expectedAccountBinding:accountBindingForVisibleIdentity('owner@example.test'),provider:'chatgpt',profileId:'fixture-profile',projectIsolation:true,testOnlyOrigin:origin,timeoutMs:6000,initialize:true}
   const transportList:ChromePageTransport[]=[]
   const attached=browser
   return {directory,profileDirectory,stateDirectory,cdpUrl,origin,page,browser:attached,process:child,actions,intentKinds,options,

@@ -27,6 +27,7 @@ export function validateConfig(value: unknown, stateDirectory: string, provider?
     || item.chromeExecutable !== undefined && (typeof item.chromeExecutable !== 'string' || !item.chromeExecutable || !isAbsolute(item.chromeExecutable) || item.chromeExecutable.length > 4096)
     || item.attachCdpUrl !== undefined && !attachUrl(item.attachCdpUrl)
     || item.attachCdpUrl !== undefined && item.chromeExecutable !== undefined
+    || item.projectIsolation !== undefined && typeof item.projectIsolation !== 'boolean'
     || item.maxInputBytes !== undefined && (!Number.isSafeInteger(item.maxInputBytes) || item.maxInputBytes < 1024 || item.maxInputBytes > 16 * 1024 * 1024)
     || item.account !== undefined && (typeof item.account !== 'string' || item.account.length > 1024)) {
     throw runtimeError('WEB_RUNTIME_CONFIG', 'Runtime identity, provider, profile or limits do not match this installation.')
@@ -63,6 +64,7 @@ export async function initializeConfig(options: ManagedWebRuntimeOptions): Promi
     profileDirectory, enabled: false, setupPending: true, idleTimeoutMs: options.idleTimeoutMs ?? 300_000,
     ...options.chromeExecutable === undefined ? {} : { chromeExecutable: resolve(options.chromeExecutable) },
     ...options.attachCdpUrl === undefined ? {} : { attachCdpUrl: options.attachCdpUrl },
+    ...options.projectIsolation === undefined ? {} : { projectIsolation: options.projectIsolation },
     ...options.maxInputBytes === undefined ? {} : { maxInputBytes: options.maxInputBytes },
   }, stateDirectory, options.provider)
   await createPrivateJson(join(stateDirectory, CONFIG_FILE), config)

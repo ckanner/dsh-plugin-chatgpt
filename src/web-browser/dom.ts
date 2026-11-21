@@ -1,5 +1,5 @@
 /** Versioned visible-UI evidence readers, executed unchanged inside Chromium. */
-export const COMPOSER = '#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]'
+export const COMPOSER = '#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,[contenteditable="true"][aria-label="Ask ChatGPT"],form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]'
 export const PROFILE_TRIGGER = '[data-testid="accounts-profile-button"],[data-testid="profile-button"],button[aria-label="Open profile menu"]'
 export const MODEL_TRIGGER = 'button[aria-label="Select ChatGPT model"],button[data-codex-intelligence-trigger="true"],form[data-chatgpt-composer] button[data-composer-navigation-target="reasoning"],[data-testid="model-switcher-dropdown-button"]'
 
@@ -87,7 +87,7 @@ export function readPageEvidence(): PageEvidence {
     const current = /^(?:ChatGPT\s+)?(GPT-[\w.-]+)\s+(Pro|High|Medium|Low|Instant|Extra High)$/.exec(label)
     if (current) { models.add(current[1]!); efforts.add(current[2]!) }
   }
-  const composers = all('#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]')
+  const composers = all('#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,[contenteditable="true"][aria-label="Ask ChatGPT"],form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]')
   const composer = composers[0]
   const currentText = composer instanceof HTMLTextAreaElement ? composer.value : composer?.innerText ?? ''
   const messages: PageMessageEvidence[] = []

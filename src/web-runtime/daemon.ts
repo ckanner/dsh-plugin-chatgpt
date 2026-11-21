@@ -203,6 +203,7 @@ export async function startRuntimeDaemon(options: { stateDirectory: string, depe
       stateDirectory: join(stateDirectory, 'browser'), attached,
       expectedProfileDirectory: configured.profileDirectory, expectedAccountBinding: binding.accountBinding,
       provider: configured.provider, profileId: configured.profileId, initialize,
+      ...configured.projectIsolation === undefined ? {} : { projectIsolation: configured.projectIsolation },
       ...configured.maxInputBytes === undefined ? {} : { maxInputBytes: configured.maxInputBytes } })
     try {
       const imageStore = await openWebImageStore(join(stateDirectory, 'images'), { initialize })

@@ -38,6 +38,29 @@ released DSH `0.2.2-rc.5` tag is `9c2670d3bce5275e0d1610272958121af87787bb`;
 it is a separate tree and must be included in implementation acceptance.
 A declared 0.2/0.3 peer range is not evidence that every release has been tested.
 
+### Reference implementation: Oracle
+
+[steipete/oracle](https://github.com/steipete/oracle) is an MIT-licensed CLI/MCP
+project whose [browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)
+drives a signed-in ChatGPT page over Chrome CDP. Its relevant choices are:
+
+- **attach-running mode** attaches to a user's already-running local Chrome
+  through Chrome's local remote-debugging endpoint, opens one dedicated tab,
+  leaves the profile untouched and closes only that tab;
+- launcher mode can start Chrome, but does not require `--enable-automation`;
+- it probes `/api/auth/session` (falling back to `/backend-api/me`) and visible
+  composer/profile evidence rather than treating a login button as authoritative;
+- it supports the current Chat/Work layout, switches new chats to Chat, rejects
+  an existing Work conversation for follow-up, and does not create Projects;
+- it persists browser sessions and can reattach after long Pro runs; it never
+  clicks Retry or resubmits automatically;
+- it is a regular-chat implementation, not a Project-isolation implementation.
+
+This design adopts Oracle's ordinary-Chat and attach-running direction. It keeps
+the DSH-specific tool loop, durable request journal, idempotency and uncertain
+fencing, which Oracle does not provide in the same form. Project-only creation
+is optional legacy behavior, not a prerequisite.
+
 ## 2. Why the host patch is rejected
 
 The previous candidate added durable response acknowledgement, replay veto,
@@ -57,7 +80,8 @@ plugin interfaces. It does not reproduce the old host hooks in a hidden shim.
 ## 3. Architecture and ownership
 
 The stock DSH adapter calls a local authenticated bridge over loopback HTTP.
-The bridge drives the website through its own Chrome profile.
+The bridge drives the website through a Chrome process it launches or one the
+user already launched and explicitly exposes over loopback CDP (attach mode).
 
 | Owner | Responsibility |
 | --- | --- |
@@ -437,18 +461,29 @@ instructions/tools or unverified page edits require a fresh generation seeded
 from the **current** request. The bridge does not append an entire rewritten
 history to an old chat, silently truncate input, or maintain its own summary.
 
-A fresh generation uses a new empty private **project-only Project and chat**,
-not just another chat in the old Project. OpenAI documents that
-[project-only memory can reference other conversations in the same Project](https://help.openai.com/en/articles/10169521-projects-in-chatgpt).
-Thus reusing that Project could reintroduce history DSH removed.
-Old generations remain inspectable evidence; they are not copied into the new
-Project or automatically deleted.
+A fresh generation uses a new ordinary **Chat** by default, matching the
+reference implementation [steipete/oracle](https://github.com/steipete/oracle)
+and its [browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md).
+No Project is created or claimed. A new generation navigates to the ChatGPT
+homepage, verifies a unique ready composer, submits the prompt, and records the
+exact resulting conversation URL and transcript. A continuation navigates to
+that exact conversation.
 
-Before input or upload, verify the actual account, project, conversation,
-GPT-6/Pro controls and absence of an interfering generation/hosted app mode.
-Recheck after uploads and immediately before sending. A matching URL alone is
-insufficient. If isolation or context fit cannot be established, fail before
-submission; do not let website-side history trimming masquerade as DSH compaction.
+The earlier draft required a new empty private **project-only Project** for
+every generation. That was an Oracle-independent, stronger isolation choice,
+not a ChatGPT requirement. It also assumed a Project creation control that the
+current live UI does not expose consistently. Ordinary Chat is therefore the
+default; `webProjectIsolation: true` is an optional legacy mode for accounts
+whose UI still offers that control. Ordinary Chat does not guarantee private
+memory isolation: account personalization may carry context across chats.
+Use Temporary Chat or the optional project mode only where that stronger
+boundary is explicitly required and available.
+
+Before input or upload, verify the actual account, conversation, GPT-6/Pro
+controls and absence of an interfering generation/hosted app mode. Recheck
+after uploads and immediately before sending. A matching URL alone is
+insufficient. If context fit cannot be established, fail before submission;
+do not let website-side history trimming masquerade as DSH compaction.
 
 ### 9.2 Auxiliary requests
 

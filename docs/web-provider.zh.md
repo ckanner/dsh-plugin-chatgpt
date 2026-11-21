@@ -90,9 +90,11 @@ Web 账号与 SIWC 授权相互独立。如果显式摘要或标题路由使用 
 
 Chrome 路径、提示字节上限与空闲超时由显式 setup 保存。后续 setup 在没有活动 Chrome/engine 时，可以更新明确传入的值；省略的字段保留旧值。活动 runtime 使用不同配置时，需释放其客户端、等待空闲关闭，再重试 setup。状态查询、核验和连接不会静默改写这些设置。
 
-每个新代次都会在持久化 intent 后创建空的、私有的 **project-only Project** 和独立 chat。只有 DSH prefix、receipt 链、账号、Project、conversation 和可见网页历史都一致时，才接纳继续追加。压缩、fork、指令或工具历史变化会基于当前宿主输入创建新代次。bridge 不维护第二套摘要，也不截断历史来适应网页。发送前再次核验 project-only、私有性、空 sources 和精确模型控件；未知布局会明确失败。
+默认情况下，每个新代次都会打开 ChatGPT 首页并使用新的普通 **Chat**，不创建也不声明 Project。只有 DSH prefix、receipt 链、账号、conversation 和可见网页历史都一致时，才接纳继续追加。压缩、fork、指令或工具历史变化会基于当前宿主输入创建新代次。bridge 不维护第二套摘要，也不截断历史来适应网页。发送前再次核验账号、普通 chat URL 和精确模型控件。
 
-DSH 的角色、指令、历史和工具定义会投影为网页提示；这不会替换网站本身的系统指令，也不证明所有账号个性化设置均不存在。adapter 不创建分享链接，也不会检查每个已存在的会话分享链接；单独的私有 Project 检查不代表任何人都不可能分享过 chat。账号隐私和记忆设置仍由账号所有者控制。
+旧版 `webProjectIsolation: true` 仍是显式可选项；如果当前 UI 提供 Project 创建，它会使用私有的 project-only Project。它不是默认值，也不是普通使用的必要条件。当前 ChatGPT 布局没有 Project 创建入口时，不应阻塞普通 Chat。
+
+DSH 的角色、指令、历史和工具定义会投影为网页提示；这不会替换网站本身的系统指令，也不证明所有账号个性化设置均不存在。adapter 不创建分享链接，也不会检查每个已存在的会话分享链接；单独的私有 Project 检查不代表任何人都不可能分享过 chat。普通 Chat 不是私有 Project 边界：账号记忆和个性化可能跨 chat 延续。只有当更强边界可用且确实需要时，才使用私有/Temporary Chat 或旧版 project 模式；账号隐私和记忆设置仍由账号所有者控制。
 
 ## 图片与完整响应
 
@@ -112,7 +114,7 @@ provider 卡片提供 **Load turns**、**Inspect**、**Recover from page evidenc
 | --- | --- |
 | `WEB_UNCERTAIN` | 已派发请求没有完整验证的交付结果。用 `requestId`/turn ID 检查并恢复，然后才能继续新请求。 |
 | `WEB_DELIVERY_CLAIMED` | 工具响应已提交唯一交付所有者。重新连接不能重放，需核对 DSH session 和工具历史。 |
-| 网页已结束，但响应 envelope 无效 | 显式恢复只有重新核对精确提示、账号、Project、响应身份/原文及历史，并与持久化证据一致，才能判定终态失败。原请求保留失败 tombstone，不执行任何 block，也不建立成功续接前缀。证据变化或不足仍保持不确定。 |
+| 网页已结束，但响应 envelope 无效 | 显式恢复只有重新核对精确提示、账号、conversation、响应身份/原文及历史，并与持久化证据一致，才能判定终态失败。原请求保留失败 tombstone，不执行任何 block，也不建立成功续接前缀。证据变化或不足仍保持不确定。 |
 | `failed` 且保留 Send 前浏览器证据 | 恢复可以证明从未出现 Send intent。原请求保持终态；显式放弃该浏览器证据后才能继续，并检查残留草稿或上传。 |
 | `discarded` 且 `uncertain` | 结果已放弃，远端操作仍不确定。继续只读恢复；放弃操作不会解除该阻断。 |
 | 绑定、journal、图片或所有权错误 | 检查已保存状态。重新运行 setup 不会替换现有账号绑定或抹掉证据。 |
@@ -155,4 +157,4 @@ DSH_TEST_CHROMIUM=/absolute/path/to/chromium npm run test:web-browser
 
 独立 Chrome CI job 会显式启用真实浏览器测试；Chromium 不存在或无法启动就失败，不用 mocked page 方法冒充浏览器运行。普通离线测试覆盖精确图片重放、schema、fsync 故障、lease、请求身份、dispose、独立 daemon 客户端，以及 stock 宿主工具和 checkpoint。独立 plugin-host gate 用 stock Cordis/Loader/LLM 激活实际插件入口，核验等待异步清理和配置重载；不再读取 Loader fiber 或模型标题路由。
 
-宣称真实验收通过前，应使用目标登录账号验证：文本、一个本地工具及其后续请求、用户与工具结果图片、压缩后新 Project、provider 切换、取消、交付中断、DSH/daemon 重启，以及两个独立释放的客户端。记录浏览器、OS、DSH 版本和 journal/session 证据。任何 fixture 结果都不能替代这项账号绑定的验收。
+宣称真实验收通过前，应使用目标登录账号验证：文本、一个本地工具及其后续请求、用户与工具结果图片、新的普通 Chat、provider 切换、取消、交付中断、DSH/daemon 重启，以及两个独立释放的客户端。记录浏览器、OS、DSH 版本和 journal/session 证据。任何 fixture 结果都不能替代这项账号绑定的验收。

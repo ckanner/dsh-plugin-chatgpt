@@ -32,6 +32,24 @@ Web 模型仍仅为 **GPT-6 Pro**：
 它是不同的源码树，实施验收必须覆盖该发行版本。声明 0.2/0.3 peer range
 不代表其中每个版本都已经实测。
 
+### 参考实现：Oracle
+
+[steipete/oracle](https://github.com/steipete/oracle) 是 MIT 许可的 CLI/MCP
+项目，其 [browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)
+通过 Chrome CDP 驱动已登录的 ChatGPT 页面。关键做法：
+
+- **attach-running** 连接到用户已启动的本机 Chrome，打开一个专用 tab，不接管
+  profile，只关闭自己的 tab；
+- launcher 模式可启动 Chrome，但不要求 `--enable-automation`；
+- 通过 `/api/auth/session`（失败时 `/backend-api/me`）和可见 composer/profile
+  证据判断登录，不把登录按钮当作唯一依据；
+- 支持当前 Chat/Work 布局，新 chat 切到 Chat，follow-up 拒绝已有 Work
+  conversation，**不创建 Project**；
+- 持久化浏览器 session，长 Pro 任务可 reattach；失败时绝不点 Retry 或自动重发。
+
+本方案采用 Oracle 的普通 Chat 和 attach-running 方向，同时保留 DSH 特有的工具
+闭环、durable journal、幂等性和 uncertain fence。Project-only 创建不再是前置条件。
+
 ## 2. 为什么否决宿主补丁
 
 旧候选通过修改 DSH 源码增加 durable response ACK、replay veto、summary-route
@@ -391,16 +409,21 @@ DSH request surface 是权威输入。bridge 持久记录
 从**当前**请求重新建立上下文。bridge 不能把改写后的全量历史再追加到旧 chat，
 不能静默截断，也不维护第二套摘要。
 
-新代次必须新建空的、私有的 **project-only Project 和 chat**，不只是同 Project
-里的另一条 chat。OpenAI 明确说明
-[project-only memory 仍可引用同 Project 的其他 conversation](https://help.openai.com/en/articles/10169521-projects-in-chatgpt)，
-所以复用旧 Project 可能让 DSH 已删除的历史重新进入模型上下文。
-旧代次保留为可检查证据，不复制进新 Project，也不自动删除。
+新代次默认使用新的普通 **Chat**，不创建也不声明 Project。这与参考实现
+[steipete/oracle](https://github.com/steipete/oracle) 的
+[browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)
+一致：打开首页、验证唯一可用的 composer、提交，然后记录精确 conversation URL
+和 transcript。续接时导航到该精确 conversation。
 
-输入或上传前校验真实账号、Project、conversation、GPT-6/Pro 控件，以及没有
-冲突的活动生成/hosted app mode；上传后和实际发送前再次核验。URL 相同不足以证明
-身份未变。如果上下文隔离或输入容量无法确定，在提交前失败，不能把网页自己截历史
-当成 DSH compaction。
+早期草案要求每个代次创建空的、私有的 **project-only Project**。这是我们自加的
+更强隔离，不是 ChatGPT 的要求；它也假设 UI 始终提供 Project 创建入口，而当前
+真实 UI 并不稳定提供。因此普通 Chat 是默认；`webProjectIsolation: true` 只是
+可选旧模式。普通 Chat 不保证私有记忆隔离——账号个性化可能跨 chat 携带上下文；
+需要更强边界时才使用 Temporary Chat 或可选 project 模式。
+
+输入或上传前校验真实账号、conversation、GPT-6/Pro 控件，以及没有冲突的活动
+生成/hosted app mode；上传后和实际发送前再次核验。URL 相同不足以证明身份未变。
+如果输入容量无法确定，在提交前失败，不能把网页自己截历史当成 DSH compaction。
 
 ### 9.2 辅助请求
 

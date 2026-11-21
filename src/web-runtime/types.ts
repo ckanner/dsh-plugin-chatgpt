@@ -15,6 +15,8 @@ export interface ManagedWebRuntimeOptions {
   chromeExecutable?: string
   /** Attach to a user-launched Chrome CDP endpoint instead of spawning an owned browser. */
   attachCdpUrl?: string
+  /** Legacy project-only isolation; default false uses a fresh ordinary Chat. */
+  projectIsolation?: boolean
   maxInputBytes?: number
   idleTimeoutMs?: number
   bridgeCommand?: { executable: string, args: string[] }
@@ -45,6 +47,7 @@ export interface RuntimeConfig {
   setupPending: boolean
   chromeExecutable?: string
   attachCdpUrl?: string
+  projectIsolation?: boolean
   maxInputBytes?: number
   idleTimeoutMs: number
   binding?: WebBinding

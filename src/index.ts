@@ -61,6 +61,8 @@ export const Config = z.object({
   webChromeExecutable: z.string(),
   /** Attach to a user-launched loopback Chrome CDP endpoint instead of spawning an owned browser. */
   webCdpUrl: z.string(),
+  /** Opt-in legacy project-only isolation; default false uses a fresh ordinary Chat. */
+  webProjectIsolation: z.boolean(),
   /** Startup byte admission limit; changing it remounts this plugin. */
   webMaxInputBytes: z.number().step(1).min(1024),
 })
@@ -76,6 +78,7 @@ export type Config = {
   modelContextWindowLimits: Volatile<Record<string, number>>
   webChromeExecutable?: string
   webCdpUrl?: string
+  webProjectIsolation?: boolean
   webMaxInputBytes?: number
 }
 
@@ -257,11 +260,13 @@ export function apply(ctx: Context, config: Config): void {
 
   const executable = config.webChromeExecutable
   const attachCdpUrl = config.webCdpUrl
+  const projectIsolation = config.webProjectIsolation
   const maxInputBytes = config.webMaxInputBytes
   const web = new WebProvider({
     provider: route,
     runtime: new ManagedWebRuntime({ stateDirectory: join(stateDir, 'web'), provider: route,
       ...executable ? { chromeExecutable: executable } : {}, ...attachCdpUrl ? { attachCdpUrl } : {},
+      ...projectIsolation === undefined ? {} : { projectIsolation },
       ...maxInputBytes === undefined ? {} : { maxInputBytes } }),
     contextBudget: () => config.modelContextWindowLimits.get()?.[WEB_MODEL] ?? config.contextWindowLimit.get(),
     resolveAttachments: () => ctx.get('attachments'),
