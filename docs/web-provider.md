@@ -12,6 +12,44 @@ Use a supported Node 22/24 line, a local graphical Chrome/Chromium installation,
 
 DSH continues to own all tools, permissions, authoritative history, retries and compaction. Web v1 accepts only `purpose: "normal"`; it rejects `compaction` and `session-title` with `WEB_AUXILIARY_UNSUPPORTED` because the website has no enforceable `maxTokens`, `temperature` or `stop`. Configure DSH compaction and any enabled model-title plugin to use an explicit **non-Web** provider/model, or disable the optional title plugin. A Web-only profile can enable normal turns; an auxiliary route that still selects Web fails visibly at dispatch. The plugin does not inspect Loader fibers or private compaction configuration. Also select an explicit local token budget; it is an admission budget, not a discovered ChatGPT context capacity.
 
+### Attach to an already signed-in Chrome
+
+A fresh managed profile requires a separate ChatGPT sign-in. If that sign-in is
+blocked by Google/OpenAI as an automated browser, use explicit **attach mode**
+instead of copying cookies or trying to spoof the browser.
+
+Quit Chrome, then start it once with a literal loopback debugging endpoint. Use
+your existing Chrome user-data directory (the default is shown):
+
+```sh
+open -na "Google Chrome" --args \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir="$HOME/Library/Application Support/Google/Chrome"
+```
+
+Keep exactly one ChatGPT page open. Configure:
+
+```yaml
+- id: chatgpt
+  config:
+    webCdpUrl: http://127.0.0.1:9222
+    modelContextWindowLimits:
+      gpt-6-pro-web: 32768
+```
+
+Do **not** set `webChromeExecutable` at the same time. Attach mode:
+
+- uses the Chrome profile you launched;
+- does not claim, lock, launch or close that Chrome;
+- does not require `--enable-automation`;
+- still requires exactly one ChatGPT page, a visible GPT-6/Pro selection and
+  account verification;
+- exposes the already-running local debugging endpoint to this local runtime.
+  Only use a loopback endpoint you started yourself.
+
+The provider card and `verify`/`enable` steps are otherwise the same.
+
 For a stock profile whose entries are named `chatgpt`, `compaction-basic` and `session-title-llm`, merge these values into the corresponding existing configurations:
 
 ```yaml

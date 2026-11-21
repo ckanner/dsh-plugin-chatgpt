@@ -24,6 +24,7 @@ export async function runWebBridgeCli(argv = process.argv.slice(2), output: (tex
         if (!value) throw runtimeError('WEB_RUNTIME_ARGUMENT', `Missing value for ${key}.`)
         if (key === '--state-directory') options.stateDirectory = value
         else if (key === '--provider') options.provider = value
+        else if (key === '--cdp-url') options.attachCdpUrl = value
         else if (key === '--chrome-executable') options.chromeExecutable = value
         else if (key === '--max-input-bytes') options.maxInputBytes = Number(value)
         else if (key === '--idle-timeout-ms') options.idleTimeoutMs = Number(value)

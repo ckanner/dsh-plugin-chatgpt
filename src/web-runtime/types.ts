@@ -13,6 +13,8 @@ export interface ManagedWebRuntimeOptions {
   stateDirectory: string
   provider: string
   chromeExecutable?: string
+  /** Attach to a user-launched Chrome CDP endpoint instead of spawning an owned browser. */
+  attachCdpUrl?: string
   maxInputBytes?: number
   idleTimeoutMs?: number
   bridgeCommand?: { executable: string, args: string[] }
@@ -42,6 +44,7 @@ export interface RuntimeConfig {
   enabled: boolean
   setupPending: boolean
   chromeExecutable?: string
+  attachCdpUrl?: string
   maxInputBytes?: number
   idleTimeoutMs: number
   binding?: WebBinding

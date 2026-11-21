@@ -77,6 +77,22 @@ test('loadConfig accepts a symlinked state-directory path and validates its phys
   assert.equal(loaded?.profileDirectory, join(await realpath(physical), 'chrome-profile'))
 })
 
+test('attach mode does not launch or claim a Chrome profile', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'web-runtime-attach-'))
+  const stateDirectory = join(root, 'state')
+  let launches = 0
+  await initializeConfig({ stateDirectory, provider: 'chatgpt', attachCdpUrl: 'http://127.0.0.1:9222' })
+  const running = await startRuntimeDaemon({ stateDirectory, dependencies: {
+    async launchChrome() { launches++; throw new Error('attach mode must not launch Chrome') },
+    async inspectSetup() { return structuredClone(verified) },
+    async createTransport() { throw new Error('setup must not open the page transport') },
+  } })
+  t.after(async () => { await running.close(); await rm(root, { recursive: true, force: true }) })
+  const status = await running.administration.setup()
+  assert.equal(status.phase, 'login-required')
+  assert.equal(launches, 0)
+})
+
 async function bridgeLease(connection: RuntimeConnection) {
   const response = await fetch(`${connection.url}/v1/clients`, { method: 'POST', headers: { authorization: `Bearer ${connection.token}`, 'content-type': 'application/json' }, body: '{}' })
   assert.equal(response.status, 201)

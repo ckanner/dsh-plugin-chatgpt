@@ -1,6 +1,6 @@
 /** Versioned visible-UI evidence readers, executed unchanged inside Chromium. */
-export const COMPOSER = '#prompt-textarea,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]'
-export const PROFILE_TRIGGER = '[data-testid="accounts-profile-button"],[data-testid="profile-button"]'
+export const COMPOSER = '#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]'
+export const PROFILE_TRIGGER = '[data-testid="accounts-profile-button"],[data-testid="profile-button"],button[aria-label="Open profile menu"]'
 export const MODEL_TRIGGER = 'button[aria-label="Select ChatGPT model"],button[data-codex-intelligence-trigger="true"],form[data-chatgpt-composer] button[data-composer-navigation-target="reasoning"],[data-testid="model-switcher-dropdown-button"]'
 
 export interface PageMessageEvidence { id: string, role: string, text: string, finished: boolean, busy: boolean, attachments: string[], unknownAttachments: boolean }
@@ -42,6 +42,19 @@ export function readPageEvidence(): PageEvidence {
       for (const match of (node.textContent ?? '').matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) identities.add(match[0].toLowerCase())
     }
   }
+  // Current profile menus expose a display name rather than an email. Accept
+  // only the first non-action line of a menu that visibly contains Log out.
+  if (identities.size === 0) {
+    for (const root of accountRoots) {
+      const lines = text(root).split(/\n+/).map(value => value.trim()).filter(Boolean)
+      const first = lines[0]
+      if (lines.length >= 2 && first && first.length >= 2 && first.length <= 80
+        && !first.includes('@') && !/out$/i.test(first)
+        && !/^(?:Pro|Personalization|Profile|Settings|Help|Log out|Upgrade|Usage)$/i.test(first)) {
+        identities.add(first.toLowerCase())
+      }
+    }
+  }
   const controls = menus.flatMap(menu => all('[role="menuitemradio"],[role="radio"]', menu))
   const contradictorySelection = controls.filter(node => /^(?:GPT-[\w.-]+|Pro|High|Medium|Low|Instant|Extra High)$/i.test(text(node))).some(node => {
     const aria = node.getAttribute('aria-checked'), state = node.getAttribute('data-state')
@@ -52,6 +65,10 @@ export function readPageEvidence(): PageEvidence {
     .filter(node => node.getAttribute('aria-checked') === 'true' && node.getAttribute('data-state') !== 'unchecked')
   const models = new Set(choices.map(text).filter(value => /^GPT-[\w.-]+$/i.test(value)))
   const efforts = new Set(choices.map(text).filter(value => /^(Pro|High|Medium|Low|Instant|Extra High)$/i.test(value)))
+  // The current model menu renders the selected Pro effort as a plain
+  // role=menuitem while the model entries remain role=menuitemradio.
+  const proItems = menus.flatMap(menu => all('[role="menuitem"]', menu)).filter(node => /^Pro$/i.test(text(node)))
+  if (proItems.length === 1) efforts.add('Pro')
   for (const slider of menus.flatMap(menu => all('[data-reasoning-slider] [role="slider"],[data-model-picker-power-slider] [role="slider"]', menu))) {
     const value = slider.getAttribute('aria-valuetext')?.trim()
     if (value && /^(Pro|High|Medium|Low|Instant)(?:\s*[,，].*)?$/i.test(value)) efforts.add(value.split(/[,，]/)[0]!.trim())
@@ -62,7 +79,7 @@ export function readPageEvidence(): PageEvidence {
     const current = /^(?:ChatGPT\s+)?(GPT-[\w.-]+)\s+(Pro|High|Medium|Low|Instant|Extra High)$/.exec(label)
     if (current) { models.add(current[1]!); efforts.add(current[2]!) }
   }
-  const composers = all('#prompt-textarea,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]')
+  const composers = all('#prompt-textarea,textarea[aria-label="Ask ChatGPT"],textarea#pending-home-input,form[data-chatgpt-composer] [contenteditable="true"][role="textbox"],textarea[name="prompt-textarea"]')
   const composer = composers[0]
   const currentText = composer instanceof HTMLTextAreaElement ? composer.value : composer?.innerText ?? ''
   const messages: PageMessageEvidence[] = []

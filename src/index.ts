@@ -59,6 +59,8 @@ export const Config = z.object({
   modelContextWindowLimits: z.dict(z.number().step(1).min(1024)).volatile(),
   /** Startup option; changing the dedicated Chrome executable remounts this plugin. */
   webChromeExecutable: z.string(),
+  /** Attach to a user-launched loopback Chrome CDP endpoint instead of spawning an owned browser. */
+  webCdpUrl: z.string(),
   /** Startup byte admission limit; changing it remounts this plugin. */
   webMaxInputBytes: z.number().step(1).min(1024),
 })
@@ -73,6 +75,7 @@ export type Config = {
   contextWindowLimit: Volatile<number>
   modelContextWindowLimits: Volatile<Record<string, number>>
   webChromeExecutable?: string
+  webCdpUrl?: string
   webMaxInputBytes?: number
 }
 
@@ -253,11 +256,13 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   const executable = config.webChromeExecutable
+  const attachCdpUrl = config.webCdpUrl
   const maxInputBytes = config.webMaxInputBytes
   const web = new WebProvider({
     provider: route,
     runtime: new ManagedWebRuntime({ stateDirectory: join(stateDir, 'web'), provider: route,
-      ...executable ? { chromeExecutable: executable } : {}, ...maxInputBytes === undefined ? {} : { maxInputBytes } }),
+      ...executable ? { chromeExecutable: executable } : {}, ...attachCdpUrl ? { attachCdpUrl } : {},
+      ...maxInputBytes === undefined ? {} : { maxInputBytes } }),
     contextBudget: () => config.modelContextWindowLimits.get()?.[WEB_MODEL] ?? config.contextWindowLimit.get(),
     resolveAttachments: () => ctx.get('attachments'),
     errorFactory: (message, code, status, requestId) => new LlmError(message, code, { status,

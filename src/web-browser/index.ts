@@ -12,6 +12,8 @@ import { parseResponse, projectionSettingsDigest, renderPrompt } from './envelop
 export interface ChromeConnectionOptions {
   cdpUrl: string
   expectedProfileDirectory: string
+  /** Attach to a user-launched Chrome; do not claim, lock or close its process. */
+  attached?: boolean
   /** Isolated test servers only. Production setup never accepts this from wire input. */
   testOnlyOrigin?: string
   timeoutMs?: number
@@ -93,7 +95,12 @@ function projectUrl(value: string, origin: string): boolean {
 
 export function accountBindingForVisibleIdentity(identity: string): string {
   const normalized = identity.trim().toLowerCase()
-  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(normalized)) failure('WEB_BROWSER_ACCOUNT', 'A unique visible account email is required for this adapter version')
+  // Current ChatGPT profile menus expose a display name instead of an email.
+  // Both forms are visible, single-account evidence; never read cookie/token data.
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(normalized)
+    && !/^[\p{L}\p{N}][\p{L}\p{N} ._-]{1,79}$/u.test(normalized)) {
+    failure('WEB_BROWSER_ACCOUNT', 'A unique visible account identity is required for this adapter version')
+  }
   return textDigest(`chatgpt-visible-account-v1\n${normalized}`)
 }
 
@@ -108,14 +115,16 @@ async function connect(options: ChromeConnectionOptions): Promise<{ browser: Bro
   const origin = originFor(options)
   const browser = await chromium.connectOverCDP(endpoint.href, { timeout: UI_TIMEOUT })
   try {
-    const session = await browser.newBrowserCDPSession()
-    let args: string[]
-    try { args = (await session.send('Browser.getBrowserCommandLine')).arguments }
-    finally { await session.detach() }
-    const profiles = args.filter(value => value.startsWith('--user-data-dir='))
-    if (!args.includes('--enable-automation') || profiles.length !== 1
-      || await realpath(profiles[0]!.slice('--user-data-dir='.length)) !== await realpath(options.expectedProfileDirectory)) {
-      failure('WEB_BROWSER_OWNERSHIP', 'CDP did not prove the expected dedicated physical Chrome profile')
+    if (options.attached !== true) {
+      const session = await browser.newBrowserCDPSession()
+      let args: string[]
+      try { args = (await session.send('Browser.getBrowserCommandLine')).arguments }
+      finally { await session.detach() }
+      const profiles = args.filter(value => value.startsWith('--user-data-dir='))
+      if (profiles.length !== 1
+        || await realpath(profiles[0]!.slice('--user-data-dir='.length)) !== await realpath(options.expectedProfileDirectory)) {
+        failure('WEB_BROWSER_OWNERSHIP', 'CDP did not prove the expected dedicated physical Chrome profile')
+      }
     }
     if (browser.contexts().length !== 1) failure('WEB_BROWSER_OWNERSHIP', 'The dedicated Chrome instance has unexpected additional contexts')
     const candidates = browser.contexts()[0]!.pages().filter(page => { try { return new URL(page.url()).origin === origin } catch { return false } })
@@ -178,7 +187,7 @@ async function inspectModel(page: Page, signal: AbortSignal): Promise<{ model?: 
       const facts = await page.evaluate(readPageEvidence)
       if (facts.model !== null) { if (model !== undefined && model !== facts.model) drift('The model selection changed while it was inspected'); model = facts.model }
       if (facts.effort !== null) { if (effort !== undefined && effort !== facts.effort) drift('The reasoning selection changed while it was inspected'); effort = facts.effort }
-      proAvailable ||= await visible(page.locator('[role="menu"] [role="radio"],[role="menu"] [role="menuitemradio"],[role="dialog"] [role="radio"]')).filter({ hasText: /^Pro$/ }).count() > 0 || facts.effort === 'Pro'
+      proAvailable ||= await visible(page.locator('[role="menu"] [role="radio"],[role="menu"] [role="menuitemradio"],[role="menu"] [role="menuitem"],[role="dialog"] [role="radio"]')).filter({ hasText: /^Pro$/ }).count() > 0 || facts.effort === 'Pro'
       if (model !== undefined && effort !== undefined) return { model, effort, proAvailable }
       const desired = model === undefined ? /^(Advanced|高级|高级设置|(?:Model|模型)\s*GPT-[\w.-]+)$/i : /^(Effort|思考强度|思考等级|推理强度)(?:\s*.*)?$/i
       const openers = visible(page.locator('[role="menu"] [role="menuitem"][aria-haspopup="menu"],[role="menu"] button[aria-haspopup="menu"],button[data-model-picker-advanced]')).filter({ hasText: desired })
@@ -218,7 +227,7 @@ async function setupEvidence(page: Page, origin: string, signal: AbortSignal): P
 export async function inspectChromeSetup(options: ChromeConnectionOptions): Promise<BrowserSetupEvidence> {
   const connection = await connect(options)
   try { return await setupEvidence(connection.page, connection.origin, AbortSignal.timeout(options.timeoutMs ?? 30_000)) }
-  finally { await connection.browser.close() }
+  finally { if (options.attached !== true) await connection.browser.close() }
 }
 
 function transcript(facts: PageEvidence): BrowserMessageEvidence[] {
@@ -657,7 +666,7 @@ class Transport implements ChromePageTransport {
     if (this.closed) return
     if (this.busy) failure('WEB_BROWSER_BUSY', 'Stop the engine operation before disconnecting its browser transport')
     this.closed = true
-    try { await this.ledger.close() } finally { await this.browser.close() }
+    try { await this.ledger.close() } finally { if (this.options.attached !== true) await this.browser.close() }
   }
 }
 
@@ -669,5 +678,5 @@ export async function createChromePageTransport(options: ChromePageTransportOpti
     const ledger = await BrowserLedger.open(options.stateDirectory, { profileDirectory: options.expectedProfileDirectory,
       provider: options.provider, profileId: options.profileId, accountBinding: options.expectedAccountBinding }, options.initialize === true, options.testOnlyLedgerFault)
     return new Transport(options, connection.browser, connection.page, connection.origin, ledger)
-  } catch (error) { await connection.browser.close(); throw error }
+  } catch (error) { if (options.attached !== true) await connection.browser.close(); throw error }
 }

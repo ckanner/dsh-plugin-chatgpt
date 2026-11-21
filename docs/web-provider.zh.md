@@ -12,6 +12,39 @@
 
 DSH 继续拥有所有工具、权限、权威历史、重试与压缩。Web v1 只接受 `purpose: "normal"`；因为网页没有可强制执行的 `maxTokens`、`temperature`、`stop`，provider 会以 `WEB_AUXILIARY_UNSUPPORTED` 拒绝 `compaction` 和 `session-title`。请把 DSH 压缩和已启用的模型标题插件配置到明确的**非 Web** provider/model，或关闭可选的标题插件。只有 Web 的配置可以启用普通 turn；如果辅助路由仍选择 Web，会在派发时明确失败。插件不会读取 Loader fiber 或私有 compaction 配置。还需设置显式的本地 token 预算，它用于准入，并不是检测到的 ChatGPT 上下文容量。
 
+### 附加到已登录的 Chrome
+
+全新托管 profile 需要单独登录 ChatGPT。如果 Google/OpenAI 把这当成自动化浏览器而拒绝登录，请使用显式的 **attach 模式**，不要复制 cookie 或伪装浏览器。
+
+退出 Chrome，然后使用现有 Chrome user-data 目录启动一次，并只绑定 loopback 调试端点（下面是 macOS 默认目录）：
+
+```sh
+open -na "Google Chrome" --args \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir="$HOME/Library/Application Support/Google/Chrome"
+```
+
+只保留一个 ChatGPT 页面，然后配置：
+
+```yaml
+- id: chatgpt
+  config:
+    webCdpUrl: http://127.0.0.1:9222
+    modelContextWindowLimits:
+      gpt-6-pro-web: 32768
+```
+
+不要同时设置 `webChromeExecutable`。attach 模式：
+
+- 使用你自己启动的 Chrome profile；
+- 不接管、不加锁、不启动、不关闭该 Chrome；
+- 不要求 `--enable-automation`；
+- 仍然要求唯一 ChatGPT 页面、可见 GPT-6/Pro 选择和账号验证；
+- 会把已运行的本机调试端点暴露给本地 runtime。只使用你自己启动的 loopback 端点。
+
+provider 卡片以及 `verify`/`enable` 步骤其余不变。
+
 对于条目名为 `chatgpt`、`compaction-basic`、`session-title-llm` 的 stock profile，把以下字段合并到对应的现有配置中：
 
 ```yaml

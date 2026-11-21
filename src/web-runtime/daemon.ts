@@ -147,6 +147,11 @@ export async function startRuntimeDaemon(options: { stateDirectory: string, depe
   }
   const ensureChrome = async (): Promise<void> => {
     if (unsafeChrome) throw runtimeError('WEB_CHROME_OWNERSHIP', 'An earlier Chrome cleanup was not verified; offline inspection is required.')
+    if (configured.attachCdpUrl !== undefined) {
+      // Attach mode deliberately does not own, launch, lock or close this browser.
+      phase = 'starting'
+      return
+    }
     if (chrome !== undefined) return
     phase = 'starting'
     const physical = await privateDirectory(configured.profileDirectory)
@@ -193,14 +198,17 @@ export async function startRuntimeDaemon(options: { stateDirectory: string, depe
   const ensureEngine = async (binding: WebBinding, initialize: boolean): Promise<ManagedWebBridgeEngine> => {
     if (engine !== undefined) return engine
     await ensureChrome()
-    const opened = await dependencies.createTransport({ cdpUrl: chrome!.cdpUrl, stateDirectory: join(stateDirectory, 'browser'),
+    const attached = configured.attachCdpUrl !== undefined
+    const opened = await dependencies.createTransport({ cdpUrl: attached ? configured.attachCdpUrl! : chrome!.cdpUrl,
+      stateDirectory: join(stateDirectory, 'browser'), attached,
       expectedProfileDirectory: configured.profileDirectory, expectedAccountBinding: binding.accountBinding,
       provider: configured.provider, profileId: configured.profileId, initialize,
       ...configured.maxInputBytes === undefined ? {} : { maxInputBytes: configured.maxInputBytes } })
     try {
       const imageStore = await openWebImageStore(join(stateDirectory, 'images'), { initialize })
       engine = await openWebBridge({ directory: join(stateDirectory, 'journal'), profileDirectory: configured.profileDirectory,
-        binding, transport: opened, initialize, profileOwnership: owner!, instanceId, imageStore })
+        binding, transport: opened, initialize, instanceId, imageStore,
+        ...owner === undefined ? {} : { profileOwnership: owner } })
       page = opened
       if (phase === 'starting') phase = 'verification-required'
       return engine
@@ -229,7 +237,9 @@ export async function startRuntimeDaemon(options: { stateDirectory: string, depe
     phase = 'verification-required'
     try {
       await ensureChrome()
-      const evidence = page === undefined ? await dependencies.inspectSetup({ cdpUrl: chrome!.cdpUrl, expectedProfileDirectory: configured.profileDirectory }) : await page.inspectSetup()
+      const attached = configured.attachCdpUrl !== undefined
+      const evidence = page === undefined ? await dependencies.inspectSetup({ cdpUrl: attached ? configured.attachCdpUrl! : chrome!.cdpUrl,
+        expectedProfileDirectory: configured.profileDirectory, attached }) : await page.inspectSetup()
       if (!evidence.visibleAccount || !evidence.accountBinding) {
         phase = 'login-required'; issues = evidence.issues.length ? evidence.issues.slice(0, 8).map(text => text.slice(0, 768)) : ['Sign in visibly in the dedicated Chrome window.']; return status()
       }
