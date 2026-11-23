@@ -36,6 +36,8 @@ export const SERVED_MEASURED_ON = '2026-10-04'
  * made this list necessary.
  */
 export const SERVED_MODELS: readonly ServedModel[] = [
+  { id: 'gpt-6.2-astra', advertised: true, measuredOn: '2026-11-22', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+  { id: 'gpt-6.2-sol', advertised: true, measuredOn: '2026-11-22', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-6-astra', advertised: true, reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-6-sol', advertised: false, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
   { id: 'gpt-6-luna', advertised: false, reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
